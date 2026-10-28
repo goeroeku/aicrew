@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="1280" height="320" viewBox="0 0 1280 320">
+  <rect width="1280" height="320" rx="28" fill="#0b1220"/>
+  <image xlink:href="../emblem.png" x="52" y="40" width="248" height="240" preserveAspectRatio="xMidYMid meet"/>
+  <g font-family="ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif">
+    <text x="340" y="150" font-size="104" font-weight="800" fill="#f8fafc" letter-spacing="-2"><tspan fill="#38bdf8">ai</tspan>Crew</text>
+    <text x="344" y="204" font-size="30" fill="#cbd5e1">Alur kerja project dari ide sampai calon rilis, untuk Claude Code</text>
+    <text x="1232" y="78" font-size="20" fill="#64748b" text-anchor="end">bagian dari</text>
+    <text x="1232" y="122" font-size="40" font-weight="800" fill="#e2e8f0" text-anchor="end" letter-spacing="-1"><tspan fill="#38bdf8">AI</tspan>Cosystem</text>
+    <g font-size="22" font-weight="600" fill="#e0f2fe">
+      <rect x="344" y="236" width="132" height="42" rx="21" fill="#0c4a6e"/><text x="410" y="264" text-anchor="middle">kickoff</text>
+      <rect x="488" y="236" width="86" height="42" rx="21" fill="#075985"/><text x="531" y="264" text-anchor="middle">PRD</text>
+      <rect x="586" y="236" width="152" height="42" rx="21" fill="#0369a1"/><text x="662" y="264" text-anchor="middle">breakdown</text>
+      <rect x="750" y="236" width="170" height="42" rx="21" fill="#0284c7"/><text x="835" y="264" text-anchor="middle">orchestrate</text>
+      <rect x="932" y="236" width="196" height="42" rx="21" fill="#0ea5e9"/><text x="1030" y="264" text-anchor="middle" fill="#082f49">calon rilis</text>
+    </g>
+  </g>
+</svg>

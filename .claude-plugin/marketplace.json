@@ -9,5 +9,6 @@
       "source": "./",
       "description": "Brainstorm, PRD, breakdown ke issue, dan eksekusi paralel dengan role."
     }
-  ]
+  ],
+  "description": "Marketplace untuk plugin aicrew: alur kerja project dari ide sampai calon rilis, dengan role, autopilot, dan gerbang manual atau otomatis."
 }

@@ -1,0 +1,27 @@
+name: release
+# Aktif saat tag vX.Y.Z didorong. Membuat GitHub Release berisi aicrew-X.Y.Z.zip, .tar.gz, dan SHA256SUMS.
+on:
+  push:
+    tags: ["v*"]
+permissions:
+  contents: write
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Versi tag harus sama dengan plugin.json
+        run: bash scripts/check-version.sh "$GITHUB_REF_NAME"
+      - name: Tes plugin
+        run: bash tests/run.sh
+      - name: Bangun arsip dan checksum
+        run: |
+          v="${GITHUB_REF_NAME#v}"
+          mkdir dist
+          git archive --worktree-attributes --format=zip --prefix="aicrew-$v/" -o "dist/aicrew-$v.zip" HEAD
+          git archive --worktree-attributes --format=tar.gz --prefix="aicrew-$v/" -o "dist/aicrew-$v.tar.gz" HEAD
+          (cd dist && sha256sum aicrew-* > SHA256SUMS)
+      - name: Buat rilis
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release create "$GITHUB_REF_NAME" dist/* --title "$GITHUB_REF_NAME" --generate-notes

@@ -100,6 +100,18 @@ ok "install-permissions: placeholder terisi (tanpa __ tersisa)" "$(grep -c '__' 
 jq -e --arg r "Bash(bash $root/scripts/*)" '.permissions.allow|index($r)!=null' "$tmp/s.json" >/dev/null; ok "install-permissions: path plugin milik pengguna terpasang" $? 0
 jq -e '.permissions.allow|map(select(startswith("Bash(rtk git:")))|length==1' "$root/templates/autopilot-permissions.json" >/dev/null; ok "izin: varian rtk git ada" $? 0
 
+# 2e. rilis: sinkron versi tag, isi arsip
+v="$(jq -r .version .claude-plugin/plugin.json)"
+bash scripts/check-version.sh "v$v" >/dev/null 2>&1; ok "rilis: tag sama dengan versi plugin.json -> exit 0" $? 0
+bash scripts/check-version.sh "v9.9.9" >/dev/null 2>&1; ok "rilis: tag beda versi -> exit 1" $? 1
+bash scripts/check-version.sh "release-1" >/dev/null 2>&1; ok "rilis: tag bukan vX.Y.Z -> exit 1" $? 1
+if git rev-parse --git-dir >/dev/null 2>&1 && git rev-parse -q --verify HEAD >/dev/null; then
+  lst="$(git archive --worktree-attributes HEAD | tar -t)"
+  printf '%s\n' "$lst" | grep -q '^LICENSE$'; ok "arsip rilis memuat LICENSE" $? 0
+  printf '%s\n' "$lst" | grep -q '^\.claude-plugin/plugin.json$'; ok "arsip rilis memuat plugin.json" $? 0
+  printf '%s\n' "$lst" | grep -qE '^\.github/|^\.gitignore$|^\.gitattributes$'; ok "arsip rilis tanpa infrastruktur repo (.github, .gitignore)" $? 1
+fi
+
 # 3. konsistensi plugin
 cd "$root" || exit 1
 for f in scripts/*.sh tests/run.sh; do bash -n "$f"; ok "sintaks $f" $? 0; done

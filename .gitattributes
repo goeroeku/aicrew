@@ -1,0 +1,4 @@
+# Arsip rilis (git archive) hanya memuat berkas plugin, bukan infrastruktur repo.
+.github export-ignore
+.gitignore export-ignore
+.gitattributes export-ignore
