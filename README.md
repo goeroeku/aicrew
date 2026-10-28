@@ -107,6 +107,12 @@ error beruntun (1), buntu (2), hanya `needs-principal` yang tersisa (3), atau ba
 ## 🗂️ Kanban (opsional)
 `scripts/board-init.sh` membuat GitHub Project, menautkannya ke repo, dan menyeragamkan status; `scripts/board.sh` menggeser kartu. Perlu scope `gh` `project`.
 
+## 🔔 Notifikasi dan data yang dikirim (opsional)
+Secara bawaan plugin ini **tidak mengirim data apa pun ke luar mesin Anda**. Satu-satunya jaringan keluar adalah hook `Notification` (`scripts/notify.sh`),
+dan hanya aktif bila **Anda sendiri** mengisi `AICREW_TG_TOKEN` dan `AICREW_TG_CHAT` di lingkungan shell (token bot Telegram milik Anda; jangan simpan di berkas repo).
+Bila aktif, ia mengirim ke `api.telegram.org` satu pesan berisi teks notifikasi (mis. "issue #N butuh keputusan") dan nama folder project. Tidak ada isi kode, issue, atau percakapan.
+Selain itu, skrip memanggil `gh` dan `git` atas nama Anda ke repositori project Anda sendiri.
+
 ## ⚠️ Peringatan
 
 > [!WARNING]

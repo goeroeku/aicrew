@@ -1,27 +1,43 @@
 name: release
-# Aktif saat tag vX.Y.Z didorong. Membuat GitHub Release berisi aicrew-X.Y.Z.zip, .tar.gz, dan SHA256SUMS.
+# Rilis otomatis: saat push ke main menaikkan "version" di .claude-plugin/plugin.json ke nomor yang belum punya tag/rilis,
+# dan tes lulus, workflow ini membuat tag vX.Y.Z beserta GitHub Release (aicrew-X.Y.Z.zip, .tar.gz, SHA256SUMS).
+# Push biasa tanpa menaikkan versi tidak menghasilkan rilis. workflow_dispatch untuk menjalankan ulang secara manual.
 on:
   push:
-    tags: ["v*"]
+    branches: [main]
+  workflow_dispatch:
 permissions:
   contents: write
+concurrency:
+  group: release
+  cancel-in-progress: false
 jobs:
   release:
     runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v4
-      - name: Versi tag harus sama dengan plugin.json
-        run: bash scripts/check-version.sh "$GITHUB_REF_NAME"
+        with:
+          fetch-depth: 0
+      - name: Baca versi dan cek apakah sudah dirilis
+        id: v
+        run: |
+          v="$(jq -r .version .claude-plugin/plugin.json)"
+          bash scripts/check-version.sh "v$v"
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+          if git rev-parse -q --verify "refs/tags/v$v" >/dev/null || gh release view "v$v" >/dev/null 2>&1; then
+            echo "released=true" >> "$GITHUB_OUTPUT"
+            echo "v$v sudah dirilis; tidak ada yang dibuat."
+          else
+            echo "released=false" >> "$GITHUB_OUTPUT"
+          fi
       - name: Tes plugin
+        if: steps.v.outputs.released == 'false'
         run: bash tests/run.sh
       - name: Bangun arsip dan checksum
-        run: |
-          v="${GITHUB_REF_NAME#v}"
-          mkdir dist
-          git archive --worktree-attributes --format=zip --prefix="aicrew-$v/" -o "dist/aicrew-$v.zip" HEAD
-          git archive --worktree-attributes --format=tar.gz --prefix="aicrew-$v/" -o "dist/aicrew-$v.tar.gz" HEAD
-          (cd dist && sha256sum aicrew-* > SHA256SUMS)
-      - name: Buat rilis
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release create "$GITHUB_REF_NAME" dist/* --title "$GITHUB_REF_NAME" --generate-notes
+        if: steps.v.outputs.released == 'false'
+        run: bash scripts/build-release.sh "${{ steps.v.outputs.version }}" dist
+      - name: Buat tag dan rilis
+        if: steps.v.outputs.released == 'false'
+        run: gh release create "v${{ steps.v.outputs.version }}" dist/* --target "$GITHUB_SHA" --title "v${{ steps.v.outputs.version }}" --generate-notes

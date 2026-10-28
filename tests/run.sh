@@ -105,11 +105,14 @@ v="$(jq -r .version .claude-plugin/plugin.json)"
 bash scripts/check-version.sh "v$v" >/dev/null 2>&1; ok "rilis: tag sama dengan versi plugin.json -> exit 0" $? 0
 bash scripts/check-version.sh "v9.9.9" >/dev/null 2>&1; ok "rilis: tag beda versi -> exit 1" $? 1
 bash scripts/check-version.sh "release-1" >/dev/null 2>&1; ok "rilis: tag bukan vX.Y.Z -> exit 1" $? 1
+[ ! -f .gitattributes ] || ! grep -qE 'export-ignore|export-subst' .gitattributes; ok "tanpa export-ignore/export-subst (direktori Anthropic menolaknya)" $? 0
 if git rev-parse --git-dir >/dev/null 2>&1 && git rev-parse -q --verify HEAD >/dev/null; then
-  lst="$(git archive --worktree-attributes HEAD | tar -t)"
-  printf '%s\n' "$lst" | grep -q '^LICENSE$'; ok "arsip rilis memuat LICENSE" $? 0
-  printf '%s\n' "$lst" | grep -q '^\.claude-plugin/plugin.json$'; ok "arsip rilis memuat plugin.json" $? 0
-  printf '%s\n' "$lst" | grep -qE '^\.github/|^\.gitignore$|^\.gitattributes$'; ok "arsip rilis tanpa infrastruktur repo (.github, .gitignore)" $? 1
+  bash scripts/build-release.sh 9.9.9 "$tmp/dist" >/dev/null 2>&1; ok "build-release: arsip terbentuk" $? 0
+  lst="$(unzip -Z1 "$tmp/dist/aicrew-9.9.9.zip" 2>/dev/null)"
+  printf '%s\n' "$lst" | grep -q '^aicrew-9.9.9/LICENSE$'; ok "arsip rilis memuat LICENSE" $? 0
+  printf '%s\n' "$lst" | grep -q '^aicrew-9.9.9/.claude-plugin/plugin.json$'; ok "arsip rilis memuat plugin.json" $? 0
+  printf '%s\n' "$lst" | grep -qE '/\.github|/\.gitignore|/\.gitattributes'; ok "arsip rilis tanpa infrastruktur repo (.github, .gitignore)" $? 1
+  (cd "$tmp/dist" && { command -v sha256sum >/dev/null && sha256sum -c SHA256SUMS || shasum -a 256 -c SHA256SUMS; } >/dev/null 2>&1); ok "arsip rilis: checksum cocok" $? 0
 fi
 
 # 3. konsistensi plugin

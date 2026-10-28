@@ -12,5 +12,7 @@
     "orchestration",
     "roles",
     "issues"
-  ]
+  ],
+  "repository": "https://github.com/goeroeku/aicrew",
+  "homepage": "https://github.com/goeroeku/aicrew"
 }
