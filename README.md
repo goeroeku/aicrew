@@ -10,11 +10,16 @@ Prinsip: **setiap gerbang bawaannya manual (owner memutuskan)**, dengan opsi yan
 - Opsional: `codex` (senior-coder mengerjakan kode lewat Codex; tanpanya dipakai subagen Claude), scope `gh` `project` (kanban), `caffeinate` (macOS, menahan Mac tetap bangun saat autopilot).
 
 ## Pasang dan coba
+Tanpa clone atau fork (Claude Code mengunduh repo ini sendiri sebagai marketplace):
 ```
-claude --plugin-dir /path/ke/aicrew        # dimuat untuk satu sesi
+claude plugin marketplace add goeroeku/aicrew
+claude plugin install aicrew@aicrew
 ```
+Di dalam sesi Claude Code bentuknya `/plugin marketplace add goeroeku/aicrew` lalu `/plugin install aicrew@aicrew`. Bila SSH ke GitHub belum diatur,
+pakai URL penuh: `claude plugin marketplace add https://github.com/goeroeku/aicrew.git`. Terpasang: 4 skill, 7 agen, 1 hook; beban tetap sekitar 380 token per sesi.
+Mencoba dari salinan lokal tanpa memasang: `claude --plugin-dir /path/ke/aicrew`.
+
 Lalu di project Anda: `/aicrew:kickoff` (tulis `docs/WORKFLOW.md`), `/aicrew:prd`, `/aicrew:breakdown`, `/aicrew:orchestrate`.
-Lewat marketplace: `claude plugin marketplace add <akun>/aicrew` lalu pasang plugin `aicrew` (jalur ini belum diuji dari repo GitHub).
 
 ## Opsi otomatis (semuanya bawaan manual)
 | Gerbang | Bawaan | Opsi |
