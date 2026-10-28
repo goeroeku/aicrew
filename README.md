@@ -109,9 +109,9 @@ error beruntun (1), buntu (2), hanya `needs-principal` yang tersisa (3), atau ba
 
 ## 🔔 Notifikasi dan data yang dikirim (opsional)
 Secara bawaan plugin ini **tidak mengirim data apa pun ke luar mesin Anda**. Satu-satunya jaringan keluar adalah hook `Notification` (`scripts/notify.sh`),
-dan hanya aktif bila **Anda sendiri** mengisi `AICREW_TG_TOKEN` dan `AICREW_TG_CHAT` di lingkungan shell (token bot Telegram milik Anda; jangan simpan di berkas repo).
+dan hanya aktif bila **Anda sendiri** mengisi token bot dan chat ID Telegram milik Anda: lewat pengaturan plugin (`tg_token`, `tg_chat`; token disimpan di penyimpanan aman Claude Code) atau variabel lingkungan `AICREW_TG_TOKEN` dan `AICREW_TG_CHAT`. Jangan simpan token di berkas repo.
 Bila aktif, ia mengirim ke `api.telegram.org` satu pesan berisi teks notifikasi (mis. "issue #N butuh keputusan") dan nama folder project. Tidak ada isi kode, issue, atau percakapan.
-Selain itu, skrip memanggil `gh` dan `git` atas nama Anda ke repositori project Anda sendiri.
+Selain itu, skrip memanggil `gh` dan `git` atas nama Anda ke repositori project Anda sendiri. Rincian: [`PRIVACY.md`](PRIVACY.md).
 
 ## ⚠️ Peringatan
 

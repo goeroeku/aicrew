@@ -115,6 +115,22 @@ if git rev-parse --git-dir >/dev/null 2>&1 && git rev-parse -q --verify HEAD >/d
   (cd "$tmp/dist" && { command -v sha256sum >/dev/null && sha256sum -c SHA256SUMS || shasum -a 256 -c SHA256SUMS; } >/dev/null 2>&1); ok "arsip rilis: checksum cocok" $? 0
 fi
 
+# 2f. notify.sh: token dari userConfig plugin (CLAUDE_PLUGIN_OPTION_*), cadangan AICREW_TG_*, diam bila tidak lengkap
+mkdir -p "$tmp/nbin"; cat > "$tmp/nbin/curl" <<'EOF'
+#!/usr/bin/env bash
+echo "$*" >> "$CURL_LOG"
+EOF
+chmod +x "$tmp/nbin/curl"; export CURL_LOG="$tmp/curl.log"
+nt() { : > "$CURL_LOG"; echo '{"message":"uji"}' | env -i PATH="$tmp/nbin:$PATH" CURL_LOG="$CURL_LOG" "$@" bash "$root/scripts/notify.sh"; echo $?; }
+r="$(nt)"; ok "notify: tanpa kredensial -> exit 0" "$r" 0; ok "notify: tanpa kredensial -> tidak memanggil curl" "$(grep -c . "$CURL_LOG")" 0
+nt CLAUDE_PLUGIN_OPTION_TG_TOKEN=tok1 CLAUDE_PLUGIN_OPTION_TG_CHAT=42 >/dev/null; ok "notify: userConfig dipakai (token di URL)" "$(grep -c 'bottok1/sendMessage' "$CURL_LOG")" 1
+nt AICREW_TG_TOKEN=tok2 AICREW_TG_CHAT=7 >/dev/null; ok "notify: variabel lama AICREW_TG_* tetap jalan" "$(grep -c 'bottok2/sendMessage' "$CURL_LOG")" 1
+nt CLAUDE_PLUGIN_OPTION_TG_TOKEN=tokA CLAUDE_PLUGIN_OPTION_TG_CHAT=1 AICREW_TG_TOKEN=tokB AICREW_TG_CHAT=2 >/dev/null; ok "notify: userConfig menang atas variabel lama" "$(grep -c 'bottokA/' "$CURL_LOG")" 1
+nt CLAUDE_PLUGIN_OPTION_TG_TOKEN=tok3 >/dev/null; ok "notify: token tanpa chat -> diam" "$(grep -c . "$CURL_LOG")" 0
+jq -e '.userConfig.tg_token.sensitive==true and (.userConfig.tg_token.required//false)==false and (.userConfig.tg_chat|type=="object")' "$root/.claude-plugin/plugin.json" >/dev/null; ok "plugin.json: userConfig tg_token sensitif dan opsional" $? 0
+jq -e '.icon and .privacyPolicyUrl and .supportUrl and .documentationUrl' "$root/.claude-plugin/plugin.json" >/dev/null; ok "plugin.json: kolom listing direktori terisi" $? 0
+[ -f "$root/PRIVACY.md" ]; ok "PRIVACY.md ada (tautan privasi direktori)" $? 0
+
 # 3. konsistensi plugin
 cd "$root" || exit 1
 for f in scripts/*.sh tests/run.sh; do bash -n "$f"; ok "sintaks $f" $? 0; done

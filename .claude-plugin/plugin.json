@@ -14,5 +14,22 @@
     "issues"
   ],
   "repository": "https://github.com/goeroeku/aicrew",
-  "homepage": "https://github.com/goeroeku/aicrew"
+  "homepage": "https://github.com/goeroeku/aicrew",
+  "icon": "./.claude-plugin/icon.png",
+  "documentationUrl": "https://github.com/goeroeku/aicrew#readme",
+  "supportUrl": "https://github.com/goeroeku/aicrew/issues",
+  "privacyPolicyUrl": "https://github.com/goeroeku/aicrew/blob/main/PRIVACY.md",
+  "userConfig": {
+    "tg_token": {
+      "type": "string",
+      "title": "Token bot Telegram (opsional)",
+      "description": "Untuk notifikasi satu arah ke Telegram Anda. Kosongkan bila tidak dipakai.",
+      "sensitive": true
+    },
+    "tg_chat": {
+      "type": "string",
+      "title": "Chat ID Telegram (opsional)",
+      "description": "ID chat tujuan notifikasi. Kosongkan bila tidak dipakai."
+    }
+  }
 }
