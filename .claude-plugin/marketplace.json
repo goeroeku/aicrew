@@ -1,0 +1,13 @@
+{
+  "name": "aicrew",
+  "owner": {
+    "name": "goeroeku"
+  },
+  "plugins": [
+    {
+      "name": "aicrew",
+      "source": "./",
+      "description": "Brainstorm, PRD, breakdown ke issue, dan eksekusi paralel dengan role."
+    }
+  ]
+}
