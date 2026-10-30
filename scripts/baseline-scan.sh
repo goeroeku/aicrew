@@ -11,13 +11,14 @@ while [ $# -gt 0 ]; do case "$1" in
 t="$(mktemp -d)"; trap 'rm -rf "$t"' EXIT
 # F = berkas yang disentuh; A = baris tambahan "berkas<TAB>teks". Header (+++) hanya diakui antara `diff --git` dan `@@` pertama,
 # sehingga baris tambahan berawalan "++ " di dalam hunk tidak bisa dibaca sebagai header. Path berkutip git (non-ASCII) dibuka kutipnya.
-awk -v F="$t/f" -v A="$t/a" '
+awk -v F="$t/f" -v A="$t/a" -v R="$t/r" '
   /^diff --git /{hdr=1; next}
   hdr && /^@@/{hdr=0; next}
   hdr && /^\+\+\+ /{p=substr($0,5); sub(/^"/,"",p); sub(/"$/,"",p); sub(/^b\//,"",p); f=p; print f > F; next}
   hdr{next}
-  /^\+/{print f "\t" substr($0,2) > A}'
-touch "$t/f" "$t/a"
+  /^\+/{print f "\t" substr($0,2) > A}
+  /^-/{print f "\t" substr($0,2) > R}'
+touch "$t/f" "$t/a" "$t/r"
 blok=0
 secret() { # <nama> <regex>: BLOK per berkas yang cocok; blok ditetapkan dari ada-tidaknya cocokan, bukan dari nama berkas
   grep -Eiq "$2" "$t/a" || return 0; blok=1
@@ -34,18 +35,26 @@ grep -Ei '(password|passwd|secret|api[_-]?key|token)[A-Za-z_]*[[:space:]]*[:=][[
   | while IFS= read -r f; do echo "PERINGATAN: nilai tanpa kutip mirip kredensial di $f (periksa; tidak diblokir karena rawan positif palsu)"; done
 grep -Ei '(sync|fsync|auth|verif).*\|\|[[:space:]]*true' "$t/a" | cut -f1 | sort -u \
   | while IFS= read -r f; do echo "PERINGATAN: '|| true' membungkam kegagalan pada jalur sync/auth/verify di $f"; done
-while IFS="$(printf '\t')" read -r f x; do
-  name=""; b="${f##*/}"
+depname() { # <berkas> <teks>: nama dependensi bila baris itu mendeklarasikannya, kosong bila bukan
+  local b="${1##*/}" x="$2" n=""
   case "$b" in
-    package.json|composer.json) name="$(sed -nE 's/^[[:space:]]*"([^"]+)":[[:space:]]*"[~^]?[0-9][0-9A-Za-z.*-]*",?$/\1/p' <<<"$x")" ;;
-    go.mod) name="$(sed -nE 's/^[[:space:]]*(require[[:space:]]+)?([^[:space:]]+\/[^[:space:]]+)[[:space:]]+v[0-9].*/\2/p' <<<"$x")" ;;
-    requirements*.txt) name="$(sed -nE 's/^([A-Za-z0-9_.-]+)([=<>~!].*)?$/\1/p' <<<"$x")" ;;
-    Cargo.toml) name="$(sed -nE 's/^([a-z0-9_-]+)[[:space:]]*=[[:space:]]*["{].*/\1/p' <<<"$x")" ;;
-    Gemfile) name="$(sed -nE "s/^[[:space:]]*gem[[:space:]]+['\"]([^'\"]+)['\"].*/\1/p" <<<"$x")" ;;
-    Dockerfile*) name="$(sed -nE 's/^FROM[[:space:]]+(--[^[:space:]]+[[:space:]]+)?([^[:space:]:@]+).*/\2/p' <<<"$x")" ;;
-    *compose*.y*ml) name="$(sed -nE "s/^[[:space:]]*image:[[:space:]]*[\"']?([^[:space:]\"':@]+).*/\1/p" <<<"$x")" ;;
+    package.json|composer.json) n="$(sed -nE 's/^[[:space:]]*"([^"]+)":[[:space:]]*"[~^]?[0-9][0-9A-Za-z.*-]*",?$/\1/p' <<<"$x")" ;;
+    go.mod) n="$(sed -nE 's/^[[:space:]]*(require[[:space:]]+)?([^[:space:]]+\/[^[:space:]]+)[[:space:]]+v[0-9].*/\2/p' <<<"$x")" ;;
+    requirements*.txt) n="$(sed -nE 's/^([A-Za-z0-9_.-]+)([=<>~!].*)?$/\1/p' <<<"$x")" ;;
+    Cargo.toml) n="$(sed -nE 's/^([a-z0-9_-]+)[[:space:]]*=[[:space:]]*["{].*/\1/p' <<<"$x")" ;;
+    Gemfile) n="$(sed -nE "s/^[[:space:]]*gem[[:space:]]+['\"]([^'\"]+)['\"].*/\1/p" <<<"$x")" ;;
+    Dockerfile*) n="$(sed -nE 's/^FROM[[:space:]]+(--[^[:space:]]+[[:space:]]+)?([^[:space:]:@]+).*/\2/p' <<<"$x")" ;;
+    *compose*.y*ml) n="$(sed -nE "s/^[[:space:]]*image:[[:space:]]*[\"']?([^[:space:]\"':@]+).*/\1/p" <<<"$x")" ;;
   esac
-  case "$name" in ""|version|name|edition|description|license|authors|main|type|scratch) continue ;; esac
+  case "$n" in version|name|edition|description|license|authors|main|type|scratch) n="" ;; esac
+  printf '%s' "$n"
+}
+# dependensi "baru" = nama yang muncul di baris tambahan tetapi tidak pernah di baris yang dihapus pada berkas yang sama (kenaikan versi bukan baru)
+: > "$t/rn"
+while IFS="$(printf '\t')" read -r f x; do n="$(depname "$f" "$x")"; [ -z "$n" ] || printf '%s\t%s\n' "$f" "$n" >> "$t/rn"; done < "$t/r"
+while IFS="$(printf '\t')" read -r f x; do
+  name="$(depname "$f" "$x")"; [ -n "$name" ] || continue
+  grep -qxF "$(printf '%s\t%s' "$f" "$name")" "$t/rn" && continue
   grep -qiF -- "$name" "$body" || echo "PERINGATAN: dependensi baru '$name' ($f) tidak disebut di badan PR"
 done < "$t/a"
 if [ "$perf" = 0 ]; then
