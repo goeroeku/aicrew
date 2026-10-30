@@ -92,7 +92,18 @@ Lalu di project Anda: `/aicrew:kickoff` (tulis `docs/WORKFLOW.md`), `/aicrew:prd
 ## 🤖 Autopilot (berhari-hari, tahan limit)
 `bash scripts/autopilot.sh [--sleep 1800] [--max-total N]` dari akar repo project: menjalankan `claude -p` dengan skill orchestrate secara berulang
 (sesi baru tiap putaran; state ada di GitHub dan `.aicrew/`), tidur lalu mencoba lagi saat kena limit, dan berhenti saat selesai (exit 0),
-error beruntun (1), buntu (2), hanya `needs-principal` yang tersisa (3), atau batas total (4). Log: `.aicrew/autopilot.log`.
+error beruntun (1), buntu (2), hanya menunggu owner (3), atau batas total (4). Log: `.aicrew/autopilot.log`.
+
+**Menunggu owner.** Bila satu putaran tidak mengubah apa pun dan semua issue tersisa hanya menunggu manusia (`needs-principal`, atau PR terbuka menunggu merge),
+autopilot tidak lagi menjalankan `claude`: ia memantau lewat `gh` tiap `--wait` detik (bawaan 600) tanpa memakai token. Begitu ada perubahan (mis. Anda merge PR),
+putaran berikutnya jalan dan Resume menyelesaikan sisanya; Anda tidak perlu mengabari lewat chat. Batas tunggu `--wait-max` (bawaan 7 hari), lalu berhenti dengan exit 3
+dan satu notifikasi. Sidik jari akhir putaran disimpan di `.aicrew/`, jadi setelah laptop mati lalu hidup lagi, autopilot langsung menunggu tanpa membakar putaran.
+
+### Lanjut otomatis setelah laptop mati/tidur (macOS)
+`bash scripts/autostart.sh install <repo> --max-total N` memasang LaunchAgent per project (login dan tiap 15 menit) yang menjalankan `autopilot.sh` bila belum berjalan.
+`--max-total` wajib (batas biaya); izin dari `install-permissions.sh` harus sudah terpasang. Pengaman: `.aicrew/PAUSE` melewati tick; `.aicrew/halted` (autopilot berhenti
+dengan exit selain 0/3/4) menghentikan tick berikutnya sampai `autostart.sh resume <repo>`; kunci PID mencegah autopilot ganda; tanpa `gh`/jaringan tick dilewati.
+Token Telegram dibaca dari `~/.config/aicrew/env` (`export AICREW_TG_TOKEN=... AICREW_TG_CHAT=...`, izin 600), bukan dari plist. Lihat `autostart.sh status|uninstall <repo>`.
 
 > [!IMPORTANT]
 > Sesi `-p` tidak bisa meminta persetujuan, jadi izin tool harus dipasang lebih dulu. Daftar minimal: `templates/autopilot-permissions.json`;

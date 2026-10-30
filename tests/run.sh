@@ -159,6 +159,25 @@ run_ap "$OPEN" $'fail\nfail\nfail\nfail'; ok "autopilot: 3 gagal beruntun -> exi
 run_ap '[{"number":1,"state":"OPEN","labels":[{"name":"needs-principal"}]}]' "close"; r=$?; ok "autopilot: hanya needs-principal -> exit 3" $r 3; ok "autopilot: claude tidak dipanggil" "$(cat $F/n 2>/dev/null || echo 0)" 0
 run_ap '[{"number":1,"state":"OPEN","labels":[{"name":"di-integrasi"}]},{"number":2,"state":"OPEN","labels":[{"name":"di-integrasi"}]}]' "close"; r=$?; ok "autopilot: issue di-integrasi dianggap selesai -> exit 0" $r 0; ok "autopilot: claude tidak dipanggil (di-integrasi)" "$(cat $F/n 2>/dev/null || echo 0)" 0
 run_ap '[{"number":1,"state":"OPEN","labels":[{"name":"di-integrasi"}]},{"number":2,"state":"OPEN","labels":[{"name":"role:qa"}]}]' $'close'; ok "autopilot: sisa satu issue biasa tetap dikerjakan" "$(cat $F/n)" 1
+# 2b2. autopilot menunggu owner (merge/keputusan): polling murah tanpa claude, merge terdeteksi otomatis, tahan restart, notifikasi tidak berulang
+printf '#!/usr/bin/env bash\necho "$*" >> "$FAKE/curl.calls"\n' > "$tmp/bin/curl"; chmod +x "$tmp/bin/curl"
+WI='[{"number":1,"state":"OPEN","labels":[{"name":"in-review"}]}]'; echo '[{"number":7,"state":"OPEN","head":"issue-1"}]' > "$F/pr.json"
+export AICREW_TG_TOKEN=t AICREW_TG_CHAT=c; : > "$F/curl.calls"
+run_ap "$WI" $'noop\nnoop\nnoop' --wait 1 --wait-max 3; ok "menunggu: PR terbuka tanpa perubahan -> exit 3 (bukan buntu exit 2)" $? 3
+ok "menunggu: claude hanya satu putaran (tidak membakar token)" "$(cat $F/n)" 1
+n1=$(wc -l < "$F/curl.calls" | tr -d ' '); ok "menunggu: notifikasi mulai-menunggu dan batas-tunggu (2 pesan)" "$n1" 2
+n=$(cat "$F/n"); PATH="$P" AICREW_CAFF=1 AICREW_CLAUDE=claude $AP --wait 1 --wait-max 2 >/dev/null 2>&1; r=$?
+ok "menunggu: restart langsung menunggu/berhenti, exit 3" $r 3; ok "menunggu: restart tidak memanggil claude lagi" "$(cat $F/n)" "$n"
+ok "menunggu: restart tidak mengirim notifikasi ulang" "$(wc -l < $F/curl.calls | tr -d ' ')" "$n1"
+printf 'noop\nclose\n' > "$F/script"; rm -f "$F/n"; echo "$WI" > "$F/issues.json"; echo '[{"number":7,"state":"OPEN","head":"issue-1"}]' > "$F/pr.json"; rm -rf .aicrew
+PATH="$P" AICREW_CAFF=1 AICREW_ERR_SLEEP=0 AICREW_CLAUDE=claude $AP --wait 1 --wait-max 30 >/dev/null 2>&1 & bg=$!
+sleep 4; echo '[{"number":7,"state":"MERGED","head":"issue-1"}]' > "$F/pr.json"; wait $bg; r=$?
+ok "menunggu: merge oleh owner terdeteksi otomatis, lanjut sampai selesai -> exit 0" $r 0; ok "menunggu: dua putaran claude (sebelum menunggu dan setelah merge)" "$(cat $F/n)" 2
+echo '[]' > "$F/pr.json"; : > "$F/curl.calls"; PI='[{"number":1,"state":"OPEN","labels":[{"name":"needs-principal"}]}]'
+run_ap "$PI" close; ok "needs-principal saja -> exit 3" $? 3
+echo "$PI" > "$F/issues.json"; PATH="$P" AICREW_CAFF=1 AICREW_CLAUDE=claude $AP >/dev/null 2>&1; ok "needs-principal: tick berulang tidak mengirim notifikasi ulang" "$(wc -l < $F/curl.calls | tr -d ' ')" 1
+run_ap "$OPEN" $'noop\nnoop\nnoop\nnoop' --stuck 3; ok "menunggu: issue tanpa PR tetap dihitung buntu -> exit 2" $? 2
+unset AICREW_TG_TOKEN AICREW_TG_CHAT; rm -f "$F/pr.json"
 if command -v caffeinate >/dev/null 2>&1; then printf 'close\n' > "$F/script"; rm -f "$F/n"; echo "$OPEN" > "$F/issues.json"; rm -rf .aicrew
   PATH="$P" AICREW_CLAUDE=claude bash "$root/scripts/autopilot.sh" >/dev/null 2>&1; ok "autopilot: jalur caffeinate (tanpa AICREW_CAFF) -> exit 0" $? 0; fi
 git init -q "$tmp/rs" && cd "$tmp/rs" && git commit -q --allow-empty -m x && git branch issue-12
@@ -218,6 +237,57 @@ ok "install-permissions: placeholder terisi (tanpa __ tersisa)" "$(grep -c '__' 
 jq -e --arg r "Bash(bash $root/scripts/*)" '.permissions.allow|index($r)!=null' "$tmp/s.json" >/dev/null; ok "install-permissions: path plugin milik pengguna terpasang" $? 0
 jq -e '.permissions.allow|map(select(startswith("Bash(rtk git:")))|length==1' "$root/templates/autopilot-permissions.json" >/dev/null; ok "izin: varian rtk git ada" $? 0
 
+# 2g. install-permissions: segmen versi path cache menjadi wildcard (izin tahan auto-update)
+mkdir -p "$tmp/plugins/cache/mk/pl/9.9.9/scripts" "$tmp/plugins/cache/mk/pl/9.9.9/templates"
+cp "$root/scripts/install-permissions.sh" "$tmp/plugins/cache/mk/pl/9.9.9/scripts/"; cp "$root/templates/autopilot-permissions.json" "$tmp/plugins/cache/mk/pl/9.9.9/templates/"
+echo '{}' > "$tmp/sv.json"; bash "$tmp/plugins/cache/mk/pl/9.9.9/scripts/install-permissions.sh" "$tmp/sv.json" >/dev/null
+jq -e --arg r "Bash(bash $tmp/plugins/cache/mk/pl/*/scripts/*)" '.permissions.allow|index($r)!=null' "$tmp/sv.json" >/dev/null; ok "izin: path cache berversi dijadikan wildcard" $? 0
+grep -q '9\.9\.9' "$tmp/sv.json"; ok "izin: versi tidak terkunci di settings" $? 1
+
+# 2h. autostart.sh: LaunchAgent per project, pemulihan setelah laptop mati/hidup (launchctl dilewati lewat AICREW_NO_LAUNCHCTL)
+AS="bash $root/scripts/autostart.sh"; RP="$tmp/ar"; LD="$tmp/la"; FB="$tmp/fbin"; mkdir -p "$RP" "$LD" "$FB"
+git init -q "$RP"; mkdir -p "$RP/.claude"; echo '{"permissions":{"allow":["Bash(gh issue:*)"]}}' > "$RP/.claude/settings.local.json"
+printf '#!/bin/sh\nexit 0\n' > "$FB/claude"; printf '#!/bin/sh\n[ -n "$FAKEGH_FAIL" ] && exit 1\nexit 0\n' > "$FB/gh"; chmod +x "$FB/claude" "$FB/gh"
+cat > "$tmp/fakeap.sh" <<'EOF'
+#!/usr/bin/env bash
+echo "$* probe=${AICREW_PROBE:-}" >> "$AP_CALLS"; [ -f "$AP_SLEEP" ] && sleep "$(cat "$AP_SLEEP")"; exit "$(cat "$AP_RC" 2>/dev/null || echo 0)"
+EOF
+export AP_CALLS="$tmp/ap.calls" AP_RC="$tmp/ap.rc" AP_SLEEP="$tmp/ap.sleep"; : > "$AP_CALLS"
+IN() { AICREW_NO_LAUNCHCTL=1 AICREW_LAUNCH_DIR="$LD" PATH="$FB:$PATH" AICREW_TG_TOKEN=rahasia123 $AS install "$RP" "$@" >"$tmp/in.out" 2>&1; }
+IN --interval 900; ok "autostart: install tanpa --max-total ditolak (exit 64)" $? 64
+mkdir -p "$tmp/ar2" && git init -q "$tmp/ar2"; AICREW_NO_LAUNCHCTL=1 AICREW_LAUNCH_DIR="$LD" PATH="$FB:$PATH" $AS install "$tmp/ar2" --max-total 5 >/dev/null 2>&1; ok "autostart: install tanpa izin autopilot di project ditolak (exit 1)" $? 1
+IN --max-total 50 --dry-run; ok "autostart: install --dry-run exit 0" $? 0
+ok "autostart: dry-run tidak menulis plist" "$(ls "$LD" | wc -l | tr -d ' ')" 0
+for k in '<key>RunAtLoad</key>' '<integer>900</integer>' "<string>$RP</string>" 'AICREW_MAX_TOTAL' '<string>50</string>' "$FB"; do grep -qF -- "$k" "$tmp/in.out"; ok "autostart: plist memuat $k" $? 0; done
+grep -q 'rahasia123\|AICREW_TG' "$tmp/in.out"; ok "autostart: rahasia Telegram tidak masuk plist" $? 1
+command -v plutil >/dev/null && { sed -n '/<?xml/,/<\/plist>/p' "$tmp/in.out" > "$tmp/l.plist"; plutil -lint "$tmp/l.plist" >/dev/null; ok "autostart: plist lolos plutil -lint" $? 0; }
+IN --max-total 50; ok "autostart: install menulis plist (exit 0)" $? 0; ok "autostart: satu plist terpasang" "$(ls "$LD"/com.aicrew.*.plist | wc -l | tr -d ' ')" 1
+c1="$(cat "$LD"/com.aicrew.*.plist | shasum)"; IN --max-total 50; ok "autostart: install idempoten" "$(cat "$LD"/com.aicrew.*.plist | shasum)" "$c1"
+AICREW_NO_LAUNCHCTL=1 AICREW_LAUNCH_DIR="$LD" $AS status "$RP" 2>&1 | grep -q 'terpasang: ya'; ok "autostart: status menyebut terpasang: ya" $? 0
+AICREW_NO_LAUNCHCTL=1 AICREW_LAUNCH_DIR="$LD" $AS uninstall "$RP" >/dev/null 2>&1; ok "autostart: uninstall menghapus plist" "$(ls "$LD" | wc -l | tr -d ' ')" 0
+R() { AICREW_AUTOPILOT="$tmp/fakeap.sh" AICREW_MAX_TOTAL="${MT-50}" AICREW_ENV_FILE="${EF:-/nonexistent}" PATH="$FB:$PATH" $AS run "$RP" >/dev/null 2>&1; }
+calls() { wc -l < "$AP_CALLS" | tr -d ' '; }
+: > "$AP_CALLS"; rm -f "$AP_RC" "$AP_SLEEP"; rm -rf "$RP/.aicrew"
+R; ok "autostart run: jalan normal exit 0" $? 0; ok "autostart run: autopilot dipanggil dengan --max-total 50" "$(grep -c -- '--max-total 50' "$AP_CALLS")" 1
+ok "autostart run: exit 0 tidak membuat halted" "$([ -f "$RP/.aicrew/halted" ] && echo ada || echo tidak)" tidak
+mkdir -p "$RP/.aicrew"; touch "$RP/.aicrew/PAUSE"; R; ok "autostart run: PAUSE -> tidak memanggil autopilot" "$(calls)" 1; rm -f "$RP/.aicrew/PAUSE"
+for rc in 3 4; do echo $rc > "$AP_RC"; R; ok "autostart run: exit $rc tidak membuat halted" "$([ -f "$RP/.aicrew/halted" ] && echo ada || echo tidak)" tidak; done
+echo 2 > "$AP_RC"; R; ok "autostart run: exit 2 (buntu) membuat halted" "$([ -f "$RP/.aicrew/halted" ] && echo ada || echo tidak)" ada
+grep -q 'rc=2' "$RP/.aicrew/halted"; ok "autostart run: halted mencatat rc" $? 0
+n=$(calls); R; ok "autostart run: halted -> tidak memanggil autopilot lagi" "$(calls)" "$n"
+AICREW_NO_LAUNCHCTL=1 $AS resume "$RP" >/dev/null 2>&1; ok "autostart: resume menghapus halted" "$([ -f "$RP/.aicrew/halted" ] && echo ada || echo tidak)" tidak
+echo 0 > "$AP_RC"; n=$(calls); R; ok "autostart run: setelah resume autopilot dipanggil lagi" "$(calls)" $((n+1))
+echo 1 > "$AP_RC"; R; ok "autostart run: exit 1 (gagal beruntun) membuat halted" "$([ -f "$RP/.aicrew/halted" ] && echo ada || echo tidak)" ada; rm -f "$RP/.aicrew/halted"; echo 0 > "$AP_RC"
+echo 2 > "$AP_SLEEP"; n=$(calls); AICREW_AUTOPILOT="$tmp/fakeap.sh" AICREW_MAX_TOTAL=50 AICREW_ENV_FILE=/nonexistent PATH="$FB:$PATH" $AS run "$RP" >/dev/null 2>&1 &
+bg=$!; for _ in 1 2 3 4 5 6 7 8 9 10; do [ -f "$RP/.aicrew/autostart.lock" ] && break; sleep 0.3; done
+R; ok "autostart run: kunci mencegah autopilot ganda" "$(calls)" $((n+1)); wait $bg; ok "autostart run: kunci dilepas setelah selesai" "$([ -f "$RP/.aicrew/autostart.lock" ] && echo ada || echo tidak)" tidak
+rm -f "$AP_SLEEP"; echo 999999 > "$RP/.aicrew/autostart.lock"; n=$(calls); R; ok "autostart run: kunci PID mati dianggap basi" "$(calls)" $((n+1))
+sleep 30 & sp=$!; echo $sp > "$RP/.aicrew/autostart.lock"; n=$(calls); R; ok "autostart run: PID hidup bukan autostart (PID daur ulang) dianggap basi" "$(calls)" $((n+1)); kill $sp 2>/dev/null; rm -f "$RP/.aicrew/autostart.lock"
+n=$(calls); FAKEGH_FAIL=1 R; ok "autostart run: gh/jaringan tak tersedia -> keluar tanpa memanggil autopilot" "$(calls)" "$n"
+n=$(calls); MT= R; ok "autostart run: tanpa AICREW_MAX_TOTAL ditolak (tidak memanggil autopilot)" "$(calls)" "$n"
+echo 'export AICREW_PROBE=ok' > "$tmp/aicrew.env"; EF="$tmp/aicrew.env" R; ok "autostart run: berkas env dibaca" "$(tail -1 "$AP_CALLS" | grep -c 'probe=ok')" 1
+cd "$root" || exit 1
+
 # 2e. rilis: sinkron versi tag, isi arsip
 v="$(jq -r .version .claude-plugin/plugin.json)"
 bash scripts/check-version.sh "v$v" >/dev/null 2>&1; ok "rilis: tag sama dengan versi plugin.json -> exit 0" $? 0
@@ -273,6 +343,8 @@ grep -q 'Laporan perf: lulus' skills/orchestrate/SKILL.md && grep -q 'Pengecuali
 for k in 'PGOPTIONS' 'default_transaction_read_only' 'statement_timeout' 'pg_stat_user_tables' 'n_tup_hot_upd' 'pg_stat_activity' 'pg_stat_database' '/proc/pressure/io' 'vmstat' 'docker stats' '/dev/shm' 'redis-cli' 'server_version' 'tidak boleh dijalankan di server nyata tanpa izin'; do
   grep -qF -- "$k" agents/perf.md; ok "perf: resep ukur memuat '$k'" $? 0
 done
+
+grep -q 'autostart.sh' README.md && grep -q -- '--wait-max' README.md && [ -f scripts/autostart.sh ] && grep -q -- '--wait-max' scripts/autopilot.sh; ok "autostart dan menunggu owner terdokumentasi dan ada" $? 0
 
 # Atribusi AI dilarang: aturan harus ada di agen penulis kode dan prompt Codex
 for f in agents/senior-coder.md agents/ui-ux.md agents/devops.md agents/perf.md templates/codex-prompt.md; do
