@@ -61,7 +61,9 @@ issue terbuka → laporkan penyumbatnya dan berhenti.
    (satu perintah, keluaran dipadatkan). Pekerjaan berat konteks didelegasikan ke `aicrew-qa` (haiku): memeriksa
    tiap kriteria selesai satu per satu, membaca log panjang, dan memotret/membaca UI; minta laporan maks 12 baris.
    Laporan qa adalah klaim; hasil suite penuh tetap dijalankan orkestrator sekali per PR. UI wajib screenshot yang dibaca.
-   Perubahan sensitif (auth, input, rahasia, dependensi) → `aicrew-security`.
+   Perubahan sensitif (auth, input, rahasia, dependensi) → `aicrew-security`. Issue berlabel `needs-security` wajib lewat sini;
+   bila perubahan ternyata sensitif tetapi belum berlabel, pasang labelnya dulu. Lulus → pasang komentar PR `Laporan security: lulus`
+   (`pr-merge-check.sh` menolak merge tanpa komentar itu).
 6. Lulus → `budget.sh reset <n>`, buka PR/MR, pasang komentar bukti (format di `WORKFLOW.md`), label In Review.
    Badan PR: satu kata kunci per issue, satu per baris (`Closes #4` ⏎ `Closes #5`). `Closes #4, #5` hanya menutup #4.
    Gagal → `budget.sh fail <n>`, perbaiki satu kali dengan temuan yang spesifik; gagal lagi → aturan berhenti.
@@ -93,7 +95,7 @@ ambil alih dengan model Claude sesuai bobot tugas dan sebutkan di laporan.
   (beri tautan PR) dan lanjutkan issue yang tidak bergantung. Cabang integrasi belum ada tetapi ada rantai
   `blocked-by` → usulkan satu ke owner dan catat di `WORKFLOW.md` sebelum membuatnya.
 - **Auto-merge (`agen-setelah-QA`)**: hanya bila `WORKFLOW.md` menulisnya dan hanya ke cabang integrasi. Syarat semua terpenuhi
-  pada PR itu: suite penuh hijau, laporan `aicrew-qa` lulus, `aicrew-security` lulus bila sensitif, tidak ada `needs-principal`,
+  pada PR itu: suite penuh hijau, laporan `aicrew-qa` lulus, `aicrew-security` lulus bila sensitif (`needs-security`), tidak ada `needs-principal`,
   `pr-merge-check.sh` exit 0. Lalu merge, jalankan lagi dengan `--after`, ganti label ke `di-integrasi`. Satu syarat gagal → jangan merge,
   kembali ke manual (minta owner). Qa wajib dipanggil di mode ini (tidak boleh dilewati). Merge ke `main` tetap owner.
 - Merge ke `main` dan pindah ke Done mengikuti `WORKFLOW.md`; default: **hanya owner**. Jangan memindahkan ke Done sendiri.

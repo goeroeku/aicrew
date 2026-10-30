@@ -18,7 +18,7 @@ $B bogus >/dev/null 2>&1; ok "budget: perintah asing -> exit 64" $? 64
 # 2. pr-merge-check.sh dengan gh palsu (BASE/BODY dari lingkungan)
 mkdir "$tmp/bin"; cat > "$tmp/bin/gh" <<'EOF'
 #!/usr/bin/env bash
-case "$*" in *baseRefName*) echo "$BASE" ;; *body*) printf '%s\n' "$BODY" ;; esac
+case "$*" in *baseRefName*) echo "$BASE" ;; *comments*) printf '%s\n' "${COMM:-}" ;; *"issue view"*) printf '%s\n' "${ISSL:-}" ;; *labels*) printf '%s\n' "${PRL:-}" ;; *body*) printf '%s\n' "$BODY" ;; esac
 EOF
 chmod +x "$tmp/bin/gh"; P="$tmp/bin:$PATH"; M="bash $root/scripts/pr-merge-check.sh"
 BASE=integrasi BODY="Closes #1" PATH="$P" $M 9 integrasi >/dev/null; ok "pr-merge: basis benar" $? 0
@@ -27,6 +27,13 @@ out="$(BASE=integrasi BODY="Closes #4, #5" PATH="$P" $M 9 integrasi)"
 case "$out" in *PERINGATAN*) r=ada ;; *) r=tidak ;; esac; ok "pr-merge: 'Closes #4, #5' diperingatkan" $r ada
 out="$(BASE=integrasi BODY=$'Closes #4\nCloses #5' PATH="$P" $M 9 integrasi)"
 case "$out" in *PERINGATAN*) r=ada ;; *) r=tidak ;; esac; ok "pr-merge: satu per baris tidak diperingatkan" $r tidak
+
+# 2a. pr-merge-check.sh: gerbang security (label needs-security di issue yang ditutup atau di PR)
+BASE=integrasi BODY="Closes #1" ISSL=needs-security PATH="$P" $M 9 integrasi >/dev/null; ok "security: issue sensitif tanpa laporan -> exit 1" $? 1
+BASE=integrasi BODY="Closes #1" PRL=needs-security PATH="$P" $M 9 integrasi >/dev/null; ok "security: PR berlabel tanpa laporan -> exit 1" $? 1
+BASE=integrasi BODY="Closes #1" ISSL=needs-security COMM="Laporan security: gagal" PATH="$P" $M 9 integrasi >/dev/null; ok "security: laporan gagal -> exit 1" $? 1
+BASE=integrasi BODY="Closes #1" ISSL=needs-security COMM="Laporan security: lulus" PATH="$P" $M 9 integrasi >/dev/null; ok "security: laporan lulus -> exit 0" $? 0
+BASE=integrasi BODY="Closes #1" ISSL=role:qa PATH="$P" $M 9 integrasi >/dev/null; ok "security: issue biasa tidak ditahan" $? 0
 
 # 2b. budget total, resume.sh, autopilot.sh (gh dan claude palsu)
 cd "$tmp/r" || exit 1; rm -rf .aicrew

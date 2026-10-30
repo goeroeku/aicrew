@@ -31,7 +31,7 @@ Dibuat oleh `aicrew:kickoff`. Keputusan project ini; menimpa bawaan aicrew.
 - Tulis apa dan kenapa, bukan bagaimana (kecuali task berisiko).
 
 ## Label
-`role:*`, `stack:*`, `phase:*`, `needs-principal`, `keputusan-otomatis`, `bug`, `enhancement`, `in-progress`, `in-review`, `di-integrasi`
+`role:*`, `stack:*`, `phase:*`, `needs-principal`, `needs-security`, `keputusan-otomatis`, `bug`, `enhancement`, `in-progress`, `in-review`, `di-integrasi`
 (GitLab: pakai scoped label `role::qa`, dst.)
 
 ## Gerbang persetujuan owner
@@ -40,7 +40,7 @@ Dibuat oleh `aicrew:kickoff`. Keputusan project ini; menimpa bawaan aicrew.
 3. Cabang integrasi: {{nama, mis. fitur-x-integrasi | tidak ada}}. Issue yang saling bergantung menumpuk di sini,
    bukan di `main`. Merge PR ke cabang integrasi: {{owner | agen-setelah-QA}}. Bawaan: owner (persetujuan manual).
    `agen-setelah-QA`: agen merge sendiri hanya bila suite penuh hijau, `aicrew-qa` lulus (dan `aicrew-security`
-   untuk perubahan sensitif), tanpa `needs-principal`. Izin Bash terpasang di
+   untuk perubahan sensitif, yaitu berlabel `needs-security`), tanpa `needs-principal`. Izin Bash terpasang di
    {{berkas settings, mis. `.claude/settings.local.json`: `Bash(gh pr merge:*)`}} (izin lewat chat tidak berlaku).
 4. Merge cabang integrasi / PR ke `main` dan pindah ke Done: {{owner | aturan otomatis}}. Bawaan: owner.
    Merge ke `main` memicu: {{tidak ada | nama workflow (mis. deploy)}}.
