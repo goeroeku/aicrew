@@ -116,7 +116,16 @@ Token Telegram dibaca dari `~/.config/aicrew/env` (`export AICREW_TG_TOKEN=... A
 (suite di salinan segar, PR tanpa bukti, issue belum di-integrasi, `needs-principal`). `--buka-pr` (tanpa `--dry-run`) membuka PR integrasi → main bila SIAP. Tidak pernah merge.
 
 ## 🗂️ Kanban (opsional)
-`scripts/board-init.sh` membuat GitHub Project, menautkannya ke repo, dan menyeragamkan status; `scripts/board.sh` menggeser kartu. Perlu scope `gh` `project`.
+`scripts/board-init.sh` membuat GitHub Project, menautkannya ke repo, menyeragamkan status, dan membuat view papan (`createProjectV2View` dengan `BOARD_LAYOUT`; project baru hanya punya view tabel). `scripts/board.sh` menggeser kartu; `board.sh <owner> <nomor> --sync` memindahkan issue yang ditutup tanpa PR ke Done bila `Kartu Done: agen-setelah-merge`. Perlu scope `gh` `project`.
+> [!NOTE]
+> Workflow bawaan "Item closed" (kartu otomatis ke Done saat issue ditutup) **tidak bisa diaktifkan lewat API**: GraphQL hanya punya `deleteProjectV2Workflow`. Nyalakan sekali di UI: Project → Workflows → Item closed → Enable. Tanpa itu, pakai `--sync`.
+
+## 🧩 Orca dan label
+- **Orca**: `AICREW_NOTIFY=orca` (atau `both`, atau opsi plugin `notify`) menandai workspace belum dibaca lewat `orca worktree set --worktree path:<dir> --unread --comment ...`. Orca meluncurkan agen dengan `--dangerously-skip-permissions` secara bawaan (aturan deny tidak ditegakkan); `preflight.sh` memperingatkannya. Isi `Basis worktree:` (path absolut) di `docs/WORKFLOW.md` agar `install-permissions.sh` memberi izin baca yang benar.
+- **Risiko**: breakdown memberi `risk:L0|L1|L2`; auto-merge (`pr-merge-check.sh --auto`) menolak L2.
+- **Izin**: `gh pr merge` hanya terpasang untuk mode `agen-setelah-QA`; `gh repo delete`, `gh ssh-key`, `gh gist`, dan `gh auth` (kecuali `status`) ditolak.
+- **Nama label**: `di-integrasi` dan `keputusan-otomatis` dapat diganti lewat `Label integrasi:` / `Label keputusan otomatis:` di `WORKFLOW.md` atau `AICREW_LABEL_INTEGRATED` / `AICREW_LABEL_AUTO`.
+- `kickoff` menambahkan `.aicrew/` dan `.claude/settings.local.json` ke `.gitignore` (`scripts/ensure-gitignore.sh`).
 
 ## 🔔 Notifikasi dan data yang dikirim (opsional)
 Secara bawaan plugin ini **tidak mengirim data apa pun ke luar mesin Anda**. Satu-satunya jaringan keluar adalah hook `Notification` (`scripts/notify.sh`),

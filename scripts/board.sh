@@ -1,9 +1,20 @@
 #!/usr/bin/env bash
 # aicrew board: pindahkan kartu issue di GitHub Project. Pakai: board.sh <owner> <nomor-project> <issue> <nama-status>
 # Contoh: board.sh goeroeku 2 3 "In review" (nama status tanpa beda huruf besar/kecil; bawaan GitHub: Backlog, Ready, In progress, In review, Done). Butuh scope gh 'project'. Kartu belum ada -> ditambahkan.
+# --sync (board.sh <owner> <nomor> --sync): issue yang ditutup tanpa PR dipindah ke Done bila "Kartu Done: agen-setelah-merge".
 # Gagal tidak fatal bagi alur: label tetap sumber status; skrip ini hanya cermin kanban (exit != 0 = laporkan, lanjut).
 set -euo pipefail
-owner="${1:?owner}"; num="${2:?nomor project}"; issue="${3:?nomor issue}"; status="${4:?status}"
+owner="${1:?owner}"; num="${2:?nomor project}"
+if [ "${3:-}" = "--sync" ]; then
+  # cerminkan issue yang ditutup TANPA PR ke Done, hanya bila WORKFLOW.md menulis "Kartu Done: agen-setelah-merge"
+  grep -qE '^[- ]*Kartu Done: *agen-setelah-merge' docs/WORKFLOW.md 2>/dev/null || { echo "board --sync: Kartu Done bukan agen-setelah-merge; tidak ada yang diubah"; exit 0; }
+  done_n="$(gh project item-list "$num" --owner "$owner" --limit 200 --format json | jq -r '.items[]|select(.status=="Done" and .content.type=="Issue")|.content.number')"
+  for n in $(gh issue list --state closed --limit 200 --json number,closedByPullRequestsReferences | jq -r '.[]|select((.closedByPullRequestsReferences|length)==0)|.number'); do
+    grep -qx "$n" <<<"$done_n" || bash "$0" "$owner" "$num" "$n" Done || true
+  done
+  exit 0
+fi
+issue="${3:?nomor issue}"; status="${4:?status}"
 repo="$(gh repo view --json nameWithOwner -q .nameWithOwner)"
 pid="$(gh project view "$num" --owner "$owner" --format json -q .id)"
 field="$(gh project field-list "$num" --owner "$owner" --format json | jq -c '.fields[] | select(.name=="Status")')"

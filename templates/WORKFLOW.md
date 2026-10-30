@@ -9,11 +9,14 @@ Dibuat oleh `aicrew:kickoff`. Keputusan project ini; menimpa bawaan aicrew.
 - PRD: {{docs/PRD.md}} — Status PRD: {{disetujui | belum}}
 - Kode ada: {{ya | tidak}} (ya → breakdown menjalankan audit status)
 - Worktree: {{dibuat orkestrator di samping repo (../<repo>-wt-N) | disiapkan manual / Orca}}
+- Basis worktree: {{path absolut, mis. di dalam workspace Orca | kosong = di samping repo}}. `install-permissions.sh` mengisi izin baca worktree dari sini.
 - Board kanban: {{tidak ada | GitHub Project <owner>/<nomor>, status bawaan: Backlog, Ready, In progress, In review, Done}}
 - Kartu Done: {{owner | agen-setelah-merge}}. Bawaan: owner. `agen-setelah-merge` (autopilot): orkestrator memindahkan kartu ke Done
   setelah merge terverifikasi (`pr-merge-check.sh --after`) pada mode merge `agen-setelah-QA`; berlaku hanya bila Board kanban aktif.
 - needs-principal: {{owner | principal-auto}}. Bawaan: owner (semua tingkat dieskalasi ke owner). `principal-auto`: hanya TINGKAT 1 diputuskan
   agen `aicrew-principal` (butuh role principal aktif); tingkat 2 tetap owner. Keputusan otomatis diberi label `keputusan-otomatis` dan dimuat di laporan rilis.
+- Risiko (`risk:*`, diberi breakdown): L0 = dokumen/tes/refactor tanpa efek perilaku; L1 = perilaku biasa; L2 = auth, uang, data pribadi, migrasi, infra, atau sulit dibalik.
+- Label integrasi: {{di-integrasi (bawaan) | nama lain}}. Label keputusan otomatis: {{keputusan-otomatis (bawaan) | nama lain}}. Dibaca oleh `scripts/label.sh`.
 - Bahasa artefak (kode, komentar, commit, label): {{Inggris (bawaan) | bahasa lain, hanya atas permintaan owner}}
 - Berkas `docs/` dilacak git: {{ya | tidak (di-ignore, disengaja)}}
 
@@ -31,7 +34,7 @@ Dibuat oleh `aicrew:kickoff`. Keputusan project ini; menimpa bawaan aicrew.
 - Tulis apa dan kenapa, bukan bagaimana (kecuali task berisiko).
 
 ## Label
-`role:*`, `stack:*`, `phase:*`, `needs-principal`, `needs-security`, `needs-perf`, `keputusan-otomatis`, `bug`, `enhancement`, `in-progress`, `in-review`, `di-integrasi`
+`role:*`, `stack:*`, `phase:*`, `needs-principal`, `needs-security`, `needs-perf`, `keputusan-otomatis`, `risk:L0`, `risk:L1`, `risk:L2`, `bug`, `enhancement`, `in-progress`, `in-review`, `di-integrasi`
 (GitLab: pakai scoped label `role::qa`, dst.)
 
 ## Gerbang persetujuan owner
@@ -40,7 +43,7 @@ Dibuat oleh `aicrew:kickoff`. Keputusan project ini; menimpa bawaan aicrew.
 3. Cabang integrasi: {{nama, mis. fitur-x-integrasi | tidak ada}}. Issue yang saling bergantung menumpuk di sini,
    bukan di `main`. Merge PR ke cabang integrasi: {{owner | agen-setelah-QA}}. Bawaan: owner (persetujuan manual).
    `agen-setelah-QA`: agen merge sendiri hanya bila suite penuh hijau, `aicrew-qa` lulus (dan `aicrew-security`
-   untuk perubahan sensitif, yaitu berlabel `needs-security`; `aicrew-perf` untuk `needs-perf`), tanpa `needs-principal`. Izin Bash terpasang di
+   untuk perubahan sensitif, yaitu berlabel `needs-security`; `aicrew-perf` untuk `needs-perf`), tanpa `needs-principal` dan tanpa `risk:L2` (L2 selalu owner; `pr-merge-check.sh --auto` menolaknya). Izin Bash terpasang di
    {{berkas settings, mis. `.claude/settings.local.json`: `Bash(gh pr merge:*)`}} (izin lewat chat tidak berlaku).
 4. Merge cabang integrasi / PR ke `main` dan pindah ke Done: {{owner | aturan otomatis}}. Bawaan: owner.
    Merge ke `main` memicu: {{tidak ada | nama workflow (mis. deploy)}}.
