@@ -2,6 +2,9 @@
 Kerjakan HANYA issue ini, di worktree saat ini. Jangan commit. Jangan mengubah tes yang ada atau menambah
 dependensi; bila perlu, berhenti dan laporkan alasannya.
 
+## Bahasa
+Bahasa artefak: Inggris, kecuali `docs/WORKFLOW.md` menyebut bahasa lain atas permintaan owner. Berlaku untuk nama fungsi/variabel/berkas/tabel/kolom, komentar, pesan commit, judul PR, label, dan pesan error. Teks yang dilihat pengguna akhir mengikuti audiens di PRD; pengenalnya tetap Inggris. Bahasa diskusi dengan owner bebas.
+
 ## Isi issue
 {{tempel isi issue}}
 

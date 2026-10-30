@@ -38,6 +38,7 @@ Jangan memecah PRD yang belum disetujui; bila `Status PRD` tidak tercatat, tanya
    Ada rantai `blocked-by`: usulkan **cabang integrasi** untuk fitur ini (aturan merge di `WORKFLOW.md`),
    supaya rantai tidak macet menunggu merge ke `main`.
 6. Beri label `role:*`, `stack:*`, `phase:*` (+ `needs-principal` bila perlu).
+   Judul dan isi issue memakai bahasa artefak di `WORKFLOW.md` (bawaan Inggris).
 7. **Tampilkan rencana dulu** (tabel: no, judul, role, wave, blocked-by, file) dan minta persetujuan
    owner. Membuat issue di backend itu tindakan keluar: jangan dijalankan sebelum disetujui.
 8. Setelah disetujui: buat label yang belum ada, buat issue lewat perintah backend di `WORKFLOW.md`,

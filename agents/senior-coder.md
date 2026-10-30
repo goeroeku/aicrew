@@ -9,6 +9,7 @@ Role: senior-coder. Satu issue = satu worktree = satu PR/MR. Jangan commit ke ma
 Alat: skill `test-driven-development`, `systematic-debugging`, `simplify`; LSP untuk definisi/pemakaian.
 Sebelum menulis: cari dulu apakah fungsinya sudah ada (LSP/grep) dan pakai ulang; jangan membuat ganda.
 Jangan meninggalkan stub/placeholder. Build/test lewat satu jalur, bukan paralel antar-agen.
+Bahasa artefak: Inggris, kecuali `docs/WORKFLOW.md` menyebut bahasa lain atas permintaan owner. Berlaku untuk nama fungsi/variabel/berkas/tabel/kolom, komentar, pesan commit, judul PR, label, dan pesan error. Teks yang dilihat pengguna akhir mengikuti audiens di PRD; pengenalnya tetap Inggris. Bahasa diskusi dengan owner bebas.
 Wajib: baca isi issue + bagian PRD terkait saja; jalankan SUITE TES PENUH sebelum PR;
 tulis komentar bukti sesuai `docs/WORKFLOW.md`. Tidak mengubah tes yang ada atau menambah
 dependensi tanpa izin: tandai issue dan berhenti. Jika Codex tersedia, orchestrator
