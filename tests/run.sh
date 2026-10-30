@@ -79,6 +79,10 @@ sc "$(D a.go '-pass''word = "supersecretvalue123"')"; ok "scan: baris yang dihap
 sc "$(D scripts/a.sh '+sync || true')"; ok "scan: sync || true -> peringatan, exit 0" $rc 0; ok "scan: sync || true bertanda PERINGATAN" "$(has PERINGATAN)" ada
 sc "$(D go.mod $'+\tgithub.com/foo/bar v1.2.3')"; ok "scan: dependensi go.mod tak disebut -> PERINGATAN" "$(has github.com/foo/bar)" ada
 sc "$(D go.mod $'+\tgithub.com/foo/bar v1.2.3')" 0 "$tmp/mentioned.txt"; ok "scan: dependensi disebut di badan PR -> tanpa peringatan" "$(has PERINGATAN)" tidak
+BUMP() { printf 'diff --git a/%s b/%s\n--- a/%s\n+++ b/%s\n@@ -1 +1 @@\n-%s\n+%s\n' "$1" "$1" "$1" "$1" "$2" "$3"; }
+sc "$(BUMP go.mod $'\tgithub.com/foo/bar v1.2.2' $'\tgithub.com/foo/bar v1.2.3')"; ok "scan: kenaikan versi go.mod bukan dependensi baru" "$rc:$(has github.com/foo/bar)" "0:tidak"
+sc "$(BUMP package.json '    "left-pad": "^1.2.0"' '    "left-pad": "^1.3.0"')"; ok "scan: kenaikan versi package.json bukan dependensi baru" "$rc:$(has left-pad)" "0:tidak"
+sc "$(BUMP Dockerfile 'FROM golang:1.26-alpine' 'FROM golang:1.27-alpine')"; ok "scan: kenaikan tag image bukan dependensi baru" "$(has 'dependensi baru')" tidak
 sc "$(D package.json '+    "left-pad": "^1.3.0"')"; ok "scan: dependensi package.json tak disebut -> PERINGATAN" "$(has left-pad)" ada
 sc "$(D Dockerfile '+FROM postgres:16')"; ok "scan: FROM image baru -> PERINGATAN" "$(has postgres)" ada
 sc "$(D db/migrations/001.sql '+create table x(id int);')" 0; ok "scan: migrasi tanpa needs-perf -> PERINGATAN needs-perf" "$(has needs-perf)" ada
