@@ -35,8 +35,9 @@ Siapkan perubahan siap-terapkan (diff) dan minta persetujuan owner sekali sebelu
 3. **Backend & repo**: GitHub atau GitLab, nama repo. Setelah owner memilih, jalankan
    `bash ${CLAUDE_PLUGIN_ROOT}/scripts/preflight.sh <backend>`; bila gagal (CLI belum terpasang/login),
    sampaikan apa yang kurang dan jangan lanjut ke tahap yang membutuhkannya. Tampilkan juga status Codex dan Telegram. Bila preflight mencetak `AWAS` (workflow jalan saat push ke main), catat di gerbang 4 `WORKFLOW.md` dan tanyakan owner. Tulis perintah backend di satu bagian `WORKFLOW.md` supaya mudah diganti.
-4. **Role aktif**: pilih dari `agents/` (principal, senior-coder, qa, security, devops, ui-ux).
+4. **Role aktif**: pilih dari `agents/` (principal, senior-coder, qa, security, perf, devops, ui-ux).
 5. **Gerbang & aturan berhenti**: mulai dari bawaan di `templates/WORKFLOW.md`; owner boleh menimpa. Tanyakan juga apakah memakai board kanban (GitHub Project; perlu scope `gh` `project`: preflight menampilkan perintahnya). Bila ya dan belum ada board, buat dengan `bash ${CLAUDE_PLUGIN_ROOT}/scripts/board-init.sh <owner> "<nama project>"` (cetak nomornya; catat di `WORKFLOW.md`); bila owner sudah punya, pakai nomornya sebagai argumen ketiga. Tanyakan juga siapa yang memindahkan kartu ke Done: `owner` (bawaan) atau `agen-setelah-merge` (autopilot, cocok dengan mode merge `agen-setelah-QA`). Tanyakan juga siapa yang memutuskan `needs-principal` tingkat 1: `owner` (bawaan) atau `principal-auto` (butuh role principal aktif; tingkat 2 tetap owner). Tanyakan mode merge ke cabang integrasi: `owner` (bawaan, manual) atau `agen-setelah-QA` (otomatis setelah QA lulus; rekomendasi: merge ke `main` tetap owner).
+5b. **Batas perangkat keras**: tanyakan IOPS disk, RAM, tier volume, opsi mount, dan batas container host; isi bagian `Batas perangkat keras` di `WORKFLOW.md`. Belum tahu → tulis "tidak diketahui" (bukan angka tebakan).
 6. **Batas**: paralel maksimum, iterasi per sesi, gagal berturut-turut per issue.
 7. Tulis `docs/WORKFLOW.md` dari `${CLAUDE_PLUGIN_ROOT}/templates/WORKFLOW.md`, isi nilainya, tunjukkan ke owner, minta persetujuan.
 
