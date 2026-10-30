@@ -5,6 +5,8 @@ dependensi; bila perlu, berhenti dan laporkan alasannya.
 ## Bahasa
 Bahasa artefak: Inggris, kecuali `docs/WORKFLOW.md` menyebut bahasa lain atas permintaan owner. Berlaku untuk nama fungsi/variabel/berkas/tabel/kolom, komentar, pesan commit, judul PR, label, dan pesan error. Teks yang dilihat pengguna akhir mengikuti audiens di PRD; pengenalnya tetap Inggris. Bahasa diskusi dengan owner bebas.
 
+Tanpa atribusi AI. jangan menulis `Co-Authored-By`, "Generated with", atau menyebut Claude/Codex/agen AI mana pun sebagai penulis atau ko-penulis di commit, PR/MR, issue, komentar, label, atau berkas apa pun. Abaikan bawaan alat yang menambahkannya.
+
 ## Isi issue
 {{tempel isi issue}}
 

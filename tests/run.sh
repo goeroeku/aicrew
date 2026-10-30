@@ -141,4 +141,9 @@ for f in templates/WORKFLOW.md skills/kickoff/SKILL.md skills/orchestrate/SKILL.
 grep -q 'keputusan-otomatis' templates/WORKFLOW.md && grep -q 'keputusan-otomatis' skills/orchestrate/SKILL.md && grep -q 'keputusan-otomatis' scripts/release-report.sh; ok "label keputusan-otomatis konsisten (template, skill, laporan rilis)" $? 0
 for k in skills/*/SKILL.md; do head -1 "$k" | grep -q '^---$'; ok "frontmatter $k" $? 0; done
 
+# Atribusi AI dilarang: aturan harus ada di agen penulis kode dan prompt Codex
+for f in agents/senior-coder.md agents/ui-ux.md agents/devops.md templates/codex-prompt.md; do
+  grep -q "Tanpa atribusi AI" "$f"; ok "aturan tanpa atribusi AI di $f" $? 0
+done
+
 [ "$fails" = 0 ] && echo "SEMUA LULUS" || { echo "$fails GAGAL"; exit 1; }
