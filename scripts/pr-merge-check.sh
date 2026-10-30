@@ -52,4 +52,11 @@ else
   if grep -qx needs-perf <<<"$labels" && ! verdict_ok "Laporan perf:" 1 && ! waiver_ok; then
     fail "needs-perf: butuh 'Laporan perf: lulus' dengan Angka sebelum/sesudah (berdigit), Tuning, dan 'Commit: <sha head>' dari aicrew-perf, atau waiver owner untuk head"
   fi
+  # baseline: rahasia memblokir (kecuali waiver owner untuk head), sisanya hanya peringatan; diff tak terbaca = tolak
+  diff="$(gh pr diff "$pr")" || fail "diff PR #$pr tak terbaca"
+  bf="$(mktemp)"; trap 'rm -f "$bf"' EXIT; printf '%s\n' "$body" > "$bf"
+  grep -qx needs-perf <<<"$labels" && perfl=1 || perfl=0
+  scan="$(printf '%s\n' "$diff" | bash "$(dirname "$0")/baseline-scan.sh" --body "$bf" --perf-labeled "$perfl")"; rc=$?
+  [ -z "$scan" ] || echo "$scan"
+  [ "$rc" = 0 ] || waiver_ok || fail "baseline-scan menemukan rahasia pada diff; perbaiki, atau waiver owner untuk head PR"
 fi

@@ -19,6 +19,7 @@ $B bogus >/dev/null 2>&1; ok "budget: perintah asing -> exit 64" $? 64
 mkdir "$tmp/bin"; cat > "$tmp/bin/gh" <<'EOF'
 #!/usr/bin/env bash
 case "$*" in
+  *"pr diff"*) [ -n "${DIFFFAIL:-}" ] && exit 1; printf '%s\n' "${DIFF:-}" ;;
   *baseRefName*) echo "$BASE" ;;
   *headRefOid*) echo "${HEAD:-abc1234567}" ;;
   *comments*) jq -n --arg a "${COMM:-}" --arg b "${COMM2:-}" '{comments:([$a,$b]|map(select(.!=""))|map({body:.}))}' ;;
@@ -62,6 +63,32 @@ g ISSL=needs-perf COMM="Pengecualian disetujui owner: fixture pemindai (Commit: 
 g ISSL=needs-perf COMM="Pengecualian disetujui owner: fixture pemindai (Commit: def4567)"; ok "waiver: sha lama -> exit 1" $? 1
 g ISSL=needs-security COMM="Pengecualian disetujui owner: coba (Commit: abc1234)"; ok "waiver: tidak berlaku untuk security -> exit 1" $? 1
 g ISSL=needs-perf ISSFAIL=1; ok "gerbang: label issue tak terbaca -> exit 1 (fail-closed)" $? 1
+
+# 2e. baseline-scan.sh (diff dari stdin) dan integrasinya di pr-merge-check.sh
+BS="bash $root/scripts/baseline-scan.sh"; : > "$tmp/empty.txt"; echo "bump github.com/foo/bar, left-pad dan postgres" > "$tmp/mentioned.txt"
+D() { printf 'diff --git a/%s b/%s\n--- /dev/null\n+++ b/%s\n@@ -0,0 +1 @@\n%s\n' "$1" "$1" "$1" "$2"; }
+sc() { out="$(printf '%s\n' "$1" | $BS --body "${3:-$tmp/empty.txt}" --perf-labeled "${2:-0}" 2>&1)"; rc=$?; }
+has() { case "$out" in *"$1"*) echo ada ;; *) echo tidak ;; esac; }
+sc "$(D app.go '+k = "AKIAABCDEFGHIJKLMNOP"')"; ok "scan: kunci AWS -> exit 1" $rc 1; ok "scan: nilai rahasia tidak dicetak" "$(has AKIAABCDEFGHIJKLMNOP)" tidak; ok "scan: BLOK menyebut berkas" "$(has 'BLOK')" ada
+sc "$(D k.pem '+-----BEGIN RSA PRIVATE KEY-----')"; ok "scan: kunci privat -> exit 1" $rc 1
+sc "$(D cfg.go '+password = "supersecretvalue123"')"; ok "scan: password literal -> exit 1" $rc 1
+sc "$(D .env '+X=1')"; ok "scan: berkas .env -> exit 1" $rc 1
+sc "$(D .env.example '+X=1')"; ok "scan: .env.example lolos" $rc 0
+sc "$(D a.go '-password = "supersecretvalue123"')"; ok "scan: baris yang dihapus tidak dihitung" $rc 0
+sc "$(D scripts/a.sh '+sync || true')"; ok "scan: sync || true -> peringatan, exit 0" $rc 0; ok "scan: sync || true bertanda PERINGATAN" "$(has PERINGATAN)" ada
+sc "$(D go.mod $'+\tgithub.com/foo/bar v1.2.3')"; ok "scan: dependensi go.mod tak disebut -> PERINGATAN" "$(has github.com/foo/bar)" ada
+sc "$(D go.mod $'+\tgithub.com/foo/bar v1.2.3')" 0 "$tmp/mentioned.txt"; ok "scan: dependensi disebut di badan PR -> tanpa peringatan" "$(has PERINGATAN)" tidak
+sc "$(D package.json '+    "left-pad": "^1.3.0"')"; ok "scan: dependensi package.json tak disebut -> PERINGATAN" "$(has left-pad)" ada
+sc "$(D Dockerfile '+FROM postgres:16')"; ok "scan: FROM image baru -> PERINGATAN" "$(has postgres)" ada
+sc "$(D db/migrations/001.sql '+create table x(id int);')" 0; ok "scan: migrasi tanpa needs-perf -> PERINGATAN needs-perf" "$(has needs-perf)" ada
+sc "$(D db/migrations/001.sql '+create table x(id int);')" 1; ok "scan: migrasi dengan needs-perf -> tanpa peringatan" "$(has needs-perf)" tidak
+sc "$(D redis.conf '+save 60 10000')" 0; ok "scan: redis.conf tanpa needs-perf -> PERINGATAN" "$(has needs-perf)" ada
+sc "$(D README.md '+halo')"; ok "scan: diff bersih -> exit 0 tanpa keluaran" "$rc:$out" "0:"
+g DIFF="$(D app.go '+k = "AKIAABCDEFGHIJKLMNOP"')"; ok "merge: rahasia di diff tanpa waiver -> exit 1" $? 1
+g DIFF="$(D app.go '+k = "AKIAABCDEFGHIJKLMNOP"')" COMM="Pengecualian disetujui owner: fixture (Commit: abc1234)"; ok "merge: rahasia dengan waiver untuk head -> exit 0" $? 0
+g DIFF="$(D app.go '+k = "AKIAABCDEFGHIJKLMNOP"')" COMM="Pengecualian disetujui owner: fixture (Commit: def4567)"; ok "merge: rahasia dengan waiver commit lama -> exit 1" $? 1
+g DIFFFAIL=1; ok "merge: gh pr diff gagal -> exit 1 (fail-closed)" $? 1
+g DIFF="$(D scripts/a.sh '+sync || true')"; ok "merge: hanya peringatan -> exit 0" $? 0
 
 # 2b. budget total, resume.sh, autopilot.sh (gh dan claude palsu)
 cd "$tmp/r" || exit 1; rm -rf .aicrew
