@@ -97,6 +97,7 @@ $B check 5 2 "" 9 >/dev/null; ok "budget: total di bawah batas -> exit 0" $? 0
 F="$tmp/fake"; mkdir -p "$F"; export FAKE="$F"
 cat > "$tmp/bin/gh" <<'EOF'
 #!/usr/bin/env bash
+[ -n "${GHFAIL:-}" ] && exit 1
 echo "$*" >> "$FAKE/calls"
 c="$1 $2"; q=""; head=""; st=""; prev=""
 for a in "$@"; do [ "$prev" = -q ] && q="$a"; [ "$prev" = --head ] && head="$a"; [ "$prev" = --state ] && st="$a"; prev="$a"; done
@@ -150,6 +151,23 @@ rr '[{"number":1,"title":"a","state":"OPEN","labels":[{"name":"needs-principal"}
 rr "$OKI" "$OKPR" --test-cmd false; ok "release: suite gagal -> BELUM SIAP" $? 1
 rr "$OKI" "$OKPR"; ok "release: suite tidak dijalankan -> BELUM SIAP" $? 1
 rr "$OKI" "$OKPR" --buka-pr --test-cmd false; ok "release: BELUM SIAP tidak membuka PR" "$(grep -c 'pr create' "$F/calls" 2>/dev/null || true)" 0
+# 2d2. release-report.sh: PR berlabel needs-perf/needs-security wajib punya laporan lulus; jejak audit dan waiver tercetak
+PP='"number":5,"title":"jalur tulis","state":"MERGED","baseRefName":"integ","body":"Closes #1"'; BE='{"body":"**Bukti selesai** ok"}'
+LP='{"body":"Laporan perf: lulus\nAngka sebelum/sesudah: 120/45 fsync/s\nTuning: shared_buffers=2GB, alasan cache, rollback reload\nCommit: abc1234"}'
+LS='{"body":"Laporan security: lulus\nCommit: abc1234"}'; WV='{"body":"Pengecualian disetujui owner: fixture (Commit: abc1234)"}'
+IP='[{"number":1,"title":"a","state":"CLOSED","labels":[{"name":"di-integrasi"},{"name":"needs-perf"}]}]'
+IS='[{"number":1,"title":"a","state":"CLOSED","labels":[{"name":"di-integrasi"},{"name":"needs-security"}]}]'
+rr "$IP" "[{$PP,\"labels\":[],\"comments\":[$BE]}]" --test-cmd true; ok "release: needs-perf (via issue) tanpa laporan -> BELUM SIAP" $? 1
+rr "$IP" "[{$PP,\"labels\":[],\"comments\":[$BE,$LP]}]" --test-cmd true; ok "release: needs-perf dengan laporan lulus -> SIAP" $? 0
+grep -q 'Jejak audit' "$tmp/rr.md" && grep -q '#5' "$tmp/rr.md" && grep -q 'shared_buffers=2GB' "$tmp/rr.md"; ok "release: jejak audit memuat PR dan baris Tuning" $? 0
+rr "$IP" "[{$PP,\"labels\":[],\"comments\":[$BE,$WV]}]" --test-cmd true; ok "release: needs-perf dengan waiver -> SIAP" $? 0
+grep -q 'Pengecualian owner' "$tmp/rr.md" && grep -q 'fixture' "$tmp/rr.md"; ok "release: waiver tercetak di bagian tersendiri" $? 0
+rr "$IS" "[{$PP,\"labels\":[],\"comments\":[$BE]}]" --test-cmd true; ok "release: needs-security tanpa laporan -> BELUM SIAP" $? 1
+rr "$IS" "[{$PP,\"labels\":[],\"comments\":[$BE,$LS]}]" --test-cmd true; ok "release: needs-security dengan laporan lulus -> SIAP" $? 0
+rr "$IS" "[{$PP,\"labels\":[],\"comments\":[$BE,$WV]}]" --test-cmd true; ok "release: waiver tidak menolong needs-security -> BELUM SIAP" $? 1
+rr "$OKI" "[{$PP,\"labels\":[{\"name\":\"needs-security\"}],\"comments\":[$BE]}]" --test-cmd true; ok "release: label langsung di PR tanpa laporan -> BELUM SIAP" $? 1
+GHFAIL=1 rr "$OKI" "$OKPR" --test-cmd true; ok "release: gh gagal -> BELUM SIAP (fail-closed)" $? 1
+rr "$OKI" "$OKPR" --test-cmd true; grep -q 'uji beban' "$tmp/rr.md"; ok "release: daftar periksa bawaan memuat uji beban dan hardening" $? 0
 cd "$root" || exit 1
 
 # 2c. install-permissions.sh: gabung tanpa menimpa, idempoten

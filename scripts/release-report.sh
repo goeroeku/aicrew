@@ -14,14 +14,26 @@ while [ $# -gt 0 ]; do case "$1" in
 [ -n "$integ" ] || { echo "release-report: cabang integrasi tidak diketahui (pakai --integ)" >&2; exit 64; }
 g="$(git rev-parse --git-common-dir)" && d="$(cd "$g/.." && pwd)/.aicrew"; mkdir -p "$d"; [ -n "$out" ] || out="$d/release-report.md"
 
-issues="$(gh issue list --state all --limit 200 --json number,title,state,labels)"
-prs="$(gh pr list --state all --limit 200 --json number,title,state,baseRefName,comments)"
+issues="$(gh issue list --state all --limit 200 --json number,title,state,labels)" || { echo "release-report: gagal membaca issue (BELUM SIAP)" >&2; exit 1; }
+prs="$(gh pr list --state all --limit 200 --json number,title,state,baseRefName,comments,body,labels)" || { echo "release-report: gagal membaca PR (BELUM SIAP)" >&2; exit 1; }
 merged="$(jq --arg b "$integ" '[.[]|select(.state=="MERGED" and .baseRefName==$b)]' <<<"$prs")"
 has() { jq --arg l "$1" 'map(select(.labels|map(.name)|index($l)))' <<<"$2"; }
 blocking="$(jq '[.[]|select(.state=="OPEN" and ((.labels|map(.name)|index("di-integrasi"))|not))]' <<<"$issues")"
 needs="$(jq '[.[]|select(.state=="OPEN")]' <<<"$issues" | jq 'map(select(.labels|map(.name)|index("needs-principal")))')"
 auto="$(has keputusan-otomatis "$issues")"
 noevid="$(jq '[.[]|select((.comments|map(.body)|map(contains("Bukti selesai"))|any)|not)]' <<<"$merged")"
+# jejak audit: PR ter-merge berlabel needs-security/needs-perf (label PR + issue yang ditutup badan PR) dan bukti laporannya
+audit="$(jq -n --argjson prs "$merged" --argjson iss "$issues" '
+  def has_line(re): any(.comments[]?; (.body // "") | test("(^|\n)" + re));
+  def first_line(re): ([.comments[]?.body // "" | split("\n")[] | select(test(re))] | first) // "";
+  [ $prs[] | . as $p
+    | ([ ($p.body // "") | split("\n")[] | select(test("(close[sd]?|fix(e[sd])?|resolve[sd]?) +#[0-9]"; "i")) | scan("#([0-9]+)") | .[0] | tonumber ]) as $ns
+    | (($p.labels // [] | map(.name)) + [ $iss[] | select(.number as $n | $ns | index($n)) | .labels[]?.name ]) as $L
+    | { n: $p.number, title: ($p.title // ""), sec: (($L | index("needs-security")) != null), perf: (($L | index("needs-perf")) != null),
+        sec_ok: ($p | has_line("Laporan security: lulus")), perf_ok: ($p | has_line("Laporan perf: lulus")),
+        waiver: ($p | first_line("^Pengecualian disetujui owner: ")), tuning: ($p | first_line("^Tuning:")) }
+    | select(.sec or .perf) ]')" || { echo "release-report: gagal menyusun jejak audit (BELUM SIAP)" >&2; exit 1; }
+missing="$(jq '[.[]|select((.sec and (.sec_ok|not)) or (.perf and ((.perf_ok or (.waiver != ""))|not)))]' <<<"$audit")"
 
 # suite di salinan segar dari cabang integrasi
 suite="tidak dijalankan (tanpa --test-cmd)"; suite_ok=0; sha="?"
@@ -45,6 +57,7 @@ reasons=()
 [ "$(jq length <<<"$blocking")" != 0 ] && reasons+=("$(jq length <<<"$blocking") issue terbuka belum di-integrasi: $(jq -r 'map("#\(.number)")|join(" ")' <<<"$blocking")")
 [ "$(jq length <<<"$needs")" != 0 ] && reasons+=("needs-principal menunggu keputusan: $(jq -r 'map("#\(.number)")|join(" ")' <<<"$needs")")
 [ "$(jq length <<<"$noevid")" != 0 ] && reasons+=("PR tanpa komentar 'Bukti selesai': $(jq -r 'map("#\(.number)")|join(" ")' <<<"$noevid")")
+[ "$(jq length <<<"$missing")" != 0 ] && reasons+=("PR berlabel needs-security/needs-perf tanpa laporan lulus (perf: atau waiver owner): $(jq -r 'map("#\(.n)")|join(" ")' <<<"$missing")")
 [ "$suite_ok" = 1 ] || reasons+=("suite penuh tidak lulus/tidak dijalankan")
 verdict="SIAP"; [ "${#reasons[@]}" != 0 ] && verdict="BELUM SIAP"
 
@@ -53,7 +66,8 @@ if [ -f "$wf" ] && grep -q '^## Daftar periksa rilis' "$wf"; then
 else
   checklist="- [ ] Build bersih di salinan segar
 - [ ] Aplikasi dijalankan lokal; smoke test lulus
-- [ ] aicrew-security: auth, input, rahasia, dependensi
+- [ ] aicrew-security: auth, input, rahasia, dependensi; hardening dan log audit untuk needs-security
+- [ ] aicrew-perf: anggaran I/O, config default, uji beban di server nyata (angka, bukan perkiraan)
 - [ ] Tidak ada rahasia di repo
 - [ ] Runbook singkat: cara jalan, konfigurasi, rollback
 - [ ] Setiap kriteria PRD dicentang dengan perintah dan hasilnya"
@@ -68,6 +82,10 @@ fi
   echo; echo "## Issue"; jq -r '.[]|"- #\(.number) [\(.state)] \(.title)"' <<<"$issues"
   echo; echo "## Keputusan otomatis (tinjau sebelum merge)"
   [ "$(jq length <<<"$auto")" = 0 ] && echo "- tidak ada" || jq -r '.[]|"- #\(.number) \(.title)"' <<<"$auto"
+  echo; echo "## Jejak audit (needs-security / needs-perf)"
+  [ "$(jq length <<<"$audit")" = 0 ] && echo "- tidak ada PR berlabel" || jq -r '.[]|"- #\(.n) \(.title) | security: \(if .sec then (if .sec_ok then "lulus" else "TIDAK ADA" end) else "-" end) | perf: \(if .perf then (if .perf_ok then "lulus" elif .waiver != "" then "WAIVER owner" else "TIDAK ADA" end) else "-" end) | \(if .tuning == "" then "Tuning: -" else .tuning end)"' <<<"$audit"
+  echo; echo "## Pengecualian owner (waiver)"
+  [ "$(jq '[.[]|select(.waiver != "")]|length' <<<"$audit")" = 0 ] && echo "- tidak ada" || jq -r '.[]|select(.waiver != "")|"- #\(.n): \(.waiver)"' <<<"$audit"
   echo; echo "## Daftar periksa (diisi agen; skrip hanya memvonis fakta di atas)"; echo "$checklist"
   echo; echo "Merge ke \`$base\` oleh owner. Laporan ini dibuat otomatis oleh aicrew."
 } > "$out"
