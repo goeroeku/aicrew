@@ -18,7 +18,14 @@ $B bogus >/dev/null 2>&1; ok "budget: perintah asing -> exit 64" $? 64
 # 2. pr-merge-check.sh dengan gh palsu (BASE/BODY dari lingkungan)
 mkdir "$tmp/bin"; cat > "$tmp/bin/gh" <<'EOF'
 #!/usr/bin/env bash
-case "$*" in *baseRefName*) echo "$BASE" ;; *comments*) printf '%s\n' "${COMM:-}" ;; *"issue view"*) printf '%s\n' "${ISSL:-}" ;; *labels*) printf '%s\n' "${PRL:-}" ;; *body*) printf '%s\n' "$BODY" ;; esac
+case "$*" in
+  *baseRefName*) echo "$BASE" ;;
+  *headRefOid*) echo "${HEAD:-abc1234567}" ;;
+  *comments*) jq -n --arg a "${COMM:-}" --arg b "${COMM2:-}" '{comments:([$a,$b]|map(select(.!=""))|map({body:.}))}' ;;
+  *"issue view"*) [ -n "${ISSFAIL:-}" ] && exit 1; v="ISSL_$3"; echo "${!v:-${ISSL:-}}" ;;
+  *labels*) printf '%s\n' "${PRL:-}" ;;
+  *body*) printf '%s\n' "$BODY" ;;
+esac
 EOF
 chmod +x "$tmp/bin/gh"; P="$tmp/bin:$PATH"; M="bash $root/scripts/pr-merge-check.sh"
 BASE=integrasi BODY="Closes #1" PATH="$P" $M 9 integrasi >/dev/null; ok "pr-merge: basis benar" $? 0
@@ -28,12 +35,33 @@ case "$out" in *PERINGATAN*) r=ada ;; *) r=tidak ;; esac; ok "pr-merge: 'Closes 
 out="$(BASE=integrasi BODY=$'Closes #4\nCloses #5' PATH="$P" $M 9 integrasi)"
 case "$out" in *PERINGATAN*) r=ada ;; *) r=tidak ;; esac; ok "pr-merge: satu per baris tidak diperingatkan" $r tidak
 
-# 2a. pr-merge-check.sh: gerbang security (label needs-security di issue yang ditutup atau di PR)
-BASE=integrasi BODY="Closes #1" ISSL=needs-security PATH="$P" $M 9 integrasi >/dev/null; ok "security: issue sensitif tanpa laporan -> exit 1" $? 1
-BASE=integrasi BODY="Closes #1" PRL=needs-security PATH="$P" $M 9 integrasi >/dev/null; ok "security: PR berlabel tanpa laporan -> exit 1" $? 1
-BASE=integrasi BODY="Closes #1" ISSL=needs-security COMM="Laporan security: gagal" PATH="$P" $M 9 integrasi >/dev/null; ok "security: laporan gagal -> exit 1" $? 1
-BASE=integrasi BODY="Closes #1" ISSL=needs-security COMM="Laporan security: lulus" PATH="$P" $M 9 integrasi >/dev/null; ok "security: laporan lulus -> exit 0" $? 0
-BASE=integrasi BODY="Closes #1" ISSL=role:qa PATH="$P" $M 9 integrasi >/dev/null; ok "security: issue biasa tidak ditahan" $? 0
+# 2a. pr-merge-check.sh: gerbang needs-security dan needs-perf (label di issue yang ditutup atau di PR; laporan terikat head PR)
+g() { env BASE=integrasi BODY="Closes #1" HEAD=abc1234567 "$@" PATH="$P" bash "$root/scripts/pr-merge-check.sh" 9 integrasi >/dev/null; }
+RP=$'Laporan perf: lulus\nAngka sebelum/sesudah: 120/45 fsync/s\nTuning: tidak ada\nCommit: abc1234'
+RS=$'Laporan security: lulus\nCommit: abc1234'
+g ISSL=needs-security; ok "security: issue sensitif tanpa laporan -> exit 1" $? 1
+g PRL=needs-security; ok "security: PR berlabel tanpa laporan -> exit 1" $? 1
+g ISSL=needs-security COMM=$'Laporan security: gagal\nCommit: abc1234'; ok "security: laporan gagal -> exit 1" $? 1
+g ISSL=needs-security COMM=$'Laporan security: lulus\nCommit: def4567'; ok "security: laporan untuk commit lama -> exit 1" $? 1
+g ISSL=needs-security COMM="Laporan security: lulus"; ok "security: lulus tanpa baris Commit -> exit 1" $? 1
+g ISSL=needs-security COMM="$RS"; ok "security: laporan lulus untuk head -> exit 0" $? 0
+g ISSL=role:qa; ok "gerbang: issue biasa tidak ditahan" $? 0
+g ISSL=needs-perf; ok "perf: issue sensitif tanpa laporan -> exit 1" $? 1
+g PRL=needs-perf; ok "perf: PR berlabel tanpa laporan -> exit 1" $? 1
+g ISSL=needs-perf COMM=$'Laporan perf: lulus\nTuning: tidak ada\nCommit: abc1234'; ok "perf: tanpa baris Angka -> exit 1" $? 1
+g ISSL=needs-perf COMM=$'Laporan perf: lulus\nAngka sebelum/sesudah: n/a\nTuning: tidak ada\nCommit: abc1234'; ok "perf: Angka tanpa digit -> exit 1" $? 1
+g ISSL=needs-perf COMM=$'Laporan perf: lulus\nAngka sebelum/sesudah: 120/45\nCommit: abc1234'; ok "perf: tanpa baris Tuning -> exit 1" $? 1
+g ISSL=needs-perf COMM="${RP/abc1234/def4567}"; ok "perf: laporan untuk commit lama -> exit 1" $? 1
+g ISSL=needs-perf COMM=$'> Laporan perf: lulus\n> Angka sebelum/sesudah: 120/45\n> Tuning: tidak ada\n> Commit: abc1234'; ok "perf: laporan dalam kutipan -> exit 1" $? 1
+g ISSL=needs-perf COMM="${RP/lulus/gagal}"; ok "perf: laporan gagal -> exit 1" $? 1
+g ISSL=needs-perf COMM="${RP/abc1234/def4567}" COMM2=$'Catatan\nCommit: abc1234'; ok "perf: bagian laporan tersebar di komentar berbeda -> exit 1" $? 1
+g ISSL=needs-perf COMM="$RP"; ok "perf: laporan lengkap untuk head -> exit 0" $? 0
+g BODY="Closes #1, #2" ISSL_1=role:qa ISSL_2=needs-perf; ok "gerbang: 'Closes #1, #2' dengan #2 sensitif -> exit 1" $? 1
+g BODY="Closes #1, #2" ISSL_1=role:qa ISSL_2=needs-perf COMM="$RP"; ok "gerbang: #2 sensitif dengan laporan -> exit 0" $? 0
+g ISSL=needs-perf COMM="Pengecualian disetujui owner: fixture pemindai (Commit: abc1234)"; ok "waiver: perf dengan waiver untuk head -> exit 0" $? 0
+g ISSL=needs-perf COMM="Pengecualian disetujui owner: fixture pemindai (Commit: def4567)"; ok "waiver: sha lama -> exit 1" $? 1
+g ISSL=needs-security COMM="Pengecualian disetujui owner: coba (Commit: abc1234)"; ok "waiver: tidak berlaku untuk security -> exit 1" $? 1
+g ISSL=needs-perf ISSFAIL=1; ok "gerbang: label issue tak terbaca -> exit 1 (fail-closed)" $? 1
 
 # 2b. budget total, resume.sh, autopilot.sh (gh dan claude palsu)
 cd "$tmp/r" || exit 1; rm -rf .aicrew
