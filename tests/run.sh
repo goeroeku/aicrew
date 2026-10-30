@@ -265,6 +265,11 @@ grep -q 'Tuning:' agents/perf.md && grep -q 'Angka sebelum/sesudah:' agents/perf
 grep -qi 'log audit' agents/security.md && grep -q 'Commit:' agents/security.md; ok "security: log audit dan Commit di daftar/format" $? 0
 grep -q 'Laporan perf: lulus' skills/orchestrate/SKILL.md && grep -q 'Pengecualian disetujui owner' skills/orchestrate/SKILL.md; ok "orchestrate: vonis perf dan larangan agen menulis waiver" $? 0
 
+# aicrew-perf membawa resep ukur baca-saja (dari kasus mailora), bukan hanya daftar periksa
+for k in 'PGOPTIONS' 'default_transaction_read_only' 'statement_timeout' 'pg_stat_user_tables' 'n_tup_hot_upd' 'pg_stat_activity' 'pg_stat_database' '/proc/pressure/io' 'vmstat' 'docker stats' '/dev/shm' 'redis-cli' 'server_version' 'tidak boleh dijalankan di server nyata tanpa izin'; do
+  grep -qF -- "$k" agents/perf.md; ok "perf: resep ukur memuat '$k'" $? 0
+done
+
 # Atribusi AI dilarang: aturan harus ada di agen penulis kode dan prompt Codex
 for f in agents/senior-coder.md agents/ui-ux.md agents/devops.md agents/perf.md templates/codex-prompt.md; do
   grep -q "Tanpa atribusi AI" "$f"; ok "aturan tanpa atribusi AI di $f" $? 0
