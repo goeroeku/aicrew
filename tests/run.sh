@@ -113,6 +113,10 @@ g ISSL=needs-perf COMM=$'Laporan perf: gagal\nLaporan perf: lulus\nAngka sebelum
 out="$(env BASE=integrasi BODY="Closes #1" HEAD=abc1234567 PATH="$P" bash "$root/scripts/pr-merge-check.sh" 9 integrasi 2>&1)"; case "$out" in *"--match-head-commit abc1234567"*) r=ada ;; *) r=tidak ;; esac; ok "review#9: keluaran menyebut --match-head-commit <head>" $r ada
 grep -q 'match-head-commit' "$root/skills/orchestrate/SKILL.md"; ok "review#9: orchestrate mewajibkan --match-head-commit" $? 0
 
+g ISSL=needs-perf COMM="Pengecualian disetujui owner (perf):  (Commit: abc1234)"; ok "minor#7: waiver tanpa alasan -> exit 1" $? 1
+g ISSL=Needs-Perf; ok "minor#10: label Needs-Perf (beda huruf) tanpa laporan -> exit 1" $? 1
+g PRL=NEEDS-SECURITY; ok "minor#10: label NEEDS-SECURITY di PR tanpa laporan -> exit 1" $? 1
+
 # 2b. budget total, resume.sh, autopilot.sh (gh dan claude palsu)
 cd "$tmp/r" || exit 1; rm -rf .aicrew
 $B iter >/dev/null; $B iter >/dev/null; $B newrun; $B check 5 2 "" 2 >/dev/null; ok "budget: newrun nol-kan putaran, total tetap -> exit 4" $? 4
@@ -196,6 +200,8 @@ PW='{"body":"Pengecualian disetujui owner (rahasia): fx (Commit: abc1234)"}'
 rr "$OKI" "[{\"number\":5,\"title\":\"t\",\"state\":\"MERGED\",\"baseRefName\":\"integ\",\"labels\":[],\"comments\":[$BE,$PW]}]" --test-cmd true; r=$?; grep -q 'Pengecualian owner' "$tmp/rr.md" && grep -q 'fx' "$tmp/rr.md"; ok "review#6: waiver rahasia pada PR tanpa label tercetak di laporan rilis" "$r:$?" "0:0"
 rr "$OKI" "[{\"number\":5,\"title\":\"t\",\"state\":\"MERGED\",\"baseRefName\":\"integ\",\"body\":\"tanpa kata kunci\",\"closingIssuesReferences\":[{\"number\":1}],\"labels\":[],\"comments\":[$BE]}]" --test-cmd true; ok "review#1: rilis memakai closingIssuesReferences (issue 1 di OKI tidak sensitif) -> SIAP" $? 0
 rr "$IP" "[{\"number\":5,\"title\":\"t\",\"state\":\"MERGED\",\"baseRefName\":\"integ\",\"body\":\"tanpa kata kunci\",\"closingIssuesReferences\":[{\"number\":1}],\"labels\":[],\"comments\":[$BE]}]" --test-cmd true; ok "review#1: rilis: issue sensitif via closingIssuesReferences tanpa laporan -> BELUM SIAP" $? 1
+rr "$IP" "[{$PP,\"labels\":[],\"comments\":[$BE,{\"body\":\"Pengecualian disetujui owner (perf):  (Commit: abc1234)\"}]}]" --test-cmd true; ok "minor#7: rilis: waiver tanpa alasan tidak dihitung -> BELUM SIAP" $? 1
+rr '[{"number":1,"title":"a","state":"CLOSED","labels":[{"name":"di-integrasi"},{"name":"Needs-Perf"}]}]' "[{$PP,\"labels\":[],\"comments\":[$BE]}]" --test-cmd true; ok "minor#10: rilis: label Needs-Perf (beda huruf) tanpa laporan -> BELUM SIAP" $? 1
 cd "$root" || exit 1
 
 # 2c. install-permissions.sh: gabung tanpa menimpa, idempoten

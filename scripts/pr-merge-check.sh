@@ -47,20 +47,20 @@ else
   # waiver_ok <perf|rahasia>: komentar owner `Pengecualian disetujui owner (<cakupan>): <alasan> (Commit: <sha>)` untuk head PR; satu waiver hanya berlaku untuk cakupannya
   waiver_ok() {
     while IFS= read -r cj; do
-      sha_ok "$(jq -r .body <<<"$cj" | sed -nE "s/^Pengecualian disetujui owner \($1\): .* \(Commit: *([0-9a-f]*)\).*/\1/p" | head -1)" && return 0
+      sha_ok "$(jq -r .body <<<"$cj" | sed -nE "s/^Pengecualian disetujui owner \($1\): .*[^ ].* \(Commit: *([0-9a-f]*)\).*/\1/p" | head -1)" && return 0
     done < <(jq -c '.comments[]' <<<"$comments")
     return 1
   }
-  if grep -qx needs-security <<<"$labels" && ! verdict_ok "Laporan security:" 0; then
+  if grep -qix needs-security <<<"$labels" && ! verdict_ok "Laporan security:" 0; then
     fail "needs-security: butuh komentar 'Laporan security: lulus' dengan 'Commit: <sha head>' dari aicrew-security"
   fi
-  if grep -qx needs-perf <<<"$labels" && ! verdict_ok "Laporan perf:" 1 && ! waiver_ok perf; then
+  if grep -qix needs-perf <<<"$labels" && ! verdict_ok "Laporan perf:" 1 && ! waiver_ok perf; then
     fail "needs-perf: butuh 'Laporan perf: lulus' dengan Angka sebelum/sesudah (berdigit), Tuning, dan 'Commit: <sha head>' dari aicrew-perf, atau waiver owner untuk head"
   fi
   # baseline: rahasia memblokir (kecuali waiver owner untuk head), sisanya hanya peringatan; diff tak terbaca = tolak
   diff="$(gh pr diff "$pr")" || fail "diff PR #$pr tak terbaca"
   bf="$(mktemp)"; trap 'rm -f "$bf"' EXIT; printf '%s\n' "$body" > "$bf"
-  grep -qx needs-perf <<<"$labels" && perfl=1 || perfl=0
+  grep -qix needs-perf <<<"$labels" && perfl=1 || perfl=0
   scan="$(printf '%s\n' "$diff" | bash "$(dirname "$0")/baseline-scan.sh" --body "$bf" --perf-labeled "$perfl")"; rc=$?
   [ -z "$scan" ] || echo "$scan"
   [ "$rc" = 0 ] || waiver_ok rahasia || fail "baseline-scan menemukan rahasia pada diff; perbaiki, atau waiver owner (rahasia) untuk head PR"
