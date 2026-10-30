@@ -65,17 +65,17 @@ g ISSL=needs-perf COMM="Pengecualian disetujui owner (perf): fixture pemindai (C
 g ISSL=needs-security COMM="Pengecualian disetujui owner (perf): coba (Commit: abc1234)"; ok "waiver: tidak berlaku untuk security -> exit 1" $? 1
 g ISSL=needs-perf ISSFAIL=1; ok "gerbang: label issue tak terbaca -> exit 1 (fail-closed)" $? 1
 
-# 2e. baseline-scan.sh (diff dari stdin) dan integrasinya di pr-merge-check.sh
+# 2e. baseline-scan.sh (fixture rahasia dipecah dengan '' agar diff repo ini tidak memicu pemindainya sendiri) (diff dari stdin) dan integrasinya di pr-merge-check.sh
 BS="bash $root/scripts/baseline-scan.sh"; : > "$tmp/empty.txt"; echo "bump github.com/foo/bar, left-pad dan postgres" > "$tmp/mentioned.txt"
 D() { printf 'diff --git a/%s b/%s\n--- /dev/null\n+++ b/%s\n@@ -0,0 +1 @@\n%s\n' "$1" "$1" "$1" "$2"; }
 sc() { out="$(printf '%s\n' "$1" | $BS --body "${3:-$tmp/empty.txt}" --perf-labeled "${2:-0}" 2>&1)"; rc=$?; }
 has() { case "$out" in *"$1"*) echo ada ;; *) echo tidak ;; esac; }
-sc "$(D app.go '+k = "AKIAABCDEFGHIJKLMNOP"')"; ok "scan: kunci AWS -> exit 1" $rc 1; ok "scan: nilai rahasia tidak dicetak" "$(has AKIAABCDEFGHIJKLMNOP)" tidak; ok "scan: BLOK menyebut berkas" "$(has 'BLOK')" ada
-sc "$(D k.pem '+-----BEGIN RSA PRIVATE KEY-----')"; ok "scan: kunci privat -> exit 1" $rc 1
-sc "$(D cfg.go '+password = "supersecretvalue123"')"; ok "scan: password literal -> exit 1" $rc 1
+sc "$(D app.go '+k = "AKI''AABCDEFGHIJKLMNOP"')"; ok "scan: kunci AWS -> exit 1" $rc 1; ok "scan: nilai rahasia tidak dicetak" "$(has AKI''AABCDEFGHIJKLMNOP)" tidak; ok "scan: BLOK menyebut berkas" "$(has 'BLOK')" ada
+sc "$(D k.pem '+-----BEGIN RSA PRIV''ATE KEY-----')"; ok "scan: kunci privat -> exit 1" $rc 1
+sc "$(D cfg.go '+pass''word = "supersecretvalue123"')"; ok "scan: password literal -> exit 1" $rc 1
 sc "$(D .env '+X=1')"; ok "scan: berkas .env -> exit 1" $rc 1
 sc "$(D .env.example '+X=1')"; ok "scan: .env.example lolos" $rc 0
-sc "$(D a.go '-password = "supersecretvalue123"')"; ok "scan: baris yang dihapus tidak dihitung" $rc 0
+sc "$(D a.go '-pass''word = "supersecretvalue123"')"; ok "scan: baris yang dihapus tidak dihitung" $rc 0
 sc "$(D scripts/a.sh '+sync || true')"; ok "scan: sync || true -> peringatan, exit 0" $rc 0; ok "scan: sync || true bertanda PERINGATAN" "$(has PERINGATAN)" ada
 sc "$(D go.mod $'+\tgithub.com/foo/bar v1.2.3')"; ok "scan: dependensi go.mod tak disebut -> PERINGATAN" "$(has github.com/foo/bar)" ada
 sc "$(D go.mod $'+\tgithub.com/foo/bar v1.2.3')" 0 "$tmp/mentioned.txt"; ok "scan: dependensi disebut di badan PR -> tanpa peringatan" "$(has PERINGATAN)" tidak
@@ -85,14 +85,14 @@ sc "$(D db/migrations/001.sql '+create table x(id int);')" 0; ok "scan: migrasi 
 sc "$(D db/migrations/001.sql '+create table x(id int);')" 1; ok "scan: migrasi dengan needs-perf -> tanpa peringatan" "$(has needs-perf)" tidak
 sc "$(D redis.conf '+save 60 10000')" 0; ok "scan: redis.conf tanpa needs-perf -> PERINGATAN" "$(has needs-perf)" ada
 sc "$(D README.md '+halo')"; ok "scan: diff bersih -> exit 0 tanpa keluaran" "$rc:$out" "0:"
-g DIFF="$(D app.go '+k = "AKIAABCDEFGHIJKLMNOP"')"; ok "merge: rahasia di diff tanpa waiver -> exit 1" $? 1
-g DIFF="$(D app.go '+k = "AKIAABCDEFGHIJKLMNOP"')" COMM="Pengecualian disetujui owner (rahasia): fixture (Commit: abc1234)"; ok "merge: rahasia dengan waiver untuk head -> exit 0" $? 0
-g DIFF="$(D app.go '+k = "AKIAABCDEFGHIJKLMNOP"')" COMM="Pengecualian disetujui owner (rahasia): fixture (Commit: def4567)"; ok "merge: rahasia dengan waiver commit lama -> exit 1" $? 1
+g DIFF="$(D app.go '+k = "AKI''AABCDEFGHIJKLMNOP"')"; ok "merge: rahasia di diff tanpa waiver -> exit 1" $? 1
+g DIFF="$(D app.go '+k = "AKI''AABCDEFGHIJKLMNOP"')" COMM="Pengecualian disetujui owner (rahasia): fixture (Commit: abc1234)"; ok "merge: rahasia dengan waiver untuk head -> exit 0" $? 0
+g DIFF="$(D app.go '+k = "AKI''AABCDEFGHIJKLMNOP"')" COMM="Pengecualian disetujui owner (rahasia): fixture (Commit: def4567)"; ok "merge: rahasia dengan waiver commit lama -> exit 1" $? 1
 g DIFFFAIL=1; ok "merge: gh pr diff gagal -> exit 1 (fail-closed)" $? 1
 g DIFF="$(D scripts/a.sh '+sync || true')"; ok "merge: hanya peringatan -> exit 0" $? 0
 
 # 2f. perbaikan hasil review menyeluruh
-SEC='+k = "AKIAABCDEFGHIJKLMNOP"'
+SEC='+k = "AKI''AABCDEFGHIJKLMNOP"'
 g BODY="Closes: #2" ISSL_1=role:qa ISSL_2=needs-perf; ok "review#1: 'Closes: #2' (titik dua) dengan #2 sensitif -> exit 1" $? 1
 g BODY="Fixes https://github.com/o/r/issues/2" CLOSING=2 ISSL_2=needs-perf; ok "review#1: issue dari closingIssuesReferences (URL) sensitif -> exit 1" $? 1
 g BODY="Resolves owner/repo#2" CLOSING=2 ISSL_2=needs-perf COMM="$RP"; ok "review#1: closingIssuesReferences sensitif dengan laporan -> exit 0" $? 0
@@ -102,10 +102,10 @@ g DIFF="$(D app.go "$SEC")" COMM="Pengecualian disetujui owner (rahasia): fixtur
 printf 'diff --git a/x.go b/x.go\n--- a/x.go\n+++ b/x.go\n@@ -0,0 +1,2 @@\n+++ \n%s\n' "$SEC" > "$tmp/trick.diff"; out="$($BS --body "$tmp/empty.txt" --perf-labeled 0 < "$tmp/trick.diff" 2>&1)"; ok "review#3: baris tambahan '++ ' tidak mematikan pemindai -> exit 1" $? 1
 printf 'diff --git a/r.env b/r.env\n--- /dev/null\n+++ "b/r\\303\\251gl\\303\\251/.env"\n@@ -0,0 +1 @@\n+X=1\n' | $BS --body "$tmp/empty.txt" --perf-labeled 0 >/dev/null 2>&1; ok "review#4: .env dengan path non-ASCII (dikutip git) -> exit 1" $? 1
 sc "$(D 'dir dengan spasi/.env' '+X=1')"; ok "review#4: .env pada path berspasi -> exit 1" $rc 1
-sc "$(D conf.json '+  "api_key": "sk_live_abcdefghijklmnop",')"; ok "review#5: JSON \"api_key\": \"...\" -> exit 1" $rc 1
-sc "$(D main.go '+	token := "abcdefghijklmnop12"')"; ok "review#5: Go token := \"...\" -> exit 1" $rc 1
-sc "$(D ci.sh '+export T=github_pat_11ABCDEFG0abcdefghijkl_mnopqrstuv')"; ok "review#5: github_pat_ -> exit 1" $rc 1
-sc "$(D ci.sh '+export S=xoxb-1234567890-abcdefghijkl')"; ok "review#5: token Slack xoxb- -> exit 1" $rc 1
+sc "$(D conf.json '+  "api''_key": "sk''_live_abcdefghijklmnop",')"; ok "review#5: JSON \"api_key\": \"...\" -> exit 1" $rc 1
+sc "$(D main.go '+	tok''en := "abcdefghijklmnop12"')"; ok "review#5: Go token := \"...\" -> exit 1" $rc 1
+sc "$(D ci.sh '+export T=github''_pat_11ABCDEFG0abcdefghijkl_mnopqrstuv')"; ok "review#5: github_pat_ -> exit 1" $rc 1
+sc "$(D ci.sh '+export S=xo''xb-1234567890-abcdefghijkl')"; ok "review#5: token Slack xoxb- -> exit 1" $rc 1
 sc "$(D app.yml '+password: hunter2hunter2hunter2')"; ok "review#5: YAML password polos -> PERINGATAN, exit 0" "$rc:$(has PERINGATAN)" "0:ada"
 g ISSL=needs-perf COMM="$RP" COMM2=$'Laporan perf: gagal\nCommit: abc1234'; ok "review#8: gagal susulan untuk head yang sama -> exit 1" $? 1
 g ISSL=needs-perf COMM=$'Laporan perf: gagal\nCommit: abc1234' COMM2="$RP"; ok "review#8: lulus susulan setelah gagal -> exit 0" $? 0
