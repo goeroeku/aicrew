@@ -14,6 +14,7 @@ Dibuat oleh `aicrew:kickoff`. Keputusan project ini; menimpa bawaan aicrew.
   setelah merge terverifikasi (`pr-merge-check.sh --after`) pada mode merge `agen-setelah-QA`; berlaku hanya bila Board kanban aktif.
 - needs-principal: {{owner | principal-auto}}. Bawaan: owner (semua tingkat dieskalasi ke owner). `principal-auto`: hanya TINGKAT 1 diputuskan
   agen `aicrew-principal` (butuh role principal aktif); tingkat 2 tetap owner. Keputusan otomatis diberi label `keputusan-otomatis` dan dimuat di laporan rilis.
+- Bahasa artefak (kode, komentar, commit, label): {{Inggris (bawaan) | bahasa lain, hanya atas permintaan owner}}
 - Berkas `docs/` dilacak git: {{ya | tidak (di-ignore, disengaja)}}
 
 ## Perintah backend (satu tempat, mudah diganti)
