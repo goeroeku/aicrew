@@ -16,4 +16,4 @@ Laporan: maks 12 temuan, satu baris tiap temuan, bukti `file:baris`. Empat baris
 `Angka sebelum/sesudah: <angka>` (jalur baru: `tidak ada (baru)/<angka>`; wajib ada digit)
 `Tuning: <config=nilai, alasan, cara rollback>` atau `Tuning: tidak ada`
 `Commit: <sha head PR>`
-`pr-merge-check.sh` menolak merge `needs-perf` tanpa komentar ini untuk head PR saat ini (komit baru = laporan ulang), kecuali waiver owner.
+`pr-merge-check.sh` menolak merge `needs-perf` tanpa komentar ini untuk head PR saat ini (komit baru = laporan ulang), kecuali waiver owner `(perf)`; waiver `(rahasia)` tidak menutup gerbang ini.

@@ -65,7 +65,8 @@ issue terbuka → laporkan penyumbatnya dan berhenti.
    bila perubahan ternyata sensitif tetapi belum berlabel, pasang labelnya dulu. Lulus → pasang komentar PR `Laporan security: lulus` beserta `Commit: <sha head>`
    (`pr-merge-check.sh` menolak merge tanpa komentar itu).
    Issue `needs-perf` → `aicrew-perf` setelah `aicrew-qa`. Tempel vonisnya utuh dalam SATU komentar (`Laporan perf: lulus|gagal`, `Angka sebelum/sesudah:`, `Tuning:`, `Commit: <sha head>`).
-   Waiver `Pengecualian disetujui owner: <alasan> (Commit: <sha>)` hanya boleh ditulis owner; agen dilarang menulisnya.
+   Waiver `Pengecualian disetujui owner (perf|rahasia): <alasan> (Commit: <sha>)` hanya boleh ditulis owner dan hanya berlaku untuk cakupannya; agen dilarang menulisnya.
+   Merge SELALU dengan `gh pr merge <n> --match-head-commit <sha-head>` (sha dicetak `pr-merge-check.sh`), supaya push susulan setelah pemeriksaan tidak ikut ter-merge tanpa laporan.
 6. Lulus → `budget.sh reset <n>`, buka PR/MR, pasang komentar bukti (format di `WORKFLOW.md`), label In Review.
    Badan PR: satu kata kunci per issue, satu per baris (`Closes #4` ⏎ `Closes #5`). `Closes #4, #5` hanya menutup #4.
    Gagal → `budget.sh fail <n>`, perbaiki satu kali dengan temuan yang spesifik; gagal lagi → aturan berhenti.

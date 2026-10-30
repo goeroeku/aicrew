@@ -24,6 +24,7 @@ case "$*" in
   *headRefOid*) echo "${HEAD:-abc1234567}" ;;
   *comments*) jq -n --arg a "${COMM:-}" --arg b "${COMM2:-}" '{comments:([$a,$b]|map(select(.!=""))|map({body:.}))}' ;;
   *"issue view"*) [ -n "${ISSFAIL:-}" ] && exit 1; v="ISSL_$3"; echo "${!v:-${ISSL:-}}" ;;
+  *closingIssuesReferences*) for n in ${CLOSING:-}; do echo "$n"; done ;;
   *labels*) printf '%s\n' "${PRL:-}" ;;
   *body*) printf '%s\n' "$BODY" ;;
 esac
@@ -59,9 +60,9 @@ g ISSL=needs-perf COMM="${RP/abc1234/def4567}" COMM2=$'Catatan\nCommit: abc1234'
 g ISSL=needs-perf COMM="$RP"; ok "perf: laporan lengkap untuk head -> exit 0" $? 0
 g BODY="Closes #1, #2" ISSL_1=role:qa ISSL_2=needs-perf; ok "gerbang: 'Closes #1, #2' dengan #2 sensitif -> exit 1" $? 1
 g BODY="Closes #1, #2" ISSL_1=role:qa ISSL_2=needs-perf COMM="$RP"; ok "gerbang: #2 sensitif dengan laporan -> exit 0" $? 0
-g ISSL=needs-perf COMM="Pengecualian disetujui owner: fixture pemindai (Commit: abc1234)"; ok "waiver: perf dengan waiver untuk head -> exit 0" $? 0
-g ISSL=needs-perf COMM="Pengecualian disetujui owner: fixture pemindai (Commit: def4567)"; ok "waiver: sha lama -> exit 1" $? 1
-g ISSL=needs-security COMM="Pengecualian disetujui owner: coba (Commit: abc1234)"; ok "waiver: tidak berlaku untuk security -> exit 1" $? 1
+g ISSL=needs-perf COMM="Pengecualian disetujui owner (perf): fixture pemindai (Commit: abc1234)"; ok "waiver: perf dengan waiver untuk head -> exit 0" $? 0
+g ISSL=needs-perf COMM="Pengecualian disetujui owner (perf): fixture pemindai (Commit: def4567)"; ok "waiver: sha lama -> exit 1" $? 1
+g ISSL=needs-security COMM="Pengecualian disetujui owner (perf): coba (Commit: abc1234)"; ok "waiver: tidak berlaku untuk security -> exit 1" $? 1
 g ISSL=needs-perf ISSFAIL=1; ok "gerbang: label issue tak terbaca -> exit 1 (fail-closed)" $? 1
 
 # 2e. baseline-scan.sh (diff dari stdin) dan integrasinya di pr-merge-check.sh
@@ -85,10 +86,32 @@ sc "$(D db/migrations/001.sql '+create table x(id int);')" 1; ok "scan: migrasi 
 sc "$(D redis.conf '+save 60 10000')" 0; ok "scan: redis.conf tanpa needs-perf -> PERINGATAN" "$(has needs-perf)" ada
 sc "$(D README.md '+halo')"; ok "scan: diff bersih -> exit 0 tanpa keluaran" "$rc:$out" "0:"
 g DIFF="$(D app.go '+k = "AKIAABCDEFGHIJKLMNOP"')"; ok "merge: rahasia di diff tanpa waiver -> exit 1" $? 1
-g DIFF="$(D app.go '+k = "AKIAABCDEFGHIJKLMNOP"')" COMM="Pengecualian disetujui owner: fixture (Commit: abc1234)"; ok "merge: rahasia dengan waiver untuk head -> exit 0" $? 0
-g DIFF="$(D app.go '+k = "AKIAABCDEFGHIJKLMNOP"')" COMM="Pengecualian disetujui owner: fixture (Commit: def4567)"; ok "merge: rahasia dengan waiver commit lama -> exit 1" $? 1
+g DIFF="$(D app.go '+k = "AKIAABCDEFGHIJKLMNOP"')" COMM="Pengecualian disetujui owner (rahasia): fixture (Commit: abc1234)"; ok "merge: rahasia dengan waiver untuk head -> exit 0" $? 0
+g DIFF="$(D app.go '+k = "AKIAABCDEFGHIJKLMNOP"')" COMM="Pengecualian disetujui owner (rahasia): fixture (Commit: def4567)"; ok "merge: rahasia dengan waiver commit lama -> exit 1" $? 1
 g DIFFFAIL=1; ok "merge: gh pr diff gagal -> exit 1 (fail-closed)" $? 1
 g DIFF="$(D scripts/a.sh '+sync || true')"; ok "merge: hanya peringatan -> exit 0" $? 0
+
+# 2f. perbaikan hasil review menyeluruh
+SEC='+k = "AKIAABCDEFGHIJKLMNOP"'
+g BODY="Closes: #2" ISSL_1=role:qa ISSL_2=needs-perf; ok "review#1: 'Closes: #2' (titik dua) dengan #2 sensitif -> exit 1" $? 1
+g BODY="Fixes https://github.com/o/r/issues/2" CLOSING=2 ISSL_2=needs-perf; ok "review#1: issue dari closingIssuesReferences (URL) sensitif -> exit 1" $? 1
+g BODY="Resolves owner/repo#2" CLOSING=2 ISSL_2=needs-perf COMM="$RP"; ok "review#1: closingIssuesReferences sensitif dengan laporan -> exit 0" $? 0
+g ISSL=needs-perf DIFF="$(D app.go "$SEC")" COMM="Pengecualian disetujui owner (perf): perf tak terukur (Commit: abc1234)"; ok "review#2: waiver perf tidak menutup rahasia -> exit 1" $? 1
+g ISSL=needs-perf COMM="Pengecualian disetujui owner (rahasia): fixture (Commit: abc1234)"; ok "review#2: waiver rahasia tidak menutup perf -> exit 1" $? 1
+g DIFF="$(D app.go "$SEC")" COMM="Pengecualian disetujui owner (rahasia): fixture (Commit: abc1234)"; ok "review#2: waiver rahasia menutup rahasia -> exit 0" $? 0
+printf 'diff --git a/x.go b/x.go\n--- a/x.go\n+++ b/x.go\n@@ -0,0 +1,2 @@\n+++ \n%s\n' "$SEC" > "$tmp/trick.diff"; out="$($BS --body "$tmp/empty.txt" --perf-labeled 0 < "$tmp/trick.diff" 2>&1)"; ok "review#3: baris tambahan '++ ' tidak mematikan pemindai -> exit 1" $? 1
+printf 'diff --git a/r.env b/r.env\n--- /dev/null\n+++ "b/r\\303\\251gl\\303\\251/.env"\n@@ -0,0 +1 @@\n+X=1\n' | $BS --body "$tmp/empty.txt" --perf-labeled 0 >/dev/null 2>&1; ok "review#4: .env dengan path non-ASCII (dikutip git) -> exit 1" $? 1
+sc "$(D 'dir dengan spasi/.env' '+X=1')"; ok "review#4: .env pada path berspasi -> exit 1" $rc 1
+sc "$(D conf.json '+  "api_key": "sk_live_abcdefghijklmnop",')"; ok "review#5: JSON \"api_key\": \"...\" -> exit 1" $rc 1
+sc "$(D main.go '+	token := "abcdefghijklmnop12"')"; ok "review#5: Go token := \"...\" -> exit 1" $rc 1
+sc "$(D ci.sh '+export T=github_pat_11ABCDEFG0abcdefghijkl_mnopqrstuv')"; ok "review#5: github_pat_ -> exit 1" $rc 1
+sc "$(D ci.sh '+export S=xoxb-1234567890-abcdefghijkl')"; ok "review#5: token Slack xoxb- -> exit 1" $rc 1
+sc "$(D app.yml '+password: hunter2hunter2hunter2')"; ok "review#5: YAML password polos -> PERINGATAN, exit 0" "$rc:$(has PERINGATAN)" "0:ada"
+g ISSL=needs-perf COMM="$RP" COMM2=$'Laporan perf: gagal\nCommit: abc1234'; ok "review#8: gagal susulan untuk head yang sama -> exit 1" $? 1
+g ISSL=needs-perf COMM=$'Laporan perf: gagal\nCommit: abc1234' COMM2="$RP"; ok "review#8: lulus susulan setelah gagal -> exit 0" $? 0
+g ISSL=needs-perf COMM=$'Laporan perf: gagal\nLaporan perf: lulus\nAngka sebelum/sesudah: 1/2\nTuning: tidak ada\nCommit: abc1234'; ok "review#8: satu komentar memuat gagal dan lulus -> exit 1" $? 1
+out="$(env BASE=integrasi BODY="Closes #1" HEAD=abc1234567 PATH="$P" bash "$root/scripts/pr-merge-check.sh" 9 integrasi 2>&1)"; case "$out" in *"--match-head-commit abc1234567"*) r=ada ;; *) r=tidak ;; esac; ok "review#9: keluaran menyebut --match-head-commit <head>" $r ada
+grep -q 'match-head-commit' "$root/skills/orchestrate/SKILL.md"; ok "review#9: orchestrate mewajibkan --match-head-commit" $? 0
 
 # 2b. budget total, resume.sh, autopilot.sh (gh dan claude palsu)
 cd "$tmp/r" || exit 1; rm -rf .aicrew
@@ -154,7 +177,7 @@ rr "$OKI" "$OKPR" --buka-pr --test-cmd false; ok "release: BELUM SIAP tidak memb
 # 2d2. release-report.sh: PR berlabel needs-perf/needs-security wajib punya laporan lulus; jejak audit dan waiver tercetak
 PP='"number":5,"title":"jalur tulis","state":"MERGED","baseRefName":"integ","body":"Closes #1"'; BE='{"body":"**Bukti selesai** ok"}'
 LP='{"body":"Laporan perf: lulus\nAngka sebelum/sesudah: 120/45 fsync/s\nTuning: shared_buffers=2GB, alasan cache, rollback reload\nCommit: abc1234"}'
-LS='{"body":"Laporan security: lulus\nCommit: abc1234"}'; WV='{"body":"Pengecualian disetujui owner: fixture (Commit: abc1234)"}'
+LS='{"body":"Laporan security: lulus\nCommit: abc1234"}'; WV='{"body":"Pengecualian disetujui owner (perf): fixture (Commit: abc1234)"}'
 IP='[{"number":1,"title":"a","state":"CLOSED","labels":[{"name":"di-integrasi"},{"name":"needs-perf"}]}]'
 IS='[{"number":1,"title":"a","state":"CLOSED","labels":[{"name":"di-integrasi"},{"name":"needs-security"}]}]'
 rr "$IP" "[{$PP,\"labels\":[],\"comments\":[$BE]}]" --test-cmd true; ok "release: needs-perf (via issue) tanpa laporan -> BELUM SIAP" $? 1
@@ -168,6 +191,11 @@ rr "$IS" "[{$PP,\"labels\":[],\"comments\":[$BE,$WV]}]" --test-cmd true; ok "rel
 rr "$OKI" "[{$PP,\"labels\":[{\"name\":\"needs-security\"}],\"comments\":[$BE]}]" --test-cmd true; ok "release: label langsung di PR tanpa laporan -> BELUM SIAP" $? 1
 GHFAIL=1 rr "$OKI" "$OKPR" --test-cmd true; ok "release: gh gagal -> BELUM SIAP (fail-closed)" $? 1
 rr "$OKI" "$OKPR" --test-cmd true; grep -q 'uji beban' "$tmp/rr.md"; ok "release: daftar periksa bawaan memuat uji beban dan hardening" $? 0
+# 2f2. hasil review: sisi release-report
+PW='{"body":"Pengecualian disetujui owner (rahasia): fx (Commit: abc1234)"}'
+rr "$OKI" "[{\"number\":5,\"title\":\"t\",\"state\":\"MERGED\",\"baseRefName\":\"integ\",\"labels\":[],\"comments\":[$BE,$PW]}]" --test-cmd true; r=$?; grep -q 'Pengecualian owner' "$tmp/rr.md" && grep -q 'fx' "$tmp/rr.md"; ok "review#6: waiver rahasia pada PR tanpa label tercetak di laporan rilis" "$r:$?" "0:0"
+rr "$OKI" "[{\"number\":5,\"title\":\"t\",\"state\":\"MERGED\",\"baseRefName\":\"integ\",\"body\":\"tanpa kata kunci\",\"closingIssuesReferences\":[{\"number\":1}],\"labels\":[],\"comments\":[$BE]}]" --test-cmd true; ok "review#1: rilis memakai closingIssuesReferences (issue 1 di OKI tidak sensitif) -> SIAP" $? 0
+rr "$IP" "[{\"number\":5,\"title\":\"t\",\"state\":\"MERGED\",\"baseRefName\":\"integ\",\"body\":\"tanpa kata kunci\",\"closingIssuesReferences\":[{\"number\":1}],\"labels\":[],\"comments\":[$BE]}]" --test-cmd true; ok "review#1: rilis: issue sensitif via closingIssuesReferences tanpa laporan -> BELUM SIAP" $? 1
 cd "$root" || exit 1
 
 # 2c. install-permissions.sh: gabung tanpa menimpa, idempoten

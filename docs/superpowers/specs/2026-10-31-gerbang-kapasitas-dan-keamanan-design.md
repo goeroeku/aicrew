@@ -71,7 +71,7 @@ Regex dan ambang pemindaian rahasia; kata-kata tepat prompt `aicrew-perf`; letak
 
 ## Keputusan owner atas dua pertanyaan terakhir **[owner: "ikut rekomendasi", rekomendasinya dari saya]**
 1. **Pengecualian (waiver) ada, tetapi sempit.** Hanya owner yang boleh menulisnya, dalam bentuk komentar PR
-   `Pengecualian disetujui owner: <alasan> (Commit: <sha>)`. Terikat ke head PR (komit baru = batal), wajib beralasan, dan
+   `Pengecualian disetujui owner (perf|rahasia): <alasan> (Commit: <sha>)` (cakupan wajib; satu waiver tidak menutup cakupan lain, hasil review). Terikat ke head PR (komit baru = batal), wajib beralasan, dan
    dicetak di bagian tersendiri pada laporan rilis supaya tidak tersembunyi. Berlaku untuk gerbang perf dan temuan pemindai rahasia;
    tidak berlaku untuk label yang tak terbaca (fail-closed tetap). Agen dilarang menulis komentar ini (aturan tertulis di prompt role;
    skrip tidak bisa membedakan penulis, lihat Risiko).

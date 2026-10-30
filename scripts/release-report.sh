@@ -15,7 +15,7 @@ while [ $# -gt 0 ]; do case "$1" in
 g="$(git rev-parse --git-common-dir)" && d="$(cd "$g/.." && pwd)/.aicrew"; mkdir -p "$d"; [ -n "$out" ] || out="$d/release-report.md"
 
 issues="$(gh issue list --state all --limit 200 --json number,title,state,labels)" || { echo "release-report: gagal membaca issue (BELUM SIAP)" >&2; exit 1; }
-prs="$(gh pr list --state all --limit 200 --json number,title,state,baseRefName,comments,body,labels)" || { echo "release-report: gagal membaca PR (BELUM SIAP)" >&2; exit 1; }
+prs="$(gh pr list --state all --limit 200 --json number,title,state,baseRefName,comments,body,labels,closingIssuesReferences)" || { echo "release-report: gagal membaca PR (BELUM SIAP)" >&2; exit 1; }
 merged="$(jq --arg b "$integ" '[.[]|select(.state=="MERGED" and .baseRefName==$b)]' <<<"$prs")"
 has() { jq --arg l "$1" 'map(select(.labels|map(.name)|index($l)))' <<<"$2"; }
 blocking="$(jq '[.[]|select(.state=="OPEN" and ((.labels|map(.name)|index("di-integrasi"))|not))]' <<<"$issues")"
@@ -27,13 +27,14 @@ audit="$(jq -n --argjson prs "$merged" --argjson iss "$issues" '
   def has_line(re): any(.comments[]?; (.body // "") | test("(^|\n)" + re));
   def first_line(re): ([.comments[]?.body // "" | split("\n")[] | select(test(re))] | first) // "";
   [ $prs[] | . as $p
-    | ([ ($p.body // "") | split("\n")[] | select(test("(close[sd]?|fix(e[sd])?|resolve[sd]?) +#[0-9]"; "i")) | scan("#([0-9]+)") | .[0] | tonumber ]) as $ns
+    | ([ ($p.body // "") | split("\n")[] | select(test("(close[sd]?|fix(e[sd])?|resolve[sd]?):? +#[0-9]"; "i")) | scan("#([0-9]+)") | .[0] | tonumber ] + [ $p.closingIssuesReferences[]?.number ]) as $ns
     | (($p.labels // [] | map(.name)) + [ $iss[] | select(.number as $n | $ns | index($n)) | .labels[]?.name ]) as $L
     | { n: $p.number, title: ($p.title // ""), sec: (($L | index("needs-security")) != null), perf: (($L | index("needs-perf")) != null),
         sec_ok: ($p | has_line("Laporan security: lulus")), perf_ok: ($p | has_line("Laporan perf: lulus")),
-        waiver: ($p | first_line("^Pengecualian disetujui owner: ")), tuning: ($p | first_line("^Tuning:")) }
+        waiver_perf: ($p | has_line("Pengecualian disetujui owner \\(perf\\): ")), tuning: ($p | first_line("^Tuning:")) }
     | select(.sec or .perf) ]')" || { echo "release-report: gagal menyusun jejak audit (BELUM SIAP)" >&2; exit 1; }
-missing="$(jq '[.[]|select((.sec and (.sec_ok|not)) or (.perf and ((.perf_ok or (.waiver != ""))|not)))]' <<<"$audit")"
+waivers="$(jq '[.[]|{n:.number, w:([.comments[]?.body // "" | split("\n")[] | select(test("^Pengecualian disetujui owner \\((perf|rahasia)\\): "))])}|select(.w|length>0)]' <<<"$merged")" || { echo "release-report: gagal menyusun waiver (BELUM SIAP)" >&2; exit 1; }
+missing="$(jq '[.[]|select((.sec and (.sec_ok|not)) or (.perf and ((.perf_ok or .waiver_perf)|not)))]' <<<"$audit")"
 
 # suite di salinan segar dari cabang integrasi
 suite="tidak dijalankan (tanpa --test-cmd)"; suite_ok=0; sha="?"
@@ -83,9 +84,9 @@ fi
   echo; echo "## Keputusan otomatis (tinjau sebelum merge)"
   [ "$(jq length <<<"$auto")" = 0 ] && echo "- tidak ada" || jq -r '.[]|"- #\(.number) \(.title)"' <<<"$auto"
   echo; echo "## Jejak audit (needs-security / needs-perf)"
-  [ "$(jq length <<<"$audit")" = 0 ] && echo "- tidak ada PR berlabel" || jq -r '.[]|"- #\(.n) \(.title) | security: \(if .sec then (if .sec_ok then "lulus" else "TIDAK ADA" end) else "-" end) | perf: \(if .perf then (if .perf_ok then "lulus" elif .waiver != "" then "WAIVER owner" else "TIDAK ADA" end) else "-" end) | \(if .tuning == "" then "Tuning: -" else .tuning end)"' <<<"$audit"
+  [ "$(jq length <<<"$audit")" = 0 ] && echo "- tidak ada PR berlabel" || jq -r '.[]|"- #\(.n) \(.title) | security: \(if .sec then (if .sec_ok then "lulus" else "TIDAK ADA" end) else "-" end) | perf: \(if .perf then (if .perf_ok then "lulus" elif .waiver_perf then "WAIVER owner (perf)" else "TIDAK ADA" end) else "-" end) | \(if .tuning == "" then "Tuning: -" else .tuning end)"' <<<"$audit"
   echo; echo "## Pengecualian owner (waiver)"
-  [ "$(jq '[.[]|select(.waiver != "")]|length' <<<"$audit")" = 0 ] && echo "- tidak ada" || jq -r '.[]|select(.waiver != "")|"- #\(.n): \(.waiver)"' <<<"$audit"
+  [ "$(jq length <<<"$waivers")" = 0 ] && echo "- tidak ada" || jq -r '.[]|.n as $n|.w[]|"- #\($n): \(.)"' <<<"$waivers"
   echo; echo "## Daftar periksa (diisi agen; skrip hanya memvonis fakta di atas)"; echo "$checklist"
   echo; echo "Merge ke \`$base\` oleh owner. Laporan ini dibuat otomatis oleh aicrew."
 } > "$out"
