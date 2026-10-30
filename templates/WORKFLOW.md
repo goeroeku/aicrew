@@ -31,7 +31,7 @@ Dibuat oleh `aicrew:kickoff`. Keputusan project ini; menimpa bawaan aicrew.
 - Tulis apa dan kenapa, bukan bagaimana (kecuali task berisiko).
 
 ## Label
-`role:*`, `stack:*`, `phase:*`, `needs-principal`, `needs-security`, `keputusan-otomatis`, `bug`, `enhancement`, `in-progress`, `in-review`, `di-integrasi`
+`role:*`, `stack:*`, `phase:*`, `needs-principal`, `needs-security`, `needs-perf`, `keputusan-otomatis`, `bug`, `enhancement`, `in-progress`, `in-review`, `di-integrasi`
 (GitLab: pakai scoped label `role::qa`, dst.)
 
 ## Gerbang persetujuan owner
@@ -40,7 +40,7 @@ Dibuat oleh `aicrew:kickoff`. Keputusan project ini; menimpa bawaan aicrew.
 3. Cabang integrasi: {{nama, mis. fitur-x-integrasi | tidak ada}}. Issue yang saling bergantung menumpuk di sini,
    bukan di `main`. Merge PR ke cabang integrasi: {{owner | agen-setelah-QA}}. Bawaan: owner (persetujuan manual).
    `agen-setelah-QA`: agen merge sendiri hanya bila suite penuh hijau, `aicrew-qa` lulus (dan `aicrew-security`
-   untuk perubahan sensitif, yaitu berlabel `needs-security`), tanpa `needs-principal`. Izin Bash terpasang di
+   untuk perubahan sensitif, yaitu berlabel `needs-security`; `aicrew-perf` untuk `needs-perf`), tanpa `needs-principal`. Izin Bash terpasang di
    {{berkas settings, mis. `.claude/settings.local.json`: `Bash(gh pr merge:*)`}} (izin lewat chat tidak berlaku).
 4. Merge cabang integrasi / PR ke `main` dan pindah ke Done: {{owner | aturan otomatis}}. Bawaan: owner.
    Merge ke `main` memicu: {{tidak ada | nama workflow (mis. deploy)}}.
@@ -49,10 +49,18 @@ Dibuat oleh `aicrew:kickoff`. Keputusan project ini; menimpa bawaan aicrew.
 Dijalankan pada tahap penutup, sebelum PR `integrasi → main` dibuka. Item boleh diganti per project; `release-report.sh` mencetaknya sebagai kotak kosong untuk diisi agen.
 - Build bersih di salinan segar
 - Aplikasi dijalankan lokal; smoke test lulus (UI: screenshot dibaca)
-- aicrew-security: auth, input, rahasia, dependensi
+- aicrew-security: auth, input, rahasia, dependensi; hardening dan log audit untuk `needs-security`
+- aicrew-perf: anggaran I/O, config default, uji beban di server nyata (angka, bukan perkiraan)
 - Tidak ada rahasia di repo
 - Runbook singkat: cara jalan, konfigurasi, rollback
 - Setiap kriteria PRD dicentang dengan perintah dan hasilnya
+
+## Batas perangkat keras
+Diisi saat kickoff. "tidak diketahui" = belum diukur; `aicrew-perf` tidak boleh menyatakan klaim kapasitas `lulus` bila batas yang relevan tidak diketahui.
+- IOPS disk (tulis/baca): {{angka | tidak diketahui}}
+- RAM host dan batas container: {{angka | tidak diketahui}}
+- Tier/jenis volume dan opsi mount (mis. `discard`): {{nilai | tidak diketahui}}
+- Batas lain (koneksi DB, bandwidth, CPU): {{nilai | tidak diketahui}}
 
 ## Aturan berhenti (agen menandai issue, lanjut ke task lain, owner dikabari)
 - Label `needs-principal` (dua tingkat): (1) keputusan desain di dalam batas PRD (skema data, bentuk API internal,
@@ -78,4 +86,4 @@ Satu arah (keluar); kendali dari HP lewat Remote Control, bukan bot.
 
 ## Model per role
 principal=opus (hanya `needs-principal`) · senior-coder=codex jika ada, else sonnet ·
-qa=haiku · security=sonnet · devops=sonnet · ui-ux=sonnet
+qa=haiku · security=sonnet · perf=sonnet · devops=sonnet · ui-ux=sonnet

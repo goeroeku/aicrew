@@ -39,6 +39,7 @@ Jangan memecah PRD yang belum disetujui; bila `Status PRD` tidak tercatat, tanya
    supaya rantai tidak macet menunggu merge ke `main`.
 6. Beri label `role:*`, `stack:*`, `phase:*` (+ `needs-principal` bila perlu). Issue yang menyentuh auth/otorisasi, input di batas
    kepercayaan, rahasia, dependensi baru, uang, atau data pribadi diberi `needs-security`: penandaan ini keputusan breakdown, bukan tebakan saat eksekusi.
+   Issue yang menyentuh jalur tulis DB, antrean/worker/polling, cron, atau config infra (Postgres, Redis, limit container) diberi `needs-perf` dengan alasan yang sama.
    Judul dan isi issue memakai bahasa artefak di `WORKFLOW.md` (bawaan Inggris).
 7. **Tampilkan rencana dulu** (tabel: no, judul, role, wave, blocked-by, file) dan minta persetujuan
    owner. Membuat issue di backend itu tindakan keluar: jangan dijalankan sebelum disetujui.

@@ -203,8 +203,18 @@ for f in templates/WORKFLOW.md skills/kickoff/SKILL.md skills/orchestrate/SKILL.
 grep -q 'keputusan-otomatis' templates/WORKFLOW.md && grep -q 'keputusan-otomatis' skills/orchestrate/SKILL.md && grep -q 'keputusan-otomatis' scripts/release-report.sh; ok "label keputusan-otomatis konsisten (template, skill, laporan rilis)" $? 0
 for k in skills/*/SKILL.md; do head -1 "$k" | grep -q '^---$'; ok "frontmatter $k" $? 0; done
 
+# gerbang kapasitas dan keamanan: role perf, label, bagian host, artefak bukti
+head -6 agents/perf.md | grep -q '^name: aicrew-perf$' && head -6 agents/perf.md | grep -q '^model: sonnet$'; ok "perf: frontmatter aicrew-perf, sonnet" $? 0
+head -6 agents/perf.md | grep '^tools:' | grep -Eq 'Edit|Write'; ok "perf: read-only (tanpa Edit/Write)" $? 1
+for f in templates/WORKFLOW.md skills/breakdown/SKILL.md skills/orchestrate/SKILL.md agents/perf.md; do grep -q 'needs-perf' "$f"; ok "needs-perf disebut di $f" $? 0; done
+for f in templates/WORKFLOW.md skills/kickoff/SKILL.md; do grep -q 'Batas perangkat keras' "$f"; ok "Batas perangkat keras disebut di $f" $? 0; done
+grep -q 'perf' README.md && grep -q 'perf' skills/kickoff/SKILL.md && grep -q 'perf=sonnet' templates/WORKFLOW.md; ok "role perf terdaftar (README, kickoff, model per role)" $? 0
+grep -q 'Tuning:' agents/perf.md && grep -q 'Angka sebelum/sesudah:' agents/perf.md && grep -q 'Commit:' agents/perf.md; ok "perf: format vonis memuat Angka, Tuning, Commit" $? 0
+grep -qi 'log audit' agents/security.md && grep -q 'Commit:' agents/security.md; ok "security: log audit dan Commit di daftar/format" $? 0
+grep -q 'Laporan perf: lulus' skills/orchestrate/SKILL.md && grep -q 'Pengecualian disetujui owner' skills/orchestrate/SKILL.md; ok "orchestrate: vonis perf dan larangan agen menulis waiver" $? 0
+
 # Atribusi AI dilarang: aturan harus ada di agen penulis kode dan prompt Codex
-for f in agents/senior-coder.md agents/ui-ux.md agents/devops.md templates/codex-prompt.md; do
+for f in agents/senior-coder.md agents/ui-ux.md agents/devops.md agents/perf.md templates/codex-prompt.md; do
   grep -q "Tanpa atribusi AI" "$f"; ok "aturan tanpa atribusi AI di $f" $? 0
 done
 
