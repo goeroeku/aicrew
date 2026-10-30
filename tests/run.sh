@@ -29,7 +29,7 @@ case "$*" in
   *body*) printf '%s\n' "$BODY" ;;
 esac
 EOF
-chmod +x "$tmp/bin/gh"; P="$tmp/bin:$PATH"; M="bash $root/scripts/pr-merge-check.sh"
+chmod +x "$tmp/bin/gh"; mkdir "$tmp/pmb"; cp "$tmp/bin/gh" "$tmp/pmb/gh"; P="$tmp/bin:$PATH"; M="bash $root/scripts/pr-merge-check.sh"
 BASE=integrasi BODY="Closes #1" PATH="$P" $M 9 integrasi >/dev/null; ok "pr-merge: basis benar" $? 0
 BASE=main BODY="Closes #1" PATH="$P" $M 9 integrasi >/dev/null; ok "pr-merge: basis salah -> exit 1" $? 1
 out="$(BASE=integrasi BODY="Closes #4, #5" PATH="$P" $M 9 integrasi)"
@@ -326,7 +326,7 @@ for s in $(grep -rhoE 'scripts/[a-z-]+\.sh' skills templates agents hooks 2>/dev
   [ -f "$s" ]; ok "dirujuk ada: $s" $? 0
 done
 for f in templates/WORKFLOW.md skills/kickoff/SKILL.md skills/orchestrate/SKILL.md agents/principal.md; do grep -q 'principal-auto\|ESKALASI' "$f"; ok "principal-auto disebut di $f" $? 0; done
-grep -q 'keputusan-otomatis' templates/WORKFLOW.md && grep -q 'keputusan-otomatis' skills/orchestrate/SKILL.md && grep -q 'keputusan-otomatis' scripts/release-report.sh; ok "label keputusan-otomatis konsisten (template, skill, laporan rilis)" $? 0
+grep -q 'keputusan-otomatis' templates/WORKFLOW.md && grep -q 'keputusan-otomatis' skills/orchestrate/SKILL.md && grep -q 'keputusan-otomatis' scripts/label.sh; ok "label keputusan-otomatis konsisten (template, skill, laporan rilis)" $? 0
 for k in skills/*/SKILL.md; do head -1 "$k" | grep -q '^---$'; ok "frontmatter $k" $? 0; done
 
 # gerbang kapasitas dan keamanan: role perf, label, bagian host, artefak bukti
@@ -357,5 +357,106 @@ echo '{"tool_input":{"command":"git commit -m \"x\n\nCo-Authored-By: Bot\""}}' |
 echo '{"tool_input":{"command":"gh pr create --body \"Generated with Bot\""}}' | $G 2>/dev/null; ok "guard: PR dengan Generated with -> exit 2" $? 2
 echo '{"tool_input":{"command":"git commit -m \"fix bug\""}}' | $G; ok "guard: commit bersih lolos" $? 0
 echo '{"tool_input":{"command":"grep -r co-authored ."}}' | $G; ok "guard: perintah lain lolos" $? 0
+
+# 3. perbaikan dari pilot Nexora (0.4.0)
+cd "$root" || exit 1
+# 3a. notify.sh: driver telegram | orca | both (orca palsu merekam argumen)
+mkdir -p "$tmp/nb3"; printf '#!/bin/sh\necho "$@" >> "$ORCA_LOG"\n' > "$tmp/nb3/orca"; printf '#!/bin/sh\necho "$@" >> "$CURL_LOG"\n' > "$tmp/nb3/curl"; chmod +x "$tmp/nb3/orca" "$tmp/nb3/curl"
+n3() { : > "$tmp/o.log"; : > "$tmp/c.log"; echo '{"message":"uji","cwd":"/w/x"}' | env -i PATH="$tmp/nb3:$PATH" ORCA_LOG="$tmp/o.log" CURL_LOG="$tmp/c.log" AICREW_ORCA_BIN="$tmp/nb3/orca" "$@" bash "$root/scripts/notify.sh"; }
+n3 AICREW_NOTIFY=orca; ok "notify orca: worktree set path:<cwd> --unread --comment" "$(grep -c -- 'worktree set --worktree path:/w/x --unread --comment aicrew: uji' "$tmp/o.log")" 1
+ok "notify orca: tanpa Telegram" "$(grep -c . "$tmp/c.log")" 0
+n3 AICREW_NOTIFY=both AICREW_TG_TOKEN=t AICREW_TG_CHAT=1; ok "notify both: orca dan telegram" "$(grep -c . "$tmp/o.log")$(grep -c 'bott/sendMessage' "$tmp/c.log")" 11
+n3 AICREW_TG_TOKEN=t AICREW_TG_CHAT=1; ok "notify bawaan: telegram saja" "$(grep -c . "$tmp/o.log")$(grep -c . "$tmp/c.log")" 01
+n3 CLAUDE_PLUGIN_OPTION_NOTIFY=orca; ok "notify: opsi plugin notify=orca" "$(grep -c . "$tmp/o.log")" 1
+n3 AICREW_NOTIFY=orca AICREW_ORCA_BIN="$tmp/tidak-ada"; ok "notify orca: biner tak ada -> exit 0" $? 0
+jq -e '.userConfig.notify' .claude-plugin/plugin.json >/dev/null; ok "plugin.json: opsi notify" $? 0
+
+# 3b. board-init.sh membuat view BOARD (gh palsu); "Item closed" tidak bisa lewat API -> terdokumentasi
+mkdir -p "$tmp/bi" "$tmp/bib"; cat > "$tmp/bib/gh" <<'EOF'
+#!/usr/bin/env bash
+echo "$*" >> "$FAKE/calls"
+case "$*" in
+  "repo view"*) echo o/r ;;
+  "project create"*) echo 3 ;;
+  "project view"*) echo PID ;;
+  "project field-list"*) echo '{"fields":[{"name":"Status","id":"F1","options":[{"name":"Backlog"},{"name":"Ready"},{"name":"In progress"},{"name":"In review"},{"name":"Done"}]}]}' ;;
+  "api graphql --input"*) cat >> "$FAKE/gql" ;;
+  "api graphql"*) echo "${VIEWS:-[]}" ;;
+esac
+EOF
+chmod +x "$tmp/bib/gh"; export FAKE="$tmp/bi"; : > "$FAKE/calls"; : > "$FAKE/gql"
+PATH="$tmp/bib:$PATH" bash "$root/scripts/board-init.sh" o T 3 >/dev/null; ok "board-init: createProjectV2View BOARD_LAYOUT" "$(grep -c 'createProjectV2View' "$FAKE/gql")$(grep -c 'BOARD_LAYOUT' "$FAKE/gql")" 11
+: > "$FAKE/gql"; VIEWS='["BOARD_LAYOUT"]' PATH="$tmp/bib:$PATH" bash "$root/scripts/board-init.sh" o T 3 >/dev/null; ok "board-init: idempoten (view BOARD sudah ada)" "$(grep -c 'createProjectV2View' "$FAKE/gql")" 0
+grep -q 'deleteProjectV2Workflow' README.md && grep -q 'Item closed' README.md; ok "README: workflow 'Item closed' tak bisa diaktifkan lewat API" $? 0
+
+# 3c. preflight: peringatan Orca (agen diluncurkan dengan --dangerously-skip-permissions)
+mkdir -p "$tmp/home/orca/workspaces/p" "$tmp/plain"; git init -q "$tmp/home/orca/workspaces/p"; git init -q "$tmp/plain"
+out="$(cd "$tmp/home/orca/workspaces/p" && bash "$root/scripts/preflight.sh" 2>&1)"; case "$out" in *dangerously-skip-permissions*) r=ada ;; *) r=tidak ;; esac; ok "preflight: di workspace Orca -> peringatan" $r ada
+out="$(cd "$tmp/plain" && bash "$root/scripts/preflight.sh" 2>&1)"; case "$out" in *dangerously-skip-permissions*) r=ada ;; *) r=tidak ;; esac; ok "preflight: repo biasa tanpa peringatan Orca" $r tidak
+
+# 3d. install-permissions: basis worktree absolut, izin merge per mode, deny baru
+IP() { (cd "$1" && bash "$root/scripts/install-permissions.sh" "$2" >/dev/null); }
+mkdir -p "$tmp/ip1/docs" "$tmp/ip2/docs"; git init -q "$tmp/ip1"; git init -q "$tmp/ip2"
+printf -- '- Basis worktree: /opt/orca/ws/ip1\n- Merge PR ke cabang integrasi: agen-setelah-QA.\n' > "$tmp/ip1/docs/WORKFLOW.md"
+printf -- '- Merge PR ke cabang integrasi: owner.\n' > "$tmp/ip2/docs/WORKFLOW.md"
+IP "$tmp/ip1" "$tmp/ip1/s.json"; IP "$tmp/ip2" "$tmp/ip2/s.json"
+jq -e '.permissions.allow|index("Read(//opt/orca/ws/ip1/ip1-wt-*/**)")!=null' "$tmp/ip1/s.json" >/dev/null; ok "install-permissions: __REPO_PARENT__ dari Basis worktree" $? 0
+jq -e '.permissions.allow|index("Bash(gh pr merge:*)")!=null' "$tmp/ip1/s.json" >/dev/null; ok "install-permissions: mode agen-setelah-QA mengizinkan gh pr merge" $? 0
+jq -e '.permissions.allow|index("Bash(gh pr merge:*)")==null' "$tmp/ip2/s.json" >/dev/null; ok "install-permissions: mode owner tanpa gh pr merge" $? 0
+for d in "gh repo delete" "gh ssh-key" "gh gist" "gh auth login" "gh auth token"; do
+  jq -e --arg d "Bash($d:*)" '.permissions.deny|index($d)!=null' "$tmp/ip2/s.json" >/dev/null; ok "izin: deny $d" $? 0
+done
+jq -e '.permissions.allow|index("Bash(gh auth status:*)")!=null' "$tmp/ip2/s.json" >/dev/null; ok "izin: gh auth status tetap diizinkan" $? 0
+
+# 3e. ensure-gitignore.sh (kickoff): .aicrew/ dan .claude/settings.local.json, idempoten
+mkdir -p "$tmp/gi"; printf 'node_modules\n' > "$tmp/gi/.gitignore"
+bash "$root/scripts/ensure-gitignore.sh" "$tmp/gi" >/dev/null; bash "$root/scripts/ensure-gitignore.sh" "$tmp/gi" >/dev/null
+ok "gitignore: dua entri, sekali saja, isi lama utuh" "$(grep -cxF -e '.aicrew/' -e '.claude/settings.local.json' -e node_modules "$tmp/gi/.gitignore")" 3
+mkdir -p "$tmp/gi2"; bash "$root/scripts/ensure-gitignore.sh" "$tmp/gi2" >/dev/null; ok "gitignore: dibuat bila belum ada" "$(wc -l < "$tmp/gi2/.gitignore" | tr -d ' ')" 2
+grep -q 'ensure-gitignore.sh' skills/kickoff/SKILL.md; ok "kickoff memanggil ensure-gitignore.sh" $? 0
+
+P="$tmp/pmb:$PATH"
+# 3f. risk:L0/L1/L2: breakdown memberi label, auto-merge menolak L2 (pr-merge-check.sh --auto)
+for l in risk:L0 risk:L1 risk:L2; do grep -q "$l" skills/breakdown/SKILL.md && grep -q "$l" templates/WORKFLOW.md; ok "label $l di breakdown dan WORKFLOW" $? 0; done
+a() { env BASE=integrasi BODY="Closes #1" HEAD=abc1234567 "$@" PATH="$P" bash "$root/scripts/pr-merge-check.sh" 9 integrasi --auto >/dev/null; }
+a ISSL=risk:L2; ok "auto-merge: issue risk:L2 -> exit 1" $? 1
+a PRL=risk:L2; ok "auto-merge: PR risk:L2 -> exit 1" $? 1
+a ISSL=risk:L1; ok "auto-merge: risk:L1 lolos" $? 0
+g ISSL=risk:L2; ok "merge manual: risk:L2 tidak ditahan oleh gerbang" $? 0
+grep -q -- '--auto' skills/orchestrate/SKILL.md; ok "orchestrate: auto-merge memakai --auto" $? 0
+
+# 3g. board.sh --sync: issue ditutup tanpa PR -> Done bila 'Kartu Done: agen-setelah-merge'
+mkdir -p "$tmp/bs/docs" "$tmp/bsb"; git init -q "$tmp/bs"; cat > "$tmp/bsb/gh" <<'EOF'
+#!/usr/bin/env bash
+echo "$*" >> "$FAKE/calls"
+case "$*" in
+  "repo view"*) echo o/r ;;
+  "project view"*) echo PID ;;
+  "project field-list"*) echo '{"fields":[{"name":"Status","id":"F1","options":[{"name":"In review","id":"O1"},{"name":"Done","id":"OD"}]}]}' ;;
+  "project item-list"*) echo '{"items":[{"id":"I5","status":"In review","content":{"number":5,"type":"Issue"}},{"id":"I6","status":"In review","content":{"number":6,"type":"Issue"}},{"id":"I7","status":"Done","content":{"number":7,"type":"Issue"}}]}' ;;
+  "issue list"*) echo '[{"number":5,"closedByPullRequestsReferences":[]},{"number":6,"closedByPullRequestsReferences":[{"number":9}]},{"number":7,"closedByPullRequestsReferences":[]}]' ;;
+esac
+EOF
+chmod +x "$tmp/bsb/gh"; export FAKE="$tmp/bs"; : > "$FAKE/calls"
+printf -- '- Kartu Done: agen-setelah-merge.\n' > "$tmp/bs/docs/WORKFLOW.md"
+(cd "$tmp/bs" && PATH="$tmp/bsb:$PATH" bash "$root/scripts/board.sh" o 3 --sync >/dev/null)
+ok "board --sync: hanya #5 (tanpa PR, belum Done) dipindah" "$(grep 'item-edit' "$FAKE/calls" | grep -c 'I5.*OD')$(grep -c 'item-edit' "$FAKE/calls")" 11
+: > "$FAKE/calls"; printf -- '- Kartu Done: owner.\n' > "$tmp/bs/docs/WORKFLOW.md"
+(cd "$tmp/bs" && PATH="$tmp/bsb:$PATH" bash "$root/scripts/board.sh" o 3 --sync >/dev/null); ok "board --sync: Kartu Done owner -> tidak ada perubahan" "$(grep -c 'item-edit' "$FAKE/calls")" 0
+
+# 3h. nama label dapat dikonfigurasi (label.sh, release-report, autopilot, skill)
+mkdir -p "$tmp/lb/docs"; printf -- '- Label integrasi: integrated\n- Label keputusan otomatis: auto-decided\n' > "$tmp/lb/docs/WORKFLOW.md"
+L() { (cd "$tmp/lb" && env -u AICREW_LABEL_INTEGRATED "$@" bash "$root/scripts/label.sh" "$LK"); }
+LK=integrated; ok "label.sh: dari WORKFLOW.md" "$(L)" integrated
+LK=auto; ok "label.sh: keputusan otomatis dari WORKFLOW.md" "$(L)" auto-decided
+LK=integrated; ok "label.sh: env menang" "$(L AICREW_LABEL_INTEGRATED=zzz)" zzz
+LK=integrated; ok "label.sh: bawaan di-integrasi" "$(cd "$tmp/plain" && bash "$root/scripts/label.sh" integrated)" di-integrasi
+LK=auto; ok "label.sh: bawaan keputusan-otomatis" "$(cd "$tmp/plain" && bash "$root/scripts/label.sh" auto)" keputusan-otomatis
+! grep -q '"di-integrasi"\|has keputusan-otomatis' scripts/release-report.sh scripts/autopilot.sh; ok "release-report/autopilot tanpa nama label tertanam" $? 0
+grep -q 'label.sh' scripts/release-report.sh && grep -q 'label.sh' scripts/autopilot.sh && grep -q 'Label integrasi' templates/WORKFLOW.md; ok "label.sh dipakai skrip dan WORKFLOW" $? 0
+
+# 3i. ISSUE.md: boilerplate keamanan untuk issue discovery yang membaca repo lain
+grep -q '\.env' templates/ISSUE.md && grep -qi 'data' templates/ISSUE.md && grep -qi 'riwayat git' templates/ISSUE.md; ok "ISSUE.md: boilerplate keamanan discovery" $? 0
+cd "$root" || exit 1
 
 [ "$fails" = 0 ] && echo "SEMUA LULUS" || { echo "$fails GAGAL"; exit 1; }

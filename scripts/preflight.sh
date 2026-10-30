@@ -13,6 +13,7 @@ for f in .github/workflows/*.y*ml; do [ -f "$f" ] || continue
   grep -qE '^[[:space:]]*push:' "$f" && grep -qE 'branches:.*(main|master)|^[[:space:]]*-[[:space:]]*(main|master)[[:space:]]*$' "$f" \
     && say AWAS "$f jalan saat push ke main/master: merge ke main memicunya (deploy?)"
 done
+case "$PWD$(git worktree list 2>/dev/null)" in *orca/workspaces/*) say AWAS "workspace Orca: Orca meluncurkan agen dengan --dangerously-skip-permissions secara bawaan, sehingga aturan deny di settings TIDAK ditegakkan; matikan flag itu di pengaturan agen Orca" ;; esac
 
 case "$backend" in
   github)

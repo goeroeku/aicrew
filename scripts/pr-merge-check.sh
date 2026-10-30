@@ -2,6 +2,7 @@
 # aicrew pr-merge-check: cegah merge PR bertumpuk tersasar (GitHub/gh saja).
 #   pr-merge-check.sh <pr> <cabang-tujuan>          sebelum merge: exit 1 bila basis PR != tujuan, atau PR/issue yang ditutupnya
 #                                                   berlabel needs-security/needs-perf tanpa laporan lulus untuk head PR (waiver owner bercakupan perf atau rahasia)
+#   pr-merge-check.sh <pr> <cabang-tujuan> --auto   seperti mode pertama, dan menolak PR/issue berlabel risk:L2 (auto-merge tidak boleh)
 #   pr-merge-check.sh <pr> <cabang-tujuan> --after  setelah merge: exit 1 bila commit merge tak ada di origin/<tujuan>
 set -u
 pr="${1:?pr}"; dst="${2:?cabang-tujuan}"
@@ -28,6 +29,7 @@ else
     l="$(gh issue view "$n" --json labels -q '.labels[].name')" || fail "label issue #$n tak terbaca"
     labels="$labels"$'\n'"$l"
   done
+  if [ "${3:-}" = "--auto" ] && grep -qix "risk:L2" <<<"$labels"; then fail "risk:L2: auto-merge ditolak; minta owner merge"; fi
   comments="$(gh pr view "$pr" --json comments)" || fail "komentar PR #$pr tak terbaca"
   sha_ok() { [ "${#1}" -ge 7 ] && case "$head" in "$1"*) return 0 ;; esac; return 1; }
   # verdict_ok <awalan> <wajib-angka-dan-tuning:0|1>: vonis TERAKHIR untuk head menang. lulus = satu komentar memuat vonis lulus (tanpa gagal),

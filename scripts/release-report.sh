@@ -6,6 +6,7 @@
 # penilaian (keamanan, smoke test, runbook) dicetak sebagai kotak kosong untuk diisi agen; skrip hanya memvonis fakta.
 # Exit: 0 SIAP, 1 BELUM SIAP, 64 argumen/cabang tidak diketahui.
 set -u
+here="$(cd "$(dirname "$0")" && pwd)"; L_INT="$(bash "$here/label.sh" integrated)"; L_AUTO="$(bash "$here/label.sh" auto)"
 integ=""; testcmd=""; out=""; base=main; open_pr=0; dry=0; wf=docs/WORKFLOW.md
 while [ $# -gt 0 ]; do case "$1" in
   --integ) integ="$2"; shift 2 ;; --test-cmd) testcmd="$2"; shift 2 ;; --out) out="$2"; shift 2 ;; --base) base="$2"; shift 2 ;;
@@ -18,9 +19,9 @@ issues="$(gh issue list --state all --limit 200 --json number,title,state,labels
 prs="$(gh pr list --state all --limit 200 --json number,title,state,baseRefName,comments,body,labels,closingIssuesReferences)" || { echo "release-report: gagal membaca PR (BELUM SIAP)" >&2; exit 1; }
 merged="$(jq --arg b "$integ" '[.[]|select(.state=="MERGED" and .baseRefName==$b)]' <<<"$prs")"
 has() { jq --arg l "$1" 'map(select(.labels|map(.name)|index($l)))' <<<"$2"; }
-blocking="$(jq '[.[]|select(.state=="OPEN" and ((.labels|map(.name)|index("di-integrasi"))|not))]' <<<"$issues")"
+blocking="$(jq --arg l "$L_INT" '[.[]|select(.state=="OPEN" and ((.labels|map(.name)|index($l))|not))]' <<<"$issues")"
 needs="$(jq '[.[]|select(.state=="OPEN")]' <<<"$issues" | jq 'map(select(.labels|map(.name)|index("needs-principal")))')"
-auto="$(has keputusan-otomatis "$issues")"
+auto="$(has "$L_AUTO" "$issues")"
 noevid="$(jq '[.[]|select((.comments|map(.body)|map(contains("Bukti selesai"))|any)|not)]' <<<"$merged")"
 # jejak audit: PR ter-merge berlabel needs-security/needs-perf (label PR + issue yang ditutup badan PR) dan bukti laporannya
 audit="$(jq -n --argjson prs "$merged" --argjson iss "$issues" '

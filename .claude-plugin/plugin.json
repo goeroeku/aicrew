@@ -1,7 +1,7 @@
 {
   "name": "aicrew",
   "displayName": "aiCrew",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Brainstorm, PRD, breakdown ke issue, dan eksekusi paralel dengan role (principal, senior-coder, qa, security, perf, devops, ui-ux).",
   "author": {
     "name": "goeroeku"
@@ -30,6 +30,11 @@
       "type": "string",
       "title": "Chat ID Telegram (opsional)",
       "description": "ID chat tujuan notifikasi. Kosongkan bila tidak dipakai."
+    },
+    "notify": {
+      "type": "string",
+      "title": "Driver notifikasi (opsional)",
+      "description": "telegram (bawaan), orca, atau both. Orca menandai workspace belum dibaca; Telegram butuh token dan chat ID."
     }
   }
 }

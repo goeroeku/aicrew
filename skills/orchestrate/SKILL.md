@@ -45,13 +45,14 @@ issue terbuka → laporkan penyumbatnya dan berhenti.
    Lalu `budget.sh iter`.
 2. Worktree: baca baris `Worktree:` di `WORKFLOW.md`.
    - `dibuat orkestrator`: `git fetch origin <basis>` lalu `git worktree add ../<repo>-wt-<n> -b issue-<n> origin/<basis>` (basis = cabang integrasi bila ada, selain itu `main`).
+     Bila baris `Basis worktree:` berisi path absolut (mis. di dalam workspace Orca), pakai `<basis-worktree>/<repo>-wt-<n>` sebagai ganti `../<repo>-wt-<n>`; `install-permissions.sh` mengisi izin bacanya dari baris itu.
      Selalu dari `origin/<basis>`, bukan cabang lokal: cabang lokal bisa basi dan tidak memuat PR yang baru ter-merge.
    - `disiapkan manual / Orca`, atau path di bawah `~/orca/workspaces/` pada `git worktree list`: pakai yang sudah disiapkan;
      jangan membuat/memindah di sana. Bila belum ada yang disiapkan, **tanya owner satu kali** (siapkan sendiri, atau
      izinkan dibuat di samping repo di luar `~/orca/workspaces/`), lalu catat jawabannya di baris `Worktree:` agar tidak ditanya lagi.
 3. Pindahkan label ke In Progress (perintah backend dari `WORKFLOW.md`).
    Bila `WORKFLOW.md` punya baris `Board kanban`, cerminkan juga ke board: `bash ${CLAUDE_PLUGIN_ROOT}/scripts/board.sh <owner> <nomor> <issue> "In Progress"`
-   (dan `"In Review"` saat PR dibuka). Gagal → laporkan, lanjut: label tetap sumber status. `Done` hanya oleh owner, kecuali `WORKFLOW.md` menulis `Kartu Done: agen-setelah-merge`: maka setelah merge terverifikasi (`--after` exit 0) pindahkan ke `"Done"`.
+   (dan `"In Review"` saat PR dibuka; `board.sh <owner> <nomor> --sync` mencerminkan issue yang ditutup tanpa PR ke Done bila `Kartu Done: agen-setelah-merge`). Gagal → laporkan, lanjut: label tetap sumber status. `Done` hanya oleh owner, kecuali `WORKFLOW.md` menulis `Kartu Done: agen-setelah-merge`: maka setelah merge terverifikasi (`--after` exit 0) pindahkan ke `"Done"`.
 4. Panggil agen sesuai label `role:*`, dengan model dari `WORKFLOW.md`:
    `aicrew-senior-coder` (Codex bila terpasang: `codex exec -s workspace-write -C <worktree> -o <keluaran> -` dengan
    prompt dari `${CLAUDE_PLUGIN_ROOT}/templates/codex-prompt.md`, diisi lalu dikirim lewat heredoc inline atau path
@@ -99,9 +100,10 @@ ambil alih dengan model Claude sesuai bobot tugas dan sebutkan di laporan.
   `blocked-by` → usulkan satu ke owner dan catat di `WORKFLOW.md` sebelum membuatnya.
 - **Auto-merge (`agen-setelah-QA`)**: hanya bila `WORKFLOW.md` menulisnya dan hanya ke cabang integrasi. Syarat semua terpenuhi
   pada PR itu: suite penuh hijau, laporan `aicrew-qa` lulus, `aicrew-security` lulus bila sensitif (`needs-security`), `aicrew-perf` lulus bila `needs-perf`, tidak ada `needs-principal`,
-  `pr-merge-check.sh` exit 0. Lalu merge, jalankan lagi dengan `--after`, ganti label ke `di-integrasi`. Satu syarat gagal → jangan merge,
+  `pr-merge-check.sh <n> <cabang-tujuan> --auto` exit 0 (menolak `risk:L2`: L2 selalu owner). Lalu merge, jalankan lagi dengan `--after`, ganti label ke `di-integrasi`. Satu syarat gagal → jangan merge,
   kembali ke manual (minta owner). Qa wajib dipanggil di mode ini (tidak boleh dilewati). Merge ke `main` tetap owner.
 - Merge ke `main` dan pindah ke Done mengikuti `WORKFLOW.md`; default: **hanya owner**. Jangan memindahkan ke Done sendiri.
+- Nama label `di-integrasi` dan `keputusan-otomatis` di skill ini adalah bawaan; nama sebenarnya: `bash ${CLAUDE_PLUGIN_ROOT}/scripts/label.sh integrated|auto` (dapat diubah lewat `WORKFLOW.md`).
 - Label status: `in-progress` saat mulai, `in-review` saat PR dibuka, `di-integrasi` setelah PR ter-merge ke cabang
   integrasi (ganti `in-review`). Issue baru ditutup saat merge ke `main`. Buat labelnya bila belum ada.
 - **PR bertumpuk** (issue B bercabang dari issue A yang belum ter-merge): sebelum merge PR apa pun, WAJIB jalankan
