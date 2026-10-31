@@ -479,6 +479,35 @@ e1=$(grep -n 'epic' skills/orchestrate/SKILL.md | head -1 | cut -d: -f1); p4=$(g
 [ -n "$e1" ] && [ "$e1" -lt "$p4" ]; ok "orchestrate: pengecualian epic sebelum prasyarat 4" $? 0
 sed -n '/^## Tahap penutup/p' skills/orchestrate/SKILL.md | grep -q 'epic'; ok "orchestrate: tahap penutup mengabaikan epic" $? 0
 grep -q 'Journey' README.md && grep -q 'FR' README.md; ok "README: Journey dan epic" $? 0
+# 4c. kanban: status epic dihitung dari anak lewat board.sh --sync (gh palsu)
+mkdir -p "$tmp/eb" "$tmp/ebb"; cat > "$tmp/ebb/gh" <<'EOF'
+#!/usr/bin/env bash
+echo "$*" >> "$FAKE/calls"
+case "$*" in
+  "repo view"*) echo o/r ;;
+  "project view"*) echo PID ;;
+  "project field-list"*) echo '{"fields":[{"name":"Status","id":"F1","options":[{"name":"Backlog","id":"OB"},{"name":"In progress","id":"OP"},{"name":"In review","id":"OR"},{"name":"Done","id":"OD"}]}]}' ;;
+  "project item-list"*) cat "$FAKE/items.json" ;;
+  "project item-add"*) echo '{"id":"NEW"}' ;;
+  "issue list --state open --label epic"*) cat "$FAKE/epics.json" ;;
+  "issue list --state all"*) cat "$FAKE/states.json" ;;
+  "issue list"*) echo '[]' ;;
+esac
+EOF
+chmod +x "$tmp/ebb/gh"; export FAKE="$tmp/eb"; mkdir -p "$tmp/eb/w/docs"; git init -q "$tmp/eb/w"; echo '- Kartu Done: owner.' > "$tmp/eb/w/docs/WORKFLOW.md"
+echo '[{"number":20,"body":"## Child issues\n- [ ] #5 a\n- [x] #6 b"}]' > "$FAKE/epics.json"
+ES() { : > "$FAKE/calls"; (cd "$tmp/eb/w" && PATH="$tmp/ebb:$PATH" bash "$root/scripts/board.sh" o 3 --sync >/dev/null); }
+echo '{"items":[{"id":"I20","status":"Backlog","content":{"number":20,"type":"Issue"}},{"id":"I5","status":"In progress","content":{"number":5,"type":"Issue"}}]}' > "$FAKE/items.json"
+echo '[{"number":5,"state":"OPEN"},{"number":6,"state":"CLOSED"}]' > "$FAKE/states.json"; ES
+ok "epic kanban: anak berjalan -> epic In progress" "$(grep 'item-edit' "$FAKE/calls" | grep -c 'I20.*OP')" 1
+echo '[{"number":5,"state":"CLOSED"},{"number":6,"state":"CLOSED"}]' > "$FAKE/states.json"; ES
+ok "epic kanban: semua anak selesai -> epic In review" "$(grep 'item-edit' "$FAKE/calls" | grep -c 'I20.*OR')" 1
+echo '{"items":[{"id":"I20","status":"Backlog","content":{"number":20,"type":"Issue"}},{"id":"I5","status":"Backlog","content":{"number":5,"type":"Issue"}}]}' > "$FAKE/items.json"
+echo '[{"number":5,"state":"OPEN"},{"number":6,"state":"CLOSED"}]' > "$FAKE/states.json"; ES
+ok "epic kanban: anak belum mulai, epic sudah Backlog -> tanpa perubahan" "$(grep -c 'item-edit' "$FAKE/calls")" 0
+echo '{"items":[{"id":"I5","status":"Backlog","content":{"number":5,"type":"Issue"}}]}' > "$FAKE/items.json"; ES
+ok "epic kanban: epic belum di board -> ditambahkan (Backlog)" "$(grep -c 'item-add' "$FAKE/calls")$(grep 'item-edit' "$FAKE/calls" | grep -c 'NEW.*OB')" 11
+grep -q 'board.sh' skills/breakdown/SKILL.md && grep -q 'label:epic' README.md; ok "kanban epic: breakdown menaruh epic di board; README: view Journeys" $? 0
 cd "$root" || exit 1
 
 [ "$fails" = 0 ] && echo "SEMUA LULUS" || { echo "$fails GAGAL"; exit 1; }

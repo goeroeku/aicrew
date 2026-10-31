@@ -124,6 +124,7 @@ Journey / epic   J1: pengguna dapat masuk dengan SSO       <- dibaca lead (issue
 ```
 PRD memuat bagian *Journeys* dan *Kebutuhan non-fungsional*; breakdown membuat satu epic per journey (`templates/EPIC.md`) dengan daftar centang issue anak.
 Pada proyek yang sudah berjalan, membuat epic tidak mengedit issue lama (hanya dirujuk); yang tidak cocok masuk epic `[J0] Unassigned`.
+**Di kanban:** epic ikut di board dengan status yang dihitung dari anaknya oleh `board.sh <owner> <nomor> --sync`: Backlog (belum ada anak berjalan), In progress (ada anak berjalan), In review (semua anak selesai, siap ditutup owner), Done (ditutup owner). Satu langkah manual sekali di UI: buat view tersimpan bernama "Journeys" dengan filter `label:epic` (API belum bisa membuat view berfilter), supaya lead melihat satu baris per journey.
 Epic bukan pekerjaan: agen dan skrip melewatinya. Progres epic mengikuti penutupan issue anak, yaitu saat merge ke `main`.
 
 ## 🗂️ Kanban (opsional)
