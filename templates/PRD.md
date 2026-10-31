@@ -20,7 +20,7 @@ Tiap kebutuhan punya ID tetap dan kriteria yang bisa diuji mesin atau diamati.
 Apa yang bisa dilakukan pengguna, dalam bahasa yang dipahami lead. Tiap journey menjadi satu epic saat breakdown.
 Satu kebutuhan boleh melayani lebih dari satu journey.
 
-| ID | Journey | Kebutuhan (R-ID) | Selesai bila |
+| ID | Journey | Kebutuhan (R-ID, N-ID) | Selesai bila |
 |---|---|---|---|
 | J1 | {{pengguna dapat masuk dengan SSO}} | {{R3, R4}} | {{hasil yang bisa diamati}} |
 

@@ -19,7 +19,8 @@ Di tengah sesi, simpan hanya ringkasan per issue (nomor, status, PR), bukan kelu
 1. `docs/WORKFLOW.md` ada dan `Status PRD: disetujui`.
 2. `bash ${CLAUDE_PLUGIN_ROOT}/scripts/preflight.sh <backend>` exit 0.
 3. `.aicrew/` ada di `.gitignore` project (tambahkan bila belum).
-4. Ada issue terbuka hasil `breakdown`. Tidak ada → arahkan ke `/aicrew:breakdown`.
+**Issue berlabel `epic` adalah pengelompokan journey, bukan pekerjaan.** Abaikan di semua hitungan "issue terbuka" di skill ini (prasyarat, penyumbat, tahap penutup); `autopilot.sh`, `resume.sh`, dan `release-report.sh` sudah mengabaikannya.
+4. Ada issue terbuka (selain `epic`) hasil `breakdown`. Tidak ada → arahkan ke `/aicrew:breakdown`.
 
 ## Gaya perintah (wajib di mode tanpa pengawasan; juga dibutuhkan hook `jaga-codex`)
 Satu perintah sederhana per panggilan Bash, path literal: tanpa variabel shell (`S=… && bash $S/…`), tanpa `cd <dir> && …` (pakai `git -C <dir>`),
@@ -39,8 +40,6 @@ Siap = terbuka, belum assignee/in-progress, semua `blocked-by` sudah ter-merge k
 `needs-principal`, dan tidak menyentuh file yang sama dengan issue yang sedang berjalan.
 Ambil sampai batas paralel di `WORKFLOW.md`, menurut gelombang. Tidak ada yang siap tetapi masih ada
 issue terbuka → laporkan penyumbatnya dan berhenti.
-
-Issue berlabel `epic` adalah pengelompokan journey, bukan pekerjaan: lewati saat memilih issue (skrip `autopilot.sh`, `resume.sh`, `release-report.sh` sudah mengabaikannya).
 
 ## Per issue (satu worktree, satu PR/MR)
 1. `bash scripts/budget.sh check <maxIter> <maxFail> <issue>`; exit ≠ 0 → berhenti sesuai pesannya, lalu notifikasi.
@@ -115,7 +114,7 @@ ambil alih dengan model Claude sesuai bobot tugas dan sebutkan di laporan.
   Setelah merge, jalankan lagi dengan `--after`; status "Merged" saja bukan bukti.
 - Perintah yang mengubah server/produksi atau biaya: selalu konfirmasi owner.
 
-## Tahap penutup: calon rilis (bila tidak ada issue siap/berjalan, hanya `di-integrasi` yang tersisa)
+## Tahap penutup: calon rilis (bila tidak ada issue siap/berjalan, hanya `di-integrasi` yang tersisa; issue `epic` tidak dihitung)
 1. `bash ${CLAUDE_PLUGIN_ROOT}/scripts/release-report.sh --test-cmd "<perintah tes penuh>" --dry-run` lebih dulu. Skrip memvonis FAKTA
    (PR tanpa komentar `Bukti selesai`, issue belum di-integrasi, `needs-principal`, suite di salinan segar). `BELUM SIAP` → perbaiki yang disebut
    (mis. pasang komentar bukti yang hilang dari fakta nyata, bukan karangan), lalu ulangi; yang butuh owner dilaporkan dan berhenti.

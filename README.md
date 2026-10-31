@@ -123,7 +123,7 @@ Journey / epic   J1: pengguna dapat masuk dengan SSO       <- dibaca lead (issue
        └ Issue   #12, #13, #14                             <- task kecil yang dikerjakan agen
 ```
 PRD memuat bagian *Journeys* dan *Kebutuhan non-fungsional*; breakdown membuat satu epic per journey (`templates/EPIC.md`) dengan daftar centang issue anak.
-Pada proyek yang sudah berjalan, issue lama hanya dirujuk (tidak diedit); yang tidak cocok masuk epic `[J0] Unassigned`.
+Pada proyek yang sudah berjalan, membuat epic tidak mengedit issue lama (hanya dirujuk); yang tidak cocok masuk epic `[J0] Unassigned`.
 Epic bukan pekerjaan: agen dan skrip melewatinya. Progres epic mengikuti penutupan issue anak, yaitu saat merge ke `main`.
 
 ## 🗂️ Kanban (opsional)

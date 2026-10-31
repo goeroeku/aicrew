@@ -474,8 +474,10 @@ grep -q '^## Journeys' templates/PRD.md && grep -q '^## Kebutuhan non-fungsional
 grep -q 'journey' templates/PRD.md && grep -q 'R-ID' templates/PRD.md; ok "PRD: peta issue menyebut journey" $? 0
 [ -f templates/EPIC.md ] && grep -q -- '- \[ \] #' templates/EPIC.md; ok "EPIC.md ada dengan daftar centang anak" $? 0
 grep -q '`epic`' templates/WORKFLOW.md; ok "WORKFLOW: label epic" $? 0
-grep -q 'templates/EPIC.md' skills/breakdown/SKILL.md && grep -q 'Unassigned' skills/breakdown/SKILL.md && grep -q 'tidak pernah diedit' skills/breakdown/SKILL.md; ok "breakdown: epic, Unassigned, issue lama tidak diedit" $? 0
-grep -q 'epic' skills/orchestrate/SKILL.md; ok "orchestrate melewati epic" $? 0
+grep -q 'templates/EPIC.md' skills/breakdown/SKILL.md && grep -q 'Unassigned' skills/breakdown/SKILL.md && grep -q 'membuat epic tidak mengedit' skills/breakdown/SKILL.md && ! grep -q 'tidak pernah diedit' skills/breakdown/SKILL.md README.md; ok "breakdown: epic, Unassigned, issue lama tidak diedit" $? 0
+e1=$(grep -n 'epic' skills/orchestrate/SKILL.md | head -1 | cut -d: -f1); p4=$(grep -n '^4\. Ada issue terbuka' skills/orchestrate/SKILL.md | cut -d: -f1)
+[ -n "$e1" ] && [ "$e1" -lt "$p4" ]; ok "orchestrate: pengecualian epic sebelum prasyarat 4" $? 0
+sed -n '/^## Tahap penutup/p' skills/orchestrate/SKILL.md | grep -q 'epic'; ok "orchestrate: tahap penutup mengabaikan epic" $? 0
 grep -q 'Journey' README.md && grep -q 'FR' README.md; ok "README: Journey dan epic" $? 0
 cd "$root" || exit 1
 
