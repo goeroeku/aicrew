@@ -34,11 +34,11 @@
 **Interfaces:**
 - Produces: konvensi label `epic` = bukan pekerjaan; Task 2-3 memakai label ini.
 
-- [ ] **Step 1: Tes gagal.** Di `tests/run.sh`, ulangi pola fake `gh` yang ada: (a) `release-report.sh --dry-run` dengan satu PR ter-merge, satu issue `di-integrasi` tertutup, dan satu issue `epic` terbuka → harapan: epic TIDAK muncul di alasan "issue terbuka belum di-integrasi" (`ok "release-report: epic terbuka bukan penghalang"`); (b) `autopilot.sh` dengan issue terbuka hanya berlabel `epic` → exit 0 ("semua issue selesai"); (c) `resume.sh` dengan epic berlabel `in-progress` → tidak dikeluarkan.
-- [ ] **Step 2: Jalankan** `bash tests/run.sh`; harapan: tiga tes baru GAGAL.
-- [ ] **Step 3: Implementasi.** Tambah `"epic"` ke filter pengecualian: `autopilot.sh` (jq `select` pada `open` ikut membuang label `epic`), `release-report.sh` (`blocking` dan `needs` membuang label `epic`), `resume.sh` (select membuang `epic`). Satu helper jq per berkas; jangan membuat berkas bersama.
-- [ ] **Step 4: Jalankan** `bash tests/run.sh`; harapan: SEMUA LULUS.
-- [ ] **Step 5: Commit** `Epic bukan pekerjaan: diabaikan autopilot, laporan rilis, resume`.
+- [x] **Step 1: Tes gagal.** Di `tests/run.sh`, ulangi pola fake `gh` yang ada: (a) `release-report.sh --dry-run` dengan satu PR ter-merge, satu issue `di-integrasi` tertutup, dan satu issue `epic` terbuka → harapan: epic TIDAK muncul di alasan "issue terbuka belum di-integrasi" (`ok "release-report: epic terbuka bukan penghalang"`); (b) `autopilot.sh` dengan issue terbuka hanya berlabel `epic` → exit 0 ("semua issue selesai"); (c) `resume.sh` dengan epic berlabel `in-progress` → tidak dikeluarkan.
+- [x] **Step 2: Jalankan** `bash tests/run.sh`; harapan: tiga tes baru GAGAL.
+- [x] **Step 3: Implementasi.** Tambah `"epic"` ke filter pengecualian: `autopilot.sh` (jq `select` pada `open` ikut membuang label `epic`), `release-report.sh` (`blocking` dan `needs` membuang label `epic`), `resume.sh` (select membuang `epic`). Satu helper jq per berkas; jangan membuat berkas bersama.
+- [x] **Step 4: Jalankan** `bash tests/run.sh`; harapan: SEMUA LULUS.
+- [x] **Step 5: Commit** `Epic bukan pekerjaan: diabaikan autopilot, laporan rilis, resume`.
 
 ### Task 2: Templat PRD dan EPIC
 
@@ -50,11 +50,11 @@
 **Interfaces:**
 - Produces: bagian PRD `## Journeys` (kolom `ID | Journey | Kebutuhan (R-ID) | Selesai bila`), bagian `## Kebutuhan non-fungsional` (kolom `ID N1.. | Kebutuhan | Kriteria | Label`), dan `templates/EPIC.md` dengan judul `[J1] <journey>`, bagian `Journey`, `Requirements`, `Child issues` (daftar `- [ ] #n`), `Done when`.
 
-- [ ] **Step 1: Tes gagal.** `grep -q '^## Journeys' templates/PRD.md`, `grep -q '^## Kebutuhan non-fungsional' templates/PRD.md`, `templates/EPIC.md` ada dan memuat `- [ ] #`, `epic` ada di daftar label `WORKFLOW.md`.
-- [ ] **Step 2: Jalankan** suite; harapan: GAGAL.
-- [ ] **Step 3: Tulis templat.** Tambahkan bagian PRD sebelum "Batasan"; ubah "Peta issue" menjadi `R-ID → #issue, gelombang, journey`. `EPIC.md` berbahasa Inggris, pendek (≤ 20 baris).
-- [ ] **Step 4: Jalankan** suite; harapan: SEMUA LULUS.
-- [ ] **Step 5: Commit** `Templat PRD: Journeys dan NFR; templat EPIC`.
+- [x] **Step 1: Tes gagal.** `grep -q '^## Journeys' templates/PRD.md`, `grep -q '^## Kebutuhan non-fungsional' templates/PRD.md`, `templates/EPIC.md` ada dan memuat `- [ ] #`, `epic` ada di daftar label `WORKFLOW.md`.
+- [x] **Step 2: Jalankan** suite; harapan: GAGAL.
+- [x] **Step 3: Tulis templat.** Tambahkan bagian PRD sebelum "Batasan"; ubah "Peta issue" menjadi `R-ID → #issue, gelombang, journey`. `EPIC.md` berbahasa Inggris, pendek (≤ 20 baris).
+- [x] **Step 4: Jalankan** suite; harapan: SEMUA LULUS.
+- [x] **Step 5: Commit** `Templat PRD: Journeys dan NFR; templat EPIC`.
 
 ### Task 3: Breakdown dan orchestrate memakai epic
 
@@ -65,19 +65,19 @@
 **Interfaces:**
 - Consumes: label `epic`, `templates/EPIC.md` (Task 2).
 
-- [ ] **Step 1: Tes gagal.** `grep` bahwa breakdown menyebut `templates/EPIC.md`, `Unassigned`, dan "tidak pernah mengedit"; orchestrate menyebut bahwa label `epic` dilewati; README memuat "Journey".
-- [ ] **Step 2: Jalankan** suite; harapan: GAGAL.
-- [ ] **Step 3: Edit skill.** Breakdown: (a) bila PRD punya Journeys, setelah issue dibuat, buat satu epic per journey dari `EPIC.md` (label `epic`, daftar centang berisi issue anaknya; FR yang melayani dua journey muncul di dua epic, issue dibuat sekali); (b) proyek berjalan: issue lama hanya dirujuk di epic, yang tak cocok masuk epic `[J0] Unassigned`; issue `in-progress`/ber-assignee tidak diedit; (c) tampilkan rencana epic ke owner bersama tabel issue (persetujuan yang sama). Orchestrate: lewati issue berlabel `epic`; epic ditutup owner saat semua anak selesai. README: satu bagian pendek berisi hierarki Journey → FR → Issue.
-- [ ] **Step 4: Jalankan** suite; harapan: SEMUA LULUS.
-- [ ] **Step 5: Commit** `Breakdown membuat epic per journey; orchestrate melewatinya`.
+- [x] **Step 1: Tes gagal.** `grep` bahwa breakdown menyebut `templates/EPIC.md`, `Unassigned`, dan "tidak pernah mengedit"; orchestrate menyebut bahwa label `epic` dilewati; README memuat "Journey".
+- [x] **Step 2: Jalankan** suite; harapan: GAGAL.
+- [x] **Step 3: Edit skill.** Breakdown: (a) bila PRD punya Journeys, setelah issue dibuat, buat satu epic per journey dari `EPIC.md` (label `epic`, daftar centang berisi issue anaknya; FR yang melayani dua journey muncul di dua epic, issue dibuat sekali); (b) proyek berjalan: issue lama hanya dirujuk di epic, yang tak cocok masuk epic `[J0] Unassigned`; issue `in-progress`/ber-assignee tidak diedit; (c) tampilkan rencana epic ke owner bersama tabel issue (persetujuan yang sama). Orchestrate: lewati issue berlabel `epic`; epic ditutup owner saat semua anak selesai. README: satu bagian pendek berisi hierarki Journey → FR → Issue.
+- [x] **Step 4: Jalankan** suite; harapan: SEMUA LULUS.
+- [x] **Step 5: Commit** `Breakdown membuat epic per journey; orchestrate melewatinya`.
 
 ### Task 4: Rilis 0.5.0
 
 **Files:** Modify `.claude-plugin/plugin.json`
 
-- [ ] **Step 1:** `jq '.version="0.5.0"'`; jalankan `bash tests/run.sh` (SEMUA LULUS) dan `bash scripts/check-version.sh v0.5.0` (ok).
-- [ ] **Step 2:** Cabang `goeroeku/journey-epic`, push, buka PR, tunggu CI hijau. **Berhenti di sini dan minta persetujuan owner sebelum merge**: izin merge+rilis sebelumnya hanya untuk pekerjaan pilot dan 0.4.1.
-- [ ] **Step 3 (setelah disetujui):** merge, verifikasi tag `v0.5.0` dan 3 aset; perbarui memori (rilis terakhir).
+- [x] **Step 1:** `jq '.version="0.5.0"'`; jalankan `bash tests/run.sh` (SEMUA LULUS) dan `bash scripts/check-version.sh v0.5.0` (ok).
+- [x] **Step 2:** Cabang `goeroeku/journey-epic`, push, buka PR, tunggu CI hijau. **Berhenti di sini dan minta persetujuan owner sebelum merge**: izin merge+rilis sebelumnya hanya untuk pekerjaan pilot dan 0.4.1.
+- [x] **Step 3 (setelah disetujui):** merge, verifikasi tag `v0.5.0` dan 3 aset; perbarui memori (rilis terakhir).
 
 ## Self-review
 - Cakupan: journey→epic (T2-3), NFR (T2), orang lama/Unassigned (T3), bahaya epic terbuka (T1), rilis (T4). Tanpa `journey-report.sh` (keputusan).
