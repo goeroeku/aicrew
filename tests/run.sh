@@ -508,6 +508,11 @@ ok "epic kanban: anak belum mulai, epic sudah Backlog -> tanpa perubahan" "$(gre
 echo '{"items":[{"id":"I5","status":"Backlog","content":{"number":5,"type":"Issue"}}]}' > "$FAKE/items.json"; ES
 ok "epic kanban: epic belum di board -> ditambahkan (Backlog)" "$(grep -c 'item-add' "$FAKE/calls")$(grep 'item-edit' "$FAKE/calls" | grep -c 'NEW.*OB')" 11
 grep -q 'board.sh' skills/breakdown/SKILL.md && grep -q 'label:epic' README.md; ok "kanban epic: breakdown menaruh epic di board; README: view Journeys" $? 0
+# 4d. journey otomatis: skill prd menggali journey saat diskusi; breakdown mengusulkan journey bila PRD belum punya
+cd "$root" || exit 1
+grep -q 'Journeys' skills/prd/SKILL.md && grep -q 'infrastruktur' skills/prd/SKILL.md && grep -qi 'apa yang bisa dilakukan pengguna' skills/prd/SKILL.md; ok "prd: menggali journey, tiap kebutuhan masuk journey atau infrastruktur" $? 0
+grep -q 'Bila PRD belum punya Journeys' skills/breakdown/SKILL.md && grep -q 'Usulan journey' skills/breakdown/SKILL.md && grep -qi 'persetujuan owner' skills/breakdown/SKILL.md; ok "breakdown: mengusulkan journey dari kebutuhan dan issue lama, minta persetujuan" $? 0
+! grep -q 'bila PRD punya bagian Journeys' skills/breakdown/SKILL.md; ok "breakdown: epic tidak lagi dilewati diam-diam tanpa Journeys" $? 0
 cd "$root" || exit 1
 
 [ "$fails" = 0 ] && echo "SEMUA LULUS" || { echo "$fails GAGAL"; exit 1; }
