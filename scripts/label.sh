@@ -6,5 +6,5 @@ case "${1:-}" in
   auto) v="${AICREW_LABEL_AUTO:-}"; k='Label keputusan otomatis'; def=keputusan-otomatis ;;
   *) echo "pakai: label.sh integrated|auto" >&2; exit 64 ;;
 esac
-[ -n "$v" ] || v="$(sed -n "s/^[- ]*$k: *\([A-Za-z0-9._:\/-]*\).*/\1/p" docs/WORKFLOW.md 2>/dev/null | head -1)"
+[ -n "$v" ] || v="$(sed -n "s/^[- ]*$k: *\([A-Za-z0-9._:\/-]*\).*/\1/p" 2>/dev/null <<<"$(bash "$(dirname "$0")/workflow.sh")" | head -1)"
 echo "${v:-$def}"
