@@ -526,11 +526,13 @@ case "$*" in
   "api -X POST"*|"api -X PATCH"*) : ;;
   "api repos/o/r/issues/"*) n="${2##*/}"; echo $((1000+n)) ;;
   "issue view"*) cat "$FAKE/epicbody.txt" ;;
-  "issue edit"*|"issue close"*) : ;;
+  "issue edit"*) printf '%s\n' "${@: -1}" > "$FAKE/epicbody.txt" ;;
+  "issue close"*) : ;;
   "issue list --state open --label epic"*) cat "$FAKE/epics.json" ;;
   "issue list --state open --label di-integrasi"*) cat "$FAKE/integrated.json" ;;
   "issue list --state all"*) cat "$FAKE/states.json" ;;
   "issue list --state closed"*) cat "$FAKE/closed.json" ;;
+  "issue list --state open --limit"*) cat "$FAKE/open.json" ;;
   "issue list"*) echo '[]' ;;
 esac
 EOF
@@ -568,6 +570,12 @@ echo '[{"number":20,"labels":[{"name":"epic"}],"closedByPullRequestsReferences":
 ok "Done-mirror: epic ditutup tidak ikut dicerminkan, issue biasa ya" "$(grep 'item-edit' "$FAKE/calls" | grep -c 'I9.*OD')$(grep 'item-edit' "$FAKE/calls" | grep -c 'I20')" 10
 # epic-link.sh
 EL() { : > "$FAKE/calls"; (cd "$tmp/ec/w" && PATH="$tmp/ecb:$PATH" bash "$root/scripts/epic-link.sh" "$@" 2>/dev/null); }
+# epic-link.sh --check: daftar issue terbuka non-epic tanpa induk
+echo '[{"number":5,"title":"a","labels":[]},{"number":6,"title":"b","labels":[]},{"number":20,"title":"[J1]","labels":[{"name":"epic"}]}]' > "$FAKE/open.json"
+echo '[{"number":20,"body":"- [ ] #5 a"}]' > "$FAKE/epics.json"; rm -f "$FAKE/parent.txt"
+ok "epic-link --check: #6 yatim terdaftar, #5 (di checklist) dan epic tidak" "$(EL --check | tr '\n' ' ')" "yatim: #6 b "
+EL --check >/dev/null; ok "epic-link --check: exit 3 bila ada yatim" "$?" 3
+echo '[{"number":20,"body":"- [ ] #5 a\n- [ ] #6 b"}]' > "$FAKE/epics.json"; EL --check >/dev/null; ok "epic-link --check: tanpa yatim -> exit 0" "$?" 0
 echo '- [ ] #1 x' > "$FAKE/epicbody.txt"; EL 20 6 >/dev/null
 ok "epic-link: sub-issue native memakai id numerik, bukan nomor" "$(grep -c 'sub_issues -F sub_issue_id=1006' "$FAKE/calls")" 1
 ok "epic-link: daftar centang ikut ditambahkan" "$(grep -c '^- \[ \] #6' "$FAKE/calls")" 1
@@ -583,8 +591,13 @@ W="$tmp/ec/wf"; mkdir -p "$W/o" "$W/c"; git init -q --bare "$W/o/r.git"; git clo
 ( cd "$W/c/r" && git config user.email t@t && git config user.name t && mkdir docs && printf -- 'Cabang integrasi: feat-int\nLama\n' > docs/WORKFLOW.md && git add . && git commit -qm a && git branch -M main && git push -q origin main \
   && git checkout -qb feat-int && printf -- 'Cabang integrasi: feat-int\nBaru\n' > docs/WORKFLOW.md && git commit -qam b && git push -q origin feat-int && git checkout -q main )
 ok "workflow.sh: membaca versi cabang integrasi, bukan main yang basi" "$(cd "$W/c/r" && bash "$root/scripts/workflow.sh" | grep -c Baru)" 1
+V="$tmp/ec/wf2"; mkdir -p "$V/o" "$V/c"; git init -q --bare "$V/o/r.git"; git clone -q "$V/o/r.git" "$V/c/r" 2>/dev/null
+( cd "$V/c/r" && git config user.email t@t && git config user.name t && mkdir docs && printf -- '3. Cabang integrasi: int.v2. Issue yang saling bergantung\nLama\n' > docs/WORKFLOW.md && git add . && git commit -qm a && git branch -M main && git push -q origin main \
+  && git checkout -qb int.v2 && printf -- '3. Cabang integrasi: int.v2. Issue yang saling bergantung\nBaru\n' > docs/WORKFLOW.md && git commit -qam b && git push -q origin int.v2 && git checkout -q main )
+ok "workflow.sh: titik penutup kalimat tidak ikut nama cabang (titik di tengah tetap)" "$(cd "$V/c/r" && bash "$root/scripts/workflow.sh" | grep -c Baru)" 1
 ok "workflow.sh: tanpa cabang integrasi -> berkas lokal" "$(cd "$tmp/ec/w" && printf 'Halo\n' > docs/WORKFLOW.md && bash "$root/scripts/workflow.sh")" Halo
 grep -q 'epic-link.sh' skills/breakdown/SKILL.md && grep -q 'epic-link.sh --inherit' skills/orchestrate/SKILL.md && grep -q 'Tutup issue setelah merge integrasi' templates/WORKFLOW.md && grep -q 'sub-issue native' README.md; ok "0.6.0: skill, templat WORKFLOW dan README menyebut epic-link/inherit/tutup issue" $? 0
+grep -q 'Konsep (0.6.1)' README.md && grep -q 'Parent issue' README.md && grep -q 'Parent issue' scripts/board-init.sh && grep -q 'epic-link.sh --check' skills/orchestrate/SKILL.md; ok "0.6.1: README konsep, langkah UI manual, skill menyebut --check" $? 0
 # 4d. journey otomatis: skill prd menggali journey saat diskusi; breakdown mengusulkan journey bila PRD belum punya
 cd "$root" || exit 1
 grep -q 'Journeys' skills/prd/SKILL.md && grep -q 'infrastruktur' skills/prd/SKILL.md && grep -qi 'apa yang bisa dilakukan pengguna' skills/prd/SKILL.md; ok "prd: menggali journey, tiap kebutuhan masuk journey atau infrastruktur" $? 0
