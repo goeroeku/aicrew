@@ -45,7 +45,13 @@ Dua fakta yang membentuk desain (diamati 2026-11-01):
 | tambah kartu | `POST .../items` dengan `type=Issue` dan `id` = id NUMERIK issue (nomor memberi 404); 422 "Content already exists" = kartu sudah ada |
 | isi Status | `PATCH .../items/{item_id}`; id kolom dan opsi dibaca dari `GET .../fields`, tidak di-hardcode |
 
-Tiga hal di tabel (endpoint item/fields untuk org, perilaku 404/422, bentuk opsi `{html,raw}`) berasal dari laporan Nexora dan belum diuji di repo ini.
+Endpoint item/fields untuk org, perilaku 404/422, dan bentuk opsi sudah **dilaporkan diuji sungguhan** oleh sesi Nexora (org `idcloudhost`, project 2, 2026-11-01); hasilnya belum diulang di repo ini:
+- `GET orgs/{org}/projectsV2/{n}` dan `.../fields` jalan tanpa GraphQL. `.name` opsi berbentuk objek `{"html","raw"}`: cocokkan lewat `.name.raw`, ambil `.id` opsi.
+- `POST .../items` dengan nomor issue → 404; dengan id NUMERIK issue → sukses; kartu sudah ada → 422 "Content already exists in this project" (**dianggap sukses**, idempoten).
+- Cari `item_id` lewat `GET .../items?per_page=100 --paginate` (`.content.number == N`). Kartu baru dari project tidak punya Status sampai di-PATCH.
+- `PATCH .../items/{item_id}` dengan `{"fields":[{"id":<id kolom>,"value":"<id opsi sebagai string>"}]}` → 200 (dicoba pada dua kartu).
+- Tidak teruji siapa pun: `users/{user}/projectsV2/...` untuk **menulis** (di repo ini hanya pembacaan daftar yang terverifikasi), penghapusan kartu, dan kolom selain Status. Builder memverifikasi jalur user sebelum mengandalkannya.
+- Gejala "unknown owner type" pada `board.sh` saat GraphQL terblokir dikonfirmasi pemakai Nexora.
 
 ## Kendala
 - `board.sh:55` memakai `closedByPullRequestsReferences` (GraphQL). Bila tak ada padanan REST yang setara, jalur itu **dilewati dengan peringatan** pada mode cadangan, bukan menebak. **[saya]**
