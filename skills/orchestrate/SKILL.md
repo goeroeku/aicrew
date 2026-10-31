@@ -40,6 +40,8 @@ Siap = terbuka, belum assignee/in-progress, semua `blocked-by` sudah ter-merge k
 Ambil sampai batas paralel di `WORKFLOW.md`, menurut gelombang. Tidak ada yang siap tetapi masih ada
 issue terbuka → laporkan penyumbatnya dan berhenti.
 
+Issue berlabel `epic` adalah pengelompokan journey, bukan pekerjaan: lewati saat memilih issue (skrip `autopilot.sh`, `resume.sh`, `release-report.sh` sudah mengabaikannya).
+
 ## Per issue (satu worktree, satu PR/MR)
 1. `bash scripts/budget.sh check <maxIter> <maxFail> <issue>`; exit ≠ 0 → berhenti sesuai pesannya, lalu notifikasi.
    Lalu `budget.sh iter`.

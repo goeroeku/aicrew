@@ -468,6 +468,15 @@ run_epic "[$EPIC,{\"number\":1,\"state\":\"OPEN\",\"labels\":[{\"name\":\"role:q
 echo "[$EPIC]" > "$F/issues.json"; [ -z "$(PATH="$Q" bash "$root/scripts/resume.sh")" ]; ok "epic: resume.sh tidak mengklasifikasi epic" $? 0
 cd "$tmp/rr" || exit 1
 rr "$(jq -c '. + ['"$EPIC"']' <<<"$OKI")" "$OKPR" --test-cmd true; ok "epic: release-report SIAP walau epic masih terbuka" $? 0
+# 4b. templat PRD/EPIC dan skill breakdown/orchestrate
+cd "$root" || exit 1
+grep -q '^## Journeys' templates/PRD.md && grep -q '^## Kebutuhan non-fungsional' templates/PRD.md; ok "PRD: bagian Journeys dan NFR" $? 0
+grep -q 'journey' templates/PRD.md && grep -q 'R-ID' templates/PRD.md; ok "PRD: peta issue menyebut journey" $? 0
+[ -f templates/EPIC.md ] && grep -q -- '- \[ \] #' templates/EPIC.md; ok "EPIC.md ada dengan daftar centang anak" $? 0
+grep -q '`epic`' templates/WORKFLOW.md; ok "WORKFLOW: label epic" $? 0
+grep -q 'templates/EPIC.md' skills/breakdown/SKILL.md && grep -q 'Unassigned' skills/breakdown/SKILL.md && grep -q 'tidak pernah diedit' skills/breakdown/SKILL.md; ok "breakdown: epic, Unassigned, issue lama tidak diedit" $? 0
+grep -q 'epic' skills/orchestrate/SKILL.md; ok "orchestrate melewati epic" $? 0
+grep -q 'Journey' README.md && grep -q 'FR' README.md; ok "README: Journey dan epic" $? 0
 cd "$root" || exit 1
 
 [ "$fails" = 0 ] && echo "SEMUA LULUS" || { echo "$fails GAGAL"; exit 1; }

@@ -50,6 +50,16 @@ Jangan memecah PRD yang belum disetujui; bila `Status PRD` tidak tercatat, tanya
    isi `blocked-by` pada isi issue. Catat nomor issue ke tabel gelombang di akhir PRD (satu blok,
    jangan membuat berkas baru).
 
+## Epic per journey (bila PRD punya bagian Journeys)
+Lead membaca journey, agen mengerjakan issue kecil. Hierarkinya: Journey (epic) → kebutuhan (R-ID/N-ID) → issue.
+- Setelah issue dibuat, buat satu epic per journey dari `${CLAUDE_PLUGIN_ROOT}/templates/EPIC.md` (label `epic`, judul `[J1] ...`). Daftar centang `- [ ] #n` berisi issue anaknya;
+  GitHub menghitung progresnya sendiri. Kebutuhan yang melayani dua journey muncul di dua epic; issue-nya tetap dibuat sekali.
+- Catat `J-ID → #epic` di "Peta issue" PRD. Rencana epic ditampilkan bersama tabel issue di langkah 7 (satu persetujuan).
+- **Proyek yang sudah berjalan**: issue yang sudah ada hanya dirujuk dari epic, tidak pernah diedit (terutama yang berlabel in-progress atau ber-assignee).
+  Issue yang tidak cocok dengan journey mana pun dikumpulkan di epic `[J0] Unassigned`, tidak dipaksakan masuk journey.
+- NFR (`N-ID`) yang berlabel `needs-security`/`needs-perf` mengikuti aturan label biasa di langkah 6.
+- Epic bukan pekerjaan: orkestrator, autopilot, resume, dan laporan rilis melewatinya. Owner menutup epic saat semua anak selesai.
+
 ## Laporan akhir
 Jumlah issue, per gelombang, yang `needs-principal`, dan asumsi yang dibuat. Maks 12 baris.
 Akhiri dengan saran: jalankan `/aicrew:orchestrate` di **sesi baru** (semua konteks sudah ada di berkas),

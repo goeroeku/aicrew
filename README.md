@@ -115,6 +115,17 @@ Token Telegram dibaca dari `~/.config/aicrew/env` (`export AICREW_TG_TOKEN=... A
 `bash scripts/release-report.sh --test-cmd "<perintah tes penuh>" --dry-run` menulis `.aicrew/release-report.md`: vonis fakta SIAP/BELUM SIAP
 (suite di salinan segar, PR tanpa bukti, issue belum di-integrasi, `needs-principal`). `--buka-pr` (tanpa `--dry-run`) membuka PR integrasi → main bila SIAP. Tidak pernah merge.
 
+## 🧭 Journey dan epic (untuk lead)
+Lead biasanya bertanya per journey ("kapan pengguna bisa masuk dengan SSO?"), bukan per task. Hierarkinya:
+```
+Journey / epic   J1: pengguna dapat masuk dengan SSO       <- dibaca lead (issue berlabel epic, "4/7 selesai")
+  └ FR / NFR     R3, R4, N1 (bagian Kebutuhan di PRD)      <- kriteria yang bisa dicek
+       └ Issue   #12, #13, #14                             <- task kecil yang dikerjakan agen
+```
+PRD memuat bagian *Journeys* dan *Kebutuhan non-fungsional*; breakdown membuat satu epic per journey (`templates/EPIC.md`) dengan daftar centang issue anak.
+Pada proyek yang sudah berjalan, issue lama hanya dirujuk (tidak diedit); yang tidak cocok masuk epic `[J0] Unassigned`.
+Epic bukan pekerjaan: agen dan skrip melewatinya. Progres epic mengikuti penutupan issue anak, yaitu saat merge ke `main`.
+
 ## 🗂️ Kanban (opsional)
 `scripts/board-init.sh` membuat GitHub Project, menautkannya ke repo, menyeragamkan status, dan membuat view papan (`createProjectV2View` dengan `BOARD_LAYOUT`; project baru hanya punya view tabel). `scripts/board.sh` menggeser kartu; `board.sh <owner> <nomor> --sync` memindahkan issue yang ditutup tanpa PR ke Done bila `Kartu Done: agen-setelah-merge`. Perlu scope `gh` `project`.
 > [!NOTE]
