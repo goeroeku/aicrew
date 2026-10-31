@@ -503,11 +503,88 @@ ok "epic kanban: anak berjalan -> epic In progress" "$(grep 'item-edit' "$FAKE/c
 echo '[{"number":5,"state":"CLOSED"},{"number":6,"state":"CLOSED"}]' > "$FAKE/states.json"; ES
 ok "epic kanban: semua anak selesai -> epic In review" "$(grep 'item-edit' "$FAKE/calls" | grep -c 'I20.*OR')" 1
 echo '{"items":[{"id":"I20","status":"Backlog","content":{"number":20,"type":"Issue"}},{"id":"I5","status":"Backlog","content":{"number":5,"type":"Issue"}}]}' > "$FAKE/items.json"
-echo '[{"number":5,"state":"OPEN"},{"number":6,"state":"CLOSED"}]' > "$FAKE/states.json"; ES
+echo '[{"number":5,"state":"OPEN"},{"number":6,"state":"OPEN"}]' > "$FAKE/states.json"; ES
 ok "epic kanban: anak belum mulai, epic sudah Backlog -> tanpa perubahan" "$(grep -c 'item-edit' "$FAKE/calls")" 0
+echo '[{"number":5,"state":"OPEN"},{"number":6,"state":"OPEN"}]' > "$FAKE/states.json"
 echo '{"items":[{"id":"I5","status":"Backlog","content":{"number":5,"type":"Issue"}}]}' > "$FAKE/items.json"; ES
 ok "epic kanban: epic belum di board -> ditambahkan (Backlog)" "$(grep -c 'item-add' "$FAKE/calls")$(grep 'item-edit' "$FAKE/calls" | grep -c 'NEW.*OB')" 11
 grep -q 'board.sh' skills/breakdown/SKILL.md && grep -q 'label:epic' README.md; ok "kanban epic: breakdown menaruh epic di board; README: view Journeys" $? 0
+# 4e. sub-issue native, progres epic, status epic yang tidak menyesatkan, tutup issue di-integrasi, WORKFLOW dari cabang integrasi (0.6.0)
+mkdir -p "$tmp/ec/w/docs" "$tmp/ecb"; git init -q "$tmp/ec/w"; echo '- Kartu Done: owner.' > "$tmp/ec/w/docs/WORKFLOW.md"
+cat > "$tmp/ecb/gh" <<'EOF'
+#!/usr/bin/env bash
+echo "$*" >> "$FAKE/calls"
+case "$*" in
+  "repo view"*) echo o/r ;;
+  "project view"*) echo PID ;;
+  "project field-list"*) echo '{"fields":[{"name":"Status","id":"F1","options":[{"name":"Backlog","id":"OB"},{"name":"In progress","id":"OP"},{"name":"In review","id":"OR"},{"name":"Done","id":"OD"}]}]}' ;;
+  "project item-list"*) cat "$FAKE/items.json" ;;
+  "project item-add"*) echo '{"id":"NEW"}' ;;
+  "api repos/o/r/issues/20/sub_issues"*"--jq"*) cat "$FAKE/native.txt" 2>/dev/null ;;
+  "api repos/o/r/issues/"*"/comments"*) cat "$FAKE/comments.txt" 2>/dev/null ;;
+  "api repos/o/r/issues/"*"/parent"*) cat "$FAKE/parent.txt" 2>/dev/null || exit 1 ;;
+  "api -X POST"*|"api -X PATCH"*) : ;;
+  "api repos/o/r/issues/"*) n="${2##*/}"; echo $((1000+n)) ;;
+  "issue view"*) cat "$FAKE/epicbody.txt" ;;
+  "issue edit"*|"issue close"*) : ;;
+  "issue list --state open --label epic"*) cat "$FAKE/epics.json" ;;
+  "issue list --state open --label di-integrasi"*) cat "$FAKE/integrated.json" ;;
+  "issue list --state all"*) cat "$FAKE/states.json" ;;
+  "issue list --state closed"*) cat "$FAKE/closed.json" ;;
+  "issue list"*) echo '[]' ;;
+esac
+EOF
+chmod +x "$tmp/ecb/gh"; export FAKE="$tmp/ec"; rm -f "$FAKE/native.txt" "$FAKE/parent.txt" "$FAKE/comments.txt"
+EY() { : > "$FAKE/calls"; (cd "$tmp/ec/w" && PATH="$tmp/ecb:$PATH" bash "$root/scripts/board.sh" o 3 --sync >/dev/null); }
+echo '{"items":[{"id":"I20","status":"Backlog","content":{"number":20,"type":"Issue"}}]}' > "$FAKE/items.json"
+echo '[{"number":20,"body":"- [ ] #5 a","labels":[]}]' > "$FAKE/epics.json"
+echo 7 > "$FAKE/native.txt"; echo '[{"number":5,"state":"CLOSED","labels":[]},{"number":7,"state":"OPEN","labels":[]}]' > "$FAKE/states.json"; EY
+ok "epic: anak dibaca dari sub-issue native (bukan daftar centang)" "$(grep -c 'item-edit' "$FAKE/calls")" 0
+rm "$FAKE/native.txt"
+echo '[{"number":5,"state":"CLOSED","labels":[{"name":"enhancement"}]},{"number":6,"state":"OPEN","labels":[]}]' > "$FAKE/states.json"
+echo '[{"number":20,"body":"- [ ] #5 a\n- [ ] #6 b","labels":[]}]' > "$FAKE/epics.json"; EY
+ok "epic: sebagian anak Done, belum ada yang berjalan -> In progress (bukan Backlog)" "$(grep 'item-edit' "$FAKE/calls" | grep -c 'I20.*OP')" 1
+ok "epic: progres diposting ke epic ('1/2 Done')" "$(grep -c 'aicrew-progress: 1/2 Done' "$FAKE/calls")" 1
+echo '[{"number":5,"state":"CLOSED","labels":[{"name":"phase:discovery"}]},{"number":6,"state":"CLOSED","labels":[{"name":"discovery"}]}]' > "$FAKE/states.json"; EY
+ok "epic: semua anak Done tapi hanya discovery -> bukan In review" "$(grep 'item-edit' "$FAKE/calls" | grep -c 'I20.*OR')" 0
+echo '[{"number":5,"state":"CLOSED","labels":[{"name":"discovery"}]},{"number":6,"state":"CLOSED","labels":[]}]' > "$FAKE/states.json"; EY
+ok "epic: ada anak non-discovery dan semua Done -> In review" "$(grep 'item-edit' "$FAKE/calls" | grep -c 'I20.*OR')" 1
+echo '[{"number":20,"body":"- [ ] #5 a","labels":[{"name":"belum-dipecah"}]}]' > "$FAKE/epics.json"
+echo '[{"number":5,"state":"CLOSED","labels":[]}]' > "$FAKE/states.json"; EY
+ok "epic: label belum-dipecah -> tidak pernah In review" "$(grep 'item-edit' "$FAKE/calls" | grep -c 'I20.*OR')" 0
+echo '[{"number":8,"labels":[{"name":"di-integrasi"}]}]' > "$FAKE/integrated.json"; echo '[]' > "$FAKE/epics.json"
+printf -- '- Kartu Done: owner.\n- Tutup issue setelah merge integrasi: ya\n' > "$tmp/ec/w/docs/WORKFLOW.md"; EY
+ok "tutup issue di-integrasi: ya -> issue close 8" "$(grep -c '^issue close 8' "$FAKE/calls")" 1
+printf -- '- Kartu Done: owner.\n- Tutup issue setelah merge integrasi: tidak\n' > "$tmp/ec/w/docs/WORKFLOW.md"; EY
+ok "tutup issue di-integrasi: tidak -> tidak menutup" "$(grep -c '^issue close' "$FAKE/calls")" 0
+printf -- '- Label discovery: eksplorasi\n- Label epic belum dipecah: mentah\n' > "$tmp/ec/w/docs/WORKFLOW.md"
+echo '[{"number":20,"body":"- [ ] #5 a","labels":[]}]' > "$FAKE/epics.json"; echo '[{"number":5,"state":"CLOSED","labels":[{"name":"eksplorasi"}]}]' > "$FAKE/states.json"; EY
+ok "label discovery dari WORKFLOW: anak 'eksplorasi' = discovery -> bukan In review" "$(grep 'item-edit' "$FAKE/calls" | grep -c 'I20.*OR')" 0
+echo '[{"number":20,"body":"- [ ] #5 a","labels":[{"name":"mentah"}]}]' > "$FAKE/epics.json"; echo '[{"number":5,"state":"CLOSED","labels":[]}]' > "$FAKE/states.json"; EY
+ok "label belum-dipecah dari WORKFLOW: 'mentah' -> bukan In review" "$(grep 'item-edit' "$FAKE/calls" | grep -c 'I20.*OR')" 0
+printf -- '- Kartu Done: agen-setelah-merge\n' > "$tmp/ec/w/docs/WORKFLOW.md"; echo '[]' > "$FAKE/epics.json"
+echo '{"items":[{"id":"I20","status":"In review","content":{"number":20,"type":"Issue"}},{"id":"I9","status":"In review","content":{"number":9,"type":"Issue"}}]}' > "$FAKE/items.json"
+echo '[{"number":20,"labels":[{"name":"epic"}],"closedByPullRequestsReferences":[]},{"number":9,"labels":[],"closedByPullRequestsReferences":[]}]' > "$FAKE/closed.json"; EY
+ok "Done-mirror: epic ditutup tidak ikut dicerminkan, issue biasa ya" "$(grep 'item-edit' "$FAKE/calls" | grep -c 'I9.*OD')$(grep 'item-edit' "$FAKE/calls" | grep -c 'I20')" 10
+# epic-link.sh
+EL() { : > "$FAKE/calls"; (cd "$tmp/ec/w" && PATH="$tmp/ecb:$PATH" bash "$root/scripts/epic-link.sh" "$@" 2>/dev/null); }
+echo '- [ ] #1 x' > "$FAKE/epicbody.txt"; EL 20 6 >/dev/null
+ok "epic-link: sub-issue native memakai id numerik, bukan nomor" "$(grep -c 'sub_issues -F sub_issue_id=1006' "$FAKE/calls")" 1
+ok "epic-link: daftar centang ikut ditambahkan" "$(grep -c '^- \[ \] #6' "$FAKE/calls")" 1
+echo '- [ ] #6 sudah' > "$FAKE/epicbody.txt"; EL 20 6 >/dev/null
+ok "epic-link: idempoten untuk daftar centang" "$(grep -c 'issue edit' "$FAKE/calls")" 0
+echo 20 > "$FAKE/parent.txt"; echo '- [ ] #1 x' > "$FAKE/epicbody.txt"; EL --inherit 5 9 >/dev/null
+ok "epic-link --inherit: anak baru masuk epic induk sumber (native)" "$(grep -c 'sub_issues -F sub_issue_id=1009' "$FAKE/calls")" 1
+rm "$FAKE/parent.txt"; echo '[{"number":20,"body":"- [ ] #5 a"}]' > "$FAKE/epics.json"; EL --inherit 5 10 >/dev/null
+ok "epic-link --inherit: cadangan lewat daftar centang epic" "$(grep -c 'sub_issues -F sub_issue_id=1010' "$FAKE/calls")" 1
+echo '[]' > "$FAKE/epics.json"; EL --inherit 5 11 >/dev/null; ok "epic-link --inherit: sumber yatim -> exit 3" "$?" 3
+# workflow.sh: cabang integrasi lebih baru dari checkout aktif
+W="$tmp/ec/wf"; mkdir -p "$W/o" "$W/c"; git init -q --bare "$W/o/r.git"; git clone -q "$W/o/r.git" "$W/c/r" 2>/dev/null
+( cd "$W/c/r" && git config user.email t@t && git config user.name t && mkdir docs && printf -- 'Cabang integrasi: feat-int\nLama\n' > docs/WORKFLOW.md && git add . && git commit -qm a && git branch -M main && git push -q origin main \
+  && git checkout -qb feat-int && printf -- 'Cabang integrasi: feat-int\nBaru\n' > docs/WORKFLOW.md && git commit -qam b && git push -q origin feat-int && git checkout -q main )
+ok "workflow.sh: membaca versi cabang integrasi, bukan main yang basi" "$(cd "$W/c/r" && bash "$root/scripts/workflow.sh" | grep -c Baru)" 1
+ok "workflow.sh: tanpa cabang integrasi -> berkas lokal" "$(cd "$tmp/ec/w" && printf 'Halo\n' > docs/WORKFLOW.md && bash "$root/scripts/workflow.sh")" Halo
+grep -q 'epic-link.sh' skills/breakdown/SKILL.md && grep -q 'epic-link.sh --inherit' skills/orchestrate/SKILL.md && grep -q 'Tutup issue setelah merge integrasi' templates/WORKFLOW.md && grep -q 'sub-issue native' README.md; ok "0.6.0: skill, templat WORKFLOW dan README menyebut epic-link/inherit/tutup issue" $? 0
 # 4d. journey otomatis: skill prd menggali journey saat diskusi; breakdown mengusulkan journey bila PRD belum punya
 cd "$root" || exit 1
 grep -q 'Journeys' skills/prd/SKILL.md && grep -q 'infrastruktur' skills/prd/SKILL.md && grep -qi 'apa yang bisa dilakukan pengguna' skills/prd/SKILL.md; ok "prd: menggali journey, tiap kebutuhan masuk journey atau infrastruktur" $? 0

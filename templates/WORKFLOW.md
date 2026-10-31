@@ -18,6 +18,8 @@ Dibuat oleh `aicrew:kickoff`. Keputusan project ini; menimpa bawaan aicrew.
 - Risiko (`risk:*`, diberi breakdown): L0 = dokumen/tes/refactor tanpa efek perilaku; L1 = perilaku biasa; L2 = auth, uang, data pribadi, migrasi, infra, atau sulit dibalik.
 - `epic` = satu issue per journey (daftar centang issue anak). Bukan pekerjaan: agen dan skrip melewatinya; owner menutupnya saat semua anak selesai.
 - Label integrasi: {{di-integrasi (bawaan) | nama lain}}. Label keputusan otomatis: {{keputusan-otomatis (bawaan) | nama lain}}. Dibaca oleh `scripts/label.sh`.
+- Label discovery: {{discovery phase:discovery (bawaan) | nama lain}}. Label epic belum dipecah: {{belum-dipecah (bawaan) | nama lain}}. Dibaca oleh `scripts/label.sh`; epic hanya mencapai In review bila ada anak bukan-discovery.
+- Tutup issue setelah merge integrasi: {{tidak (bawaan) | ya}}. GitHub hanya menutup issue lewat merge ke cabang bawaan, sehingga progres sub-issue epic tertahan 0% selama integrasi belum ke `main`; `ya` = `board.sh --sync` menutup issue berlabel di-integrasi (kecuali `epic`).
 - Bahasa artefak (kode, komentar, commit, label): {{Inggris (bawaan) | bahasa lain, hanya atas permintaan owner}}
 - Berkas `docs/` dilacak git: {{ya | tidak (di-ignore, disengaja)}}
 
