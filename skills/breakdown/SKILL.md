@@ -42,7 +42,7 @@ Jangan memecah PRD yang belum disetujui; bila `Status PRD` tidak tercatat, tanya
    Issue yang menyentuh jalur tulis DB, antrean/worker/polling, cron, atau config infra (Postgres, Redis, limit container) diberi `needs-perf` dengan alasan yang sama.
    Beri juga satu label risiko per issue: `risk:L0` (dokumen, tes, refactor tanpa efek perilaku), `risk:L1` (perilaku biasa, bawaan bila ragu antara L0/L1),
    `risk:L2` (auth, uang, data pribadi, migrasi, infra, atau sulit dibalik). L2 tidak pernah di-merge otomatis (`pr-merge-check.sh --auto` menolaknya) dan sebaiknya juga `needs-principal`/`needs-security` bila relevan.
-   Issue yang membaca repo/direktori lain (discovery) wajib memuat bagian "Keamanan" dari `templates/ISSUE.md` apa adanya.
+   Issue yang membaca repo/direktori lain (discovery) wajib memuat bagian "Security" dari `templates/ISSUE.md` apa adanya.
    Judul dan isi issue memakai bahasa artefak di `WORKFLOW.md` (bawaan Inggris).
 7. **Tampilkan rencana dulu** (tabel: no, judul, role, wave, blocked-by, file) dan minta persetujuan
    owner. Membuat issue di backend itu tindakan keluar: jangan dijalankan sebelum disetujui.

@@ -456,7 +456,7 @@ LK=auto; ok "label.sh: bawaan keputusan-otomatis" "$(cd "$tmp/plain" && bash "$r
 grep -q 'label.sh' scripts/release-report.sh && grep -q 'label.sh' scripts/autopilot.sh && grep -q 'Label integrasi' templates/WORKFLOW.md; ok "label.sh dipakai skrip dan WORKFLOW" $? 0
 
 # 3i. ISSUE.md: boilerplate keamanan untuk issue discovery yang membaca repo lain
-grep -q '\.env' templates/ISSUE.md && grep -qi 'data' templates/ISSUE.md && grep -qi 'riwayat git' templates/ISSUE.md; ok "ISSUE.md: boilerplate keamanan discovery" $? 0
+grep -q '\.env' templates/ISSUE.md && grep -qi 'data' templates/ISSUE.md && grep -qi 'git history' templates/ISSUE.md; ok "ISSUE.md: boilerplate keamanan discovery" $? 0
 cd "$root" || exit 1
 
 [ "$fails" = 0 ] && echo "SEMUA LULUS" || { echo "$fails GAGAL"; exit 1; }
