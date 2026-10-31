@@ -129,6 +129,10 @@ Epic bukan pekerjaan: agen dan skrip melewatinya. Progres epic mengikuti penutup
 
 **Sub-issue native dan progres epic (0.6.0).** `scripts/epic-link.sh <epic> <anak...>` memasang anak ke epic lewat daftar centang dan sub-issue native GitHub (id numerik, idempoten); `epic-link.sh --inherit <sumber> <anak>` membuat issue lanjutan mewarisi epic sumbernya. `board.sh --sync` membaca anak dari sub-issue native (cadangan: daftar centang), menulis progres ("6/9 Done, 1 In progress") ke satu komentar epic, menandai epic **In progress** begitu sebagian anak Done, dan baru **In review** bila semua anak selesai, ada minimal satu anak bukan-discovery (label `discovery`/`phase:discovery`), dan epic tak berlabel `belum-dipecah`. `Tutup issue setelah merge integrasi: ya` di WORKFLOW.md membuat `--sync` menutup issue `di-integrasi` agar progres sub-issue ikut bergerak. WORKFLOW.md dibaca dari cabang integrasi bila ada (`scripts/workflow.sh`), bukan hanya checkout aktif.
 
+**Konsep (0.6.1).** Journey = epic = induk; issue kerja = sub-issue native dari epic. Status "closed" pada issue kerja, dengan opsi `Tutup issue setelah merge integrasi: ya`, berarti *sudah di cabang integrasi, belum dirilis*. Pembeda rilis adalah PR integrasi → `main` dan label `di-integrasi`, bukan status closed. `epic-link.sh --check` mendaftar issue terbuka non-epic yang tidak punya induk (exit 3 bila ada) untuk audit yatim oleh orkestrator atau owner.
+
+**Langkah manual di UI (tidak ada API untuk tampilan project).** Di tampilan kanban, tambahkan kolom *Parent issue* dan atur *Group by → Parent issue*; juga view "Journeys" dengan filter `label:epic`. Hanya owner yang bisa mengatur ini.
+
 ## 🗂️ Kanban (opsional)
 `scripts/board-init.sh` membuat GitHub Project, menautkannya ke repo, menyeragamkan status, dan membuat view papan (`createProjectV2View` dengan `BOARD_LAYOUT`; project baru hanya punya view tabel). `scripts/board.sh` menggeser kartu; `board.sh <owner> <nomor> --sync` memindahkan issue yang ditutup tanpa PR ke Done bila `Kartu Done: agen-setelah-merge`. Perlu scope `gh` `project`.
 > [!NOTE]

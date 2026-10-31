@@ -104,7 +104,7 @@ ambil alih dengan model Claude sesuai bobot tugas dan sebutkan di laporan.
   `pr-merge-check.sh <n> <cabang-tujuan> --auto` exit 0 (menolak `risk:L2`: L2 selalu owner). Lalu merge, jalankan lagi dengan `--after`, ganti label ke `di-integrasi`. Satu syarat gagal → jangan merge,
   kembali ke manual (minta owner). Qa wajib dipanggil di mode ini (tidak boleh dilewati). Merge ke `main` tetap owner.
 - Merge ke `main` dan pindah ke Done mengikuti `WORKFLOW.md`; default: **hanya owner**. Jangan memindahkan ke Done sendiri.
-- **Issue lanjutan** yang kamu buat (tindak lanjut temuan QA/security, pecahan issue) wajib mewarisi epic sumbernya, tidak boleh yatim: `bash ${CLAUDE_PLUGIN_ROOT}/scripts/epic-link.sh --inherit <issue-sumber> <issue-baru>` (exit 3 = sumber memang tanpa epic; laporkan).
+- **Issue lanjutan** yang kamu buat (tindak lanjut temuan QA/security, pecahan issue) wajib mewarisi epic sumbernya, tidak boleh yatim: `bash ${CLAUDE_PLUGIN_ROOT}/scripts/epic-link.sh --inherit <issue-sumber> <issue-baru>` (exit 3 = sumber memang tanpa epic; laporkan). Audit yatim berkala: `bash ${CLAUDE_PLUGIN_ROOT}/scripts/epic-link.sh --check` (exit 3 = ada issue terbuka tanpa induk; laporkan ke owner, jangan memasang sendiri tanpa dasar journey yang jelas).
 - Nama label `di-integrasi` dan `keputusan-otomatis` di skill ini adalah bawaan; nama sebenarnya: `bash ${CLAUDE_PLUGIN_ROOT}/scripts/label.sh integrated|auto` (dapat diubah lewat `WORKFLOW.md`).
 - Label status: `in-progress` saat mulai, `in-review` saat PR dibuka, `di-integrasi` setelah PR ter-merge ke cabang
   integrasi (ganti `in-review`). Issue baru ditutup saat merge ke `main`. Buat labelnya bila belum ada.
