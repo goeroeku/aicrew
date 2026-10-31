@@ -131,6 +131,8 @@ Epic bukan pekerjaan: agen dan skrip melewatinya. Progres epic mengikuti penutup
 
 **Konsep (0.6.1).** Journey = epic = induk; issue kerja = sub-issue native dari epic. Status "closed" pada issue kerja, dengan opsi `Tutup issue setelah merge integrasi: ya`, berarti *sudah di cabang integrasi, belum dirilis*. Pembeda rilis adalah PR integrasi → `main` dan label `di-integrasi`, bukan status closed. `epic-link.sh --check` mendaftar issue terbuka non-epic yang tidak punya induk (exit 3 bila ada) untuk audit yatim oleh orkestrator atau owner.
 
+**Kunci stack bersama dan yatim disengaja (0.6.3).** `scripts/lock.sh <nama> [--wait detik] -- perintah...` menjalankan perintah dengan kunci bernama (mkdir atomik, pemegang mati diambil alih, habis waktu = exit 75), untuk tes yang memakai stack Docker/Keycloak bersama. Issue yang sengaja tanpa induk diberi label `tanpa-induk` (nama dapat diganti lewat `Label tanpa induk:` di WORKFLOW.md) dan dilewati `epic-link.sh --check`.
+
 **Langkah manual di UI (tidak ada API untuk tampilan project).** Di tampilan kanban, tambahkan kolom *Parent issue* dan atur *Group by → Parent issue*; juga view "Journeys" dengan filter `label:epic`. Hanya owner yang bisa mengatur ini.
 
 ## 🗂️ Kanban (opsional)

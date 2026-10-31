@@ -581,6 +581,17 @@ echo '[{"number":20,"body":"- [ ] #5 a"}]' > "$FAKE/epics.json"; rm -f "$FAKE/pa
 ok "epic-link --check: #6 yatim terdaftar, #5 (di checklist) dan epic tidak" "$(EL --check | tr '\n' ' ')" "yatim: #6 b "
 EL --check >/dev/null; ok "epic-link --check: exit 3 bila ada yatim" "$?" 3
 echo '[{"number":20,"body":"- [ ] #5 a\n- [ ] #6 b"}]' > "$FAKE/epics.json"; EL --check >/dev/null; ok "epic-link --check: tanpa yatim -> exit 0" "$?" 0
+echo '[{"number":6,"title":"b","labels":[{"name":"tanpa-induk"}]}]' > "$FAKE/open.json"; echo '[]' > "$FAKE/epics.json"; EL --check >/dev/null
+ok "epic-link --check: label tanpa-induk dilewati (yatim disengaja)" "$?" 0
+printf -- '- Label tanpa induk: payung\n' > "$tmp/ec/w/docs/WORKFLOW.md"
+echo '[{"number":6,"title":"b","labels":[{"name":"payung"}]}]' > "$FAKE/open.json"; EL --check >/dev/null
+ok "epic-link --check: nama label tanpa induk dari WORKFLOW" "$?" 0
+# lock.sh: kunci per nama untuk stack bersama (Docker/Keycloak); mkdir atomik, tanpa flock (tak ada di macOS)
+export TMPDIR_LOCK="$tmp/lk"; mkdir -p "$TMPDIR_LOCK"; LK() { TMPDIR="$TMPDIR_LOCK" bash "$root/scripts/lock.sh" "$@"; }
+LK t --wait 2 -- true; ok "lock.sh: menjalankan perintah dan melepas kunci" "$?$([ -d "$TMPDIR_LOCK/aicrew-lock-t" ] && echo ada)" 0
+( LK t -- sleep 3 ) & sleep 1; LK t --wait 1 -- true; ok "lock.sh: kunci dipegang proses lain -> habis waktu (exit 75)" "$?" 75; wait
+LK t -- bash -c 'exit 7'; ok "lock.sh: meneruskan exit status perintah" "$?" 7
+mkdir "$TMPDIR_LOCK/aicrew-lock-s"; echo 999999 > "$TMPDIR_LOCK/aicrew-lock-s/pid"; LK s --wait 2 -- true; ok "lock.sh: kunci basi (proses mati) diambil alih" "$?" 0
 echo '- [ ] #1 x' > "$FAKE/epicbody.txt"; EL 20 6 >/dev/null
 ok "epic-link: sub-issue native memakai id numerik, bukan nomor" "$(grep -c 'sub_issues -F sub_issue_id=1006' "$FAKE/calls")" 1
 ok "epic-link: daftar centang ikut ditambahkan" "$(grep -c '^- \[ \] #6' "$FAKE/calls")" 1
@@ -603,6 +614,7 @@ ok "workflow.sh: titik penutup kalimat tidak ikut nama cabang (titik di tengah t
 ok "workflow.sh: tanpa cabang integrasi -> berkas lokal" "$(cd "$tmp/ec/w" && printf 'Halo\n' > docs/WORKFLOW.md && bash "$root/scripts/workflow.sh")" Halo
 grep -q 'epic-link.sh' skills/breakdown/SKILL.md && grep -q 'epic-link.sh --inherit' skills/orchestrate/SKILL.md && grep -q 'Tutup issue setelah merge integrasi' templates/WORKFLOW.md && grep -q 'sub-issue native' README.md; ok "0.6.0: skill, templat WORKFLOW dan README menyebut epic-link/inherit/tutup issue" $? 0
 grep -q 'Konsep (0.6.1)' README.md && grep -q 'Parent issue' README.md && grep -q 'Parent issue' scripts/board-init.sh && grep -q 'epic-link.sh --check' skills/orchestrate/SKILL.md; ok "0.6.1: README konsep, langkah UI manual, skill menyebut --check" $? 0
+grep -q 'lock.sh' skills/orchestrate/SKILL.md && grep -q 'Label tanpa induk' templates/WORKFLOW.md && grep -q 'lock.sh' README.md; ok "0.6.3: skill, templat WORKFLOW dan README menyebut lock.sh dan tanpa-induk" $? 0
 # 4d. journey otomatis: skill prd menggali journey saat diskusi; breakdown mengusulkan journey bila PRD belum punya
 cd "$root" || exit 1
 grep -q 'Journeys' skills/prd/SKILL.md && grep -q 'infrastruktur' skills/prd/SKILL.md && grep -qi 'apa yang bisa dilakukan pengguna' skills/prd/SKILL.md; ok "prd: menggali journey, tiap kebutuhan masuk journey atau infrastruktur" $? 0

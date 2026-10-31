@@ -8,13 +8,14 @@ set -euo pipefail
 repo="$(gh repo view --json nameWithOwner -q .nameWithOwner)"
 if [ "${1:-}" = "--check" ]; then
   epics="$(gh issue list --state open --label epic --limit 100 --json number,body)"; orphan=0
+  np="$(bash "$(dirname "$0")/label.sh" noparent)"  # yatim yang disengaja (mis. payung tindak lanjut) diberi label ini
   while read -r i; do
     [ -n "$i" ] || continue; n="$(jq .number <<<"$i")"
     p="$(gh api "repos/$repo/issues/$n/parent" --jq .number 2>/dev/null || true)"; [[ "$p" =~ ^[0-9]+$ ]] && continue
     jq -r '.[].body // ""' <<<"$epics" | grep -qE "^- \[[ xX]\] #$n\b" && continue
     echo "yatim: #$n $(jq -r .title <<<"$i")"; orphan=1
   done < <(open="$(gh issue list --state open --limit 200 --json number,title,labels)"; [ "$(jq length <<<"$open")" -lt 200 ] || echo "epic-link --check: 200 issue terbuka pertama saja diperiksa; hasil bisa tidak lengkap" >&2
-           jq -c '.[]|select((.labels|map(.name)|index("epic"))|not)' <<<"$open")
+           jq -c --arg np "$np" '.[]|select((.labels|map(.name)|index("epic") or index($np))|not)' <<<"$open")
   exit $((orphan*3))
 fi
 if [ "${1:-}" = "--inherit" ]; then

@@ -105,6 +105,7 @@ ambil alih dengan model Claude sesuai bobot tugas dan sebutkan di laporan.
   kembali ke manual (minta owner). Qa wajib dipanggil di mode ini (tidak boleh dilewati). Merge ke `main` tetap owner.
 - Merge ke `main` dan pindah ke Done mengikuti `WORKFLOW.md`; default: **hanya owner**. Jangan memindahkan ke Done sendiri.
 - **Issue lanjutan** yang kamu buat (tindak lanjut temuan QA/security, pecahan issue) wajib mewarisi epic sumbernya, tidak boleh yatim: `bash ${CLAUDE_PLUGIN_ROOT}/scripts/epic-link.sh --inherit <issue-sumber> <issue-baru>` (exit 3 = sumber memang tanpa epic; laporkan). Audit yatim berkala: `bash ${CLAUDE_PLUGIN_ROOT}/scripts/epic-link.sh --check` (exit 3 = ada issue terbuka tanpa induk; laporkan ke owner, jangan memasang sendiri tanpa dasar journey yang jelas).
+- **Stack bersama** (Docker/Keycloak, DB tes yang dipakai banyak sesi atau worktree): jalankan tesnya lewat kunci, `bash ${CLAUDE_PLUGIN_ROOT}/scripts/lock.sh <nama-stack> -- <perintah tes>`, atau beri nama proyek compose per worktree (`COMPOSE_PROJECT_NAME`). Dua sesi yang menyalakan ulang stack yang sama membuat tes gagal acak.
 - Nama label `di-integrasi` dan `keputusan-otomatis` di skill ini adalah bawaan; nama sebenarnya: `bash ${CLAUDE_PLUGIN_ROOT}/scripts/label.sh integrated|auto` (dapat diubah lewat `WORKFLOW.md`).
 - Label status: `in-progress` saat mulai, `in-review` saat PR dibuka, `di-integrasi` setelah PR ter-merge ke cabang
   integrasi (ganti `in-review`). Issue baru ditutup saat merge ke `main`. Buat labelnya bila belum ada.
