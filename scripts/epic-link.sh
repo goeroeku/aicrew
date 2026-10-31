@@ -13,7 +13,8 @@ if [ "${1:-}" = "--check" ]; then
     p="$(gh api "repos/$repo/issues/$n/parent" --jq .number 2>/dev/null || true)"; [[ "$p" =~ ^[0-9]+$ ]] && continue
     jq -r '.[].body // ""' <<<"$epics" | grep -qE "^- \[[ xX]\] #$n\b" && continue
     echo "yatim: #$n $(jq -r .title <<<"$i")"; orphan=1
-  done < <(gh issue list --state open --limit 200 --json number,title,labels | jq -c '.[]|select((.labels|map(.name)|index("epic"))|not)')
+  done < <(open="$(gh issue list --state open --limit 200 --json number,title,labels)"; [ "$(jq length <<<"$open")" -lt 200 ] || echo "epic-link --check: 200 issue terbuka pertama saja diperiksa; hasil bisa tidak lengkap" >&2
+           jq -c '.[]|select((.labels|map(.name)|index("epic"))|not)' <<<"$open")
   exit $((orphan*3))
 fi
 if [ "${1:-}" = "--inherit" ]; then
@@ -38,6 +39,7 @@ for kid in "$@"; do
     gh issue edit "$epic" --body "$body"$'\n'"- [ ] #$kid" >/dev/null
     sleep "0.$((try*3))"; gh issue view "$epic" --json body -q .body | grep -qE "^- \[[ xX]\] #$kid\b" && break
   done
+  gh issue view "$epic" --json body -q .body | grep -qE "^- \[[ xX]\] #$kid\b" || { echo "epic-link: daftar centang #$kid di epic #$epic gagal terpasang setelah 3 percobaan (tertimpa proses lain?)" >&2; exit 1; }
   id="$(gh api "repos/$repo/issues/$kid" --jq .id)"
   gh api -X POST "repos/$repo/issues/$epic/sub_issues" -F sub_issue_id="$id" >/dev/null 2>&1 || echo "epic-link: sub-issue native #$kid tidak terpasang (mungkin sudah)" >&2
   echo "epic-link: #$kid -> epic #$epic"

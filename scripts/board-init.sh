@@ -15,8 +15,7 @@ want='["Backlog","Ready","In progress","In review","Done"]'
 have="$(jq -c '[.options[].name]' <<<"$field")"
 if [ "$have" != "$want" ]; then
   items="$(gh project item-list "$num" --owner "$owner" --limit 1 --format json -q '.items|length')"
-  [ "$items" = 0 ] || { echo "board-init: project $num berisi kartu; opsi Status tidak diganti (pakai nama status yang ada)" >&2; echo "board-init: langkah manual di UI project: kolom 'Parent issue', Group by -> Parent issue, dan view 'Journeys' (filter label:epic); tidak ada API untuk tampilan." >&2
-echo "$num"; exit 0; }
+  [ "$items" = 0 ] || { echo "board-init: project $num berisi kartu; opsi Status tidak diganti (pakai nama status yang ada)" >&2; echo "$num"; exit 0; }
   jq -n --arg f "$fid" --argjson w "$want" '{query:"mutation($i:UpdateProjectV2FieldInput!){updateProjectV2Field(input:$i){clientMutationId}}",
     variables:{i:{fieldId:$f,singleSelectOptions:[$w[]|{name:.,color:"GRAY",description:""}]}}}' \
   | gh api graphql --input - >/dev/null
@@ -29,4 +28,5 @@ if ! grep -q BOARD_LAYOUT <<<"$layouts"; then
     variables:{i:{projectId:$p,name:"Board",layout:"BOARD_LAYOUT"}}}' | gh api graphql --input - >/dev/null \
   || echo "board-init: gagal membuat view papan (project tetap berguna sebagai tabel)" >&2
 fi
+echo "board-init: langkah manual di UI project: kolom 'Parent issue', Group by -> Parent issue, dan view 'Journeys' (filter label:epic); tidak ada API untuk tampilan." >&2
 echo "$num"

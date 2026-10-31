@@ -387,6 +387,8 @@ EOF
 chmod +x "$tmp/bib/gh"; export FAKE="$tmp/bi"; : > "$FAKE/calls"; : > "$FAKE/gql"
 PATH="$tmp/bib:$PATH" bash "$root/scripts/board-init.sh" o T 3 >/dev/null; ok "board-init: createProjectV2View BOARD_LAYOUT" "$(grep -c 'createProjectV2View' "$FAKE/gql")$(grep -c 'BOARD_LAYOUT' "$FAKE/gql")" 11
 : > "$FAKE/gql"; VIEWS='["BOARD_LAYOUT"]' PATH="$tmp/bib:$PATH" bash "$root/scripts/board-init.sh" o T 3 >/dev/null; ok "board-init: idempoten (view BOARD sudah ada)" "$(grep -c 'createProjectV2View' "$FAKE/gql")" 0
+ok "board-init: petunjuk langkah UI manual tercetak di jalur normal" "$(PATH="$tmp/bib:$PATH" bash "$root/scripts/board-init.sh" o T 3 2>&1 >/dev/null | grep -c 'Parent issue')" 1
+ok "board-init: nomor project tetap baris terakhir stdout" "$(PATH="$tmp/bib:$PATH" bash "$root/scripts/board-init.sh" o T 3 2>/dev/null | tail -1)" 3
 grep -q 'deleteProjectV2Workflow' README.md && grep -q 'Item closed' README.md; ok "README: workflow 'Item closed' tak bisa diaktifkan lewat API" $? 0
 
 # 3c. preflight: peringatan Orca (agen diluncurkan dengan --dangerously-skip-permissions)
@@ -570,6 +572,9 @@ echo '[{"number":20,"labels":[{"name":"epic"}],"closedByPullRequestsReferences":
 ok "Done-mirror: epic ditutup tidak ikut dicerminkan, issue biasa ya" "$(grep 'item-edit' "$FAKE/calls" | grep -c 'I9.*OD')$(grep 'item-edit' "$FAKE/calls" | grep -c 'I20')" 10
 # epic-link.sh
 EL() { : > "$FAKE/calls"; (cd "$tmp/ec/w" && PATH="$tmp/ecb:$PATH" bash "$root/scripts/epic-link.sh" "$@" 2>/dev/null); }
+echo '- [ ] #1 x' > "$FAKE/epicbody.txt"; cp "$tmp/ecb/gh" "$tmp/ecb/gh.ok"; sed -i.bak 's#"issue edit"\*) printf.*#"issue edit"*) : ;;#' "$tmp/ecb/gh"
+EL 20 7 >/dev/null; ok "epic-link: checklist gagal terpasang setelah 3 percobaan -> exit non-zero" "$([ $? -ne 0 ] && echo gagal)" gagal
+mv "$tmp/ecb/gh.ok" "$tmp/ecb/gh"; chmod +x "$tmp/ecb/gh"
 # epic-link.sh --check: daftar issue terbuka non-epic tanpa induk
 echo '[{"number":5,"title":"a","labels":[]},{"number":6,"title":"b","labels":[]},{"number":20,"title":"[J1]","labels":[{"name":"epic"}]}]' > "$FAKE/open.json"
 echo '[{"number":20,"body":"- [ ] #5 a"}]' > "$FAKE/epics.json"; rm -f "$FAKE/parent.txt"
