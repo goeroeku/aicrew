@@ -4,7 +4,9 @@
 case "${1:-}" in
   integrated) v="${AICREW_LABEL_INTEGRATED:-}"; k='Label integrasi'; def=di-integrasi ;;
   auto) v="${AICREW_LABEL_AUTO:-}"; k='Label keputusan otomatis'; def=keputusan-otomatis ;;
-  *) echo "pakai: label.sh integrated|auto" >&2; exit 64 ;;
+  discovery) v="${AICREW_LABEL_DISCOVERY:-}"; k='Label discovery'; def='discovery phase:discovery' ;;
+  notsplit) v="${AICREW_LABEL_NOTSPLIT:-}"; k='Label epic belum dipecah'; def=belum-dipecah ;;
+  *) echo "pakai: label.sh integrated|auto|discovery|notsplit" >&2; exit 64 ;;
 esac
 [ -n "$v" ] || v="$(sed -n "s/^[- ]*$k: *\([A-Za-z0-9._:\/-]*\).*/\1/p" 2>/dev/null <<<"$(bash "$(dirname "$0")/workflow.sh")" | head -1)"
 echo "${v:-$def}"

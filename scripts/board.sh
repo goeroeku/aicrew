@@ -16,6 +16,7 @@ if [ "${3:-}" = "--sync" ]; then
   repo="$(gh repo view --json nameWithOwner -q .nameWithOwner)"
   # WORKFLOW terbaru (bisa di cabang integrasi, bukan checkout aktif)
   wfc="$(bash "$(dirname "$0")/workflow.sh")"
+  disc="$(bash "$(dirname "$0")/label.sh" discovery)"; nsl="$(bash "$(dirname "$0")/label.sh" notsplit)"
   while read -r e; do
     [ -n "$e" ] || continue
     en="$(jq .number <<<"$e")"; kids="$(gh api "repos/$repo/issues/$en/sub_issues" --jq '.[].number' 2>/dev/null || true)"
@@ -29,9 +30,9 @@ if [ "${3:-}" = "--sync" ]; then
       total=$((total+1))
       if [ "$ks" = CLOSED ] || [ "$ks_board" = Done ]; then done_n=$((done_n+1)); else unfinished=1; fi
       [ "$ks" = OPEN ] && case "$ks_board" in "In progress"|"In review") active=$((active+1)) ;; esac
-      grep -qwE 'discovery|phase:discovery' <<<"$kl" || real=1
+      is_disc=0; for dl in $disc; do grep -qwF -- "$dl" <<<"$kl" && is_disc=1; done; [ "$is_disc" = 1 ] || real=1
     done
-    notsplit=0; jq -e '(.labels // [])|map(.name)|index("belum-dipecah")' <<<"$e" >/dev/null 2>&1 && notsplit=1
+    notsplit=0; jq -e --arg l "$nsl" '(.labels // [])|map(.name)|index($l)' <<<"$e" >/dev/null 2>&1 && notsplit=1
     if [ "$unfinished" = 0 ] && [ "$real" = 1 ] && [ "$notsplit" = 0 ]; then want="In review"
     elif [ "$active" -gt 0 ] || [ "$done_n" -gt 0 ]; then want="In progress"; else want=Backlog; fi
     [ "$(st_of "$en")" = "$want" ] || bash "$0" "$owner" "$num" "$en" "$want" || true
@@ -51,7 +52,7 @@ if [ "${3:-}" = "--sync" ]; then
   # cerminkan issue yang ditutup TANPA PR ke Done, hanya bila WORKFLOW.md menulis "Kartu Done: agen-setelah-merge"
   grep -qE '^[- ]*Kartu Done: *agen-setelah-merge' <<<"$wfc" || { echo "board --sync: Kartu Done bukan agen-setelah-merge; tidak ada yang diubah"; exit 0; }
   done_n="$(gh project item-list "$num" --owner "$owner" --limit 200 --format json | jq -r '.items[]|select(.status=="Done" and .content.type=="Issue")|.content.number')"
-  for n in $(gh issue list --state closed --limit 200 --json number,closedByPullRequestsReferences | jq -r '.[]|select((.closedByPullRequestsReferences|length)==0)|.number'); do
+  for n in $(gh issue list --state closed --limit 200 --json number,labels,closedByPullRequestsReferences | jq -r '.[]|select((.closedByPullRequestsReferences|length)==0 and ((.labels // [])|map(.name)|index("epic")|not))|.number'); do
     grep -qx "$n" <<<"$done_n" || bash "$0" "$owner" "$num" "$n" Done || true
   done
   exit 0

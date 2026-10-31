@@ -530,6 +530,7 @@ case "$*" in
   "issue list --state open --label epic"*) cat "$FAKE/epics.json" ;;
   "issue list --state open --label di-integrasi"*) cat "$FAKE/integrated.json" ;;
   "issue list --state all"*) cat "$FAKE/states.json" ;;
+  "issue list --state closed"*) cat "$FAKE/closed.json" ;;
   "issue list"*) echo '[]' ;;
 esac
 EOF
@@ -556,6 +557,15 @@ printf -- '- Kartu Done: owner.\n- Tutup issue setelah merge integrasi: ya\n' > 
 ok "tutup issue di-integrasi: ya -> issue close 8" "$(grep -c '^issue close 8' "$FAKE/calls")" 1
 printf -- '- Kartu Done: owner.\n- Tutup issue setelah merge integrasi: tidak\n' > "$tmp/ec/w/docs/WORKFLOW.md"; EY
 ok "tutup issue di-integrasi: tidak -> tidak menutup" "$(grep -c '^issue close' "$FAKE/calls")" 0
+printf -- '- Label discovery: eksplorasi\n- Label epic belum dipecah: mentah\n' > "$tmp/ec/w/docs/WORKFLOW.md"
+echo '[{"number":20,"body":"- [ ] #5 a","labels":[]}]' > "$FAKE/epics.json"; echo '[{"number":5,"state":"CLOSED","labels":[{"name":"eksplorasi"}]}]' > "$FAKE/states.json"; EY
+ok "label discovery dari WORKFLOW: anak 'eksplorasi' = discovery -> bukan In review" "$(grep 'item-edit' "$FAKE/calls" | grep -c 'I20.*OR')" 0
+echo '[{"number":20,"body":"- [ ] #5 a","labels":[{"name":"mentah"}]}]' > "$FAKE/epics.json"; echo '[{"number":5,"state":"CLOSED","labels":[]}]' > "$FAKE/states.json"; EY
+ok "label belum-dipecah dari WORKFLOW: 'mentah' -> bukan In review" "$(grep 'item-edit' "$FAKE/calls" | grep -c 'I20.*OR')" 0
+printf -- '- Kartu Done: agen-setelah-merge\n' > "$tmp/ec/w/docs/WORKFLOW.md"; echo '[]' > "$FAKE/epics.json"
+echo '{"items":[{"id":"I20","status":"In review","content":{"number":20,"type":"Issue"}},{"id":"I9","status":"In review","content":{"number":9,"type":"Issue"}}]}' > "$FAKE/items.json"
+echo '[{"number":20,"labels":[{"name":"epic"}],"closedByPullRequestsReferences":[]},{"number":9,"labels":[],"closedByPullRequestsReferences":[]}]' > "$FAKE/closed.json"; EY
+ok "Done-mirror: epic ditutup tidak ikut dicerminkan, issue biasa ya" "$(grep 'item-edit' "$FAKE/calls" | grep -c 'I9.*OD')$(grep 'item-edit' "$FAKE/calls" | grep -c 'I20')" 10
 # epic-link.sh
 EL() { : > "$FAKE/calls"; (cd "$tmp/ec/w" && PATH="$tmp/ecb:$PATH" bash "$root/scripts/epic-link.sh" "$@" 2>/dev/null); }
 echo '- [ ] #1 x' > "$FAKE/epicbody.txt"; EL 20 6 >/dev/null
