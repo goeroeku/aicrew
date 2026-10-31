@@ -34,7 +34,7 @@ errs=0; same=0; was_limit=0; last="$(fingerprint)"
 [ "$(cat "$d/last-round-fp" 2>/dev/null)" = "$last" ] && same=1
 for ((i=1; i<=max_rounds; i++)); do
   # issue berlabel integrasi ($L_INT, bawaan di-integrasi) sudah selesai (menunggu merge ke main oleh owner): bukan pekerjaan tersisa
-  open="$(gh issue list --state open --limit 200 --json number,labels | jq --arg l "$L_INT" '[.[]|select(.labels|map(.name)|index($l)|not)]')"
+  open="$(gh issue list --state open --limit 200 --json number,labels | jq --arg l "$L_INT" '[.[]|select(.labels|map(.name)|(index($l) or index("epic"))|not)]')"  # epic = pengelompokan journey, bukan pekerjaan
   n_open="$(jq length <<<"$open")"
   n_wait="$(jq '[.[]|select(.labels|map(.name)|index("needs-principal"))]|length' <<<"$open")"
   [ "$n_open" = 0 ] && { note "autopilot: semua issue selesai (putaran $((i-1)))"; exit 0; }

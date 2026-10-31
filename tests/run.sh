@@ -459,4 +459,15 @@ grep -q 'label.sh' scripts/release-report.sh && grep -q 'label.sh' scripts/autop
 grep -q '\.env' templates/ISSUE.md && grep -qi 'data' templates/ISSUE.md && grep -qi 'git history' templates/ISSUE.md; ok "ISSUE.md: boilerplate keamanan discovery" $? 0
 cd "$root" || exit 1
 
+# 4. journey dan epic (0.5.0): issue berlabel epic bukan pekerjaan
+export FAKE="$F"; Q="$tmp/bin:$PATH"; P="$Q"; EPIC='{"number":9,"title":"[J1] x","state":"OPEN","labels":[{"name":"epic"},{"name":"in-progress"}]}'
+cd "$tmp/r" || exit 1
+run_epic() { printf 'close\n' > "$F/script"; rm -f "$F/n"; echo "$1" > "$F/issues.json"; rm -rf .aicrew; PATH="$Q" AICREW_CAFF=1 AICREW_CLAUDE=claude bash "$root/scripts/autopilot.sh" --sleep 0 >/dev/null 2>&1; }
+run_epic "[$EPIC]"; r=$?; ok "epic: hanya epic terbuka -> autopilot exit 0" $r 0; ok "epic: claude tidak dipanggil" "$(cat $F/n 2>/dev/null || echo 0)" 0
+run_epic "[$EPIC,{\"number\":1,\"state\":\"OPEN\",\"labels\":[{\"name\":\"role:qa\"}]}]"; ok "epic: issue biasa tetap dikerjakan di samping epic" "$(cat $F/n)" 1
+echo "[$EPIC]" > "$F/issues.json"; [ -z "$(PATH="$Q" bash "$root/scripts/resume.sh")" ]; ok "epic: resume.sh tidak mengklasifikasi epic" $? 0
+cd "$tmp/rr" || exit 1
+rr "$(jq -c '. + ['"$EPIC"']' <<<"$OKI")" "$OKPR" --test-cmd true; ok "epic: release-report SIAP walau epic masih terbuka" $? 0
+cd "$root" || exit 1
+
 [ "$fails" = 0 ] && echo "SEMUA LULUS" || { echo "$fails GAGAL"; exit 1; }
