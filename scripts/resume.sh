@@ -8,7 +8,7 @@
 # Tidak mengubah apa pun; orkestrator yang bertindak.
 set -u
 for n in $(gh issue list --state open --json number,labels \
-    -q '.[] | select(.labels|map(.name)|(index("in-progress") or index("in-review"))) | .number'); do
+    -q '.[] | select(.labels|map(.name)|((index("in-progress") or index("in-review")) and (index("epic")|not))) | .number'); do
   read -r pr st < <(gh pr list --head "issue-$n" --state all --json number,state -q '.[0] | "\(.number) \(.state)"' 2>/dev/null || echo "- -")
   if [ "${st:--}" = MERGED ]; then printf '%s\tselesaikan-merge\tPR #%s\n' "$n" "$pr"
   elif [ "${st:--}" = OPEN ]; then printf '%s\tlanjut-pr\tPR #%s\n' "$n" "$pr"

@@ -16,6 +16,7 @@ Dibuat oleh `aicrew:kickoff`. Keputusan project ini; menimpa bawaan aicrew.
 - needs-principal: {{owner | principal-auto}}. Bawaan: owner (semua tingkat dieskalasi ke owner). `principal-auto`: hanya TINGKAT 1 diputuskan
   agen `aicrew-principal` (butuh role principal aktif); tingkat 2 tetap owner. Keputusan otomatis diberi label `keputusan-otomatis` dan dimuat di laporan rilis.
 - Risiko (`risk:*`, diberi breakdown): L0 = dokumen/tes/refactor tanpa efek perilaku; L1 = perilaku biasa; L2 = auth, uang, data pribadi, migrasi, infra, atau sulit dibalik.
+- `epic` = satu issue per journey (daftar centang issue anak). Bukan pekerjaan: agen dan skrip melewatinya; owner menutupnya saat semua anak selesai.
 - Label integrasi: {{di-integrasi (bawaan) | nama lain}}. Label keputusan otomatis: {{keputusan-otomatis (bawaan) | nama lain}}. Dibaca oleh `scripts/label.sh`.
 - Bahasa artefak (kode, komentar, commit, label): {{Inggris (bawaan) | bahasa lain, hanya atas permintaan owner}}
 - Berkas `docs/` dilacak git: {{ya | tidak (di-ignore, disengaja)}}
@@ -34,7 +35,7 @@ Dibuat oleh `aicrew:kickoff`. Keputusan project ini; menimpa bawaan aicrew.
 - Tulis apa dan kenapa, bukan bagaimana (kecuali task berisiko).
 
 ## Label
-`role:*`, `stack:*`, `phase:*`, `needs-principal`, `needs-security`, `needs-perf`, `keputusan-otomatis`, `risk:L0`, `risk:L1`, `risk:L2`, `bug`, `enhancement`, `in-progress`, `in-review`, `di-integrasi`
+`role:*`, `stack:*`, `phase:*`, `needs-principal`, `needs-security`, `needs-perf`, `keputusan-otomatis`, `risk:L0`, `risk:L1`, `risk:L2`, `epic`, `bug`, `enhancement`, `in-progress`, `in-review`, `di-integrasi`
 (GitLab: pakai scoped label `role::qa`, dst.)
 
 ## Gerbang persetujuan owner

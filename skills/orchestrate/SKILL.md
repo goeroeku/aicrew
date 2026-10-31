@@ -19,7 +19,8 @@ Di tengah sesi, simpan hanya ringkasan per issue (nomor, status, PR), bukan kelu
 1. `docs/WORKFLOW.md` ada dan `Status PRD: disetujui`.
 2. `bash ${CLAUDE_PLUGIN_ROOT}/scripts/preflight.sh <backend>` exit 0.
 3. `.aicrew/` ada di `.gitignore` project (tambahkan bila belum).
-4. Ada issue terbuka hasil `breakdown`. Tidak ada → arahkan ke `/aicrew:breakdown`.
+**Issue berlabel `epic` adalah pengelompokan journey, bukan pekerjaan.** Abaikan di semua hitungan "issue terbuka" di skill ini (prasyarat, penyumbat, tahap penutup); `autopilot.sh`, `resume.sh`, dan `release-report.sh` sudah mengabaikannya.
+4. Ada issue terbuka (selain `epic`) hasil `breakdown`. Tidak ada → arahkan ke `/aicrew:breakdown`.
 
 ## Gaya perintah (wajib di mode tanpa pengawasan; juga dibutuhkan hook `jaga-codex`)
 Satu perintah sederhana per panggilan Bash, path literal: tanpa variabel shell (`S=… && bash $S/…`), tanpa `cd <dir> && …` (pakai `git -C <dir>`),
@@ -52,7 +53,7 @@ issue terbuka → laporkan penyumbatnya dan berhenti.
      izinkan dibuat di samping repo di luar `~/orca/workspaces/`), lalu catat jawabannya di baris `Worktree:` agar tidak ditanya lagi.
 3. Pindahkan label ke In Progress (perintah backend dari `WORKFLOW.md`).
    Bila `WORKFLOW.md` punya baris `Board kanban`, cerminkan juga ke board: `bash ${CLAUDE_PLUGIN_ROOT}/scripts/board.sh <owner> <nomor> <issue> "In Progress"`
-   (dan `"In Review"` saat PR dibuka; `board.sh <owner> <nomor> --sync` mencerminkan issue yang ditutup tanpa PR ke Done bila `Kartu Done: agen-setelah-merge`). Gagal → laporkan, lanjut: label tetap sumber status. `Done` hanya oleh owner, kecuali `WORKFLOW.md` menulis `Kartu Done: agen-setelah-merge`: maka setelah merge terverifikasi (`--after` exit 0) pindahkan ke `"Done"`.
+   (dan `"In Review"` saat PR dibuka; `board.sh <owner> <nomor> --sync` mencerminkan issue yang ditutup tanpa PR ke Done bila `Kartu Done: agen-setelah-merge`, dan selalu menghitung status epic dari anaknya; jalankan setiap selesai satu issue). Gagal → laporkan, lanjut: label tetap sumber status. `Done` hanya oleh owner, kecuali `WORKFLOW.md` menulis `Kartu Done: agen-setelah-merge`: maka setelah merge terverifikasi (`--after` exit 0) pindahkan ke `"Done"`.
 4. Panggil agen sesuai label `role:*`, dengan model dari `WORKFLOW.md`:
    `aicrew-senior-coder` (Codex bila terpasang: `codex exec -s workspace-write -C <worktree> -o <keluaran> -` dengan
    prompt dari `${CLAUDE_PLUGIN_ROOT}/templates/codex-prompt.md`, diisi lalu dikirim lewat heredoc inline atau path
@@ -113,7 +114,7 @@ ambil alih dengan model Claude sesuai bobot tugas dan sebutkan di laporan.
   Setelah merge, jalankan lagi dengan `--after`; status "Merged" saja bukan bukti.
 - Perintah yang mengubah server/produksi atau biaya: selalu konfirmasi owner.
 
-## Tahap penutup: calon rilis (bila tidak ada issue siap/berjalan, hanya `di-integrasi` yang tersisa)
+## Tahap penutup: calon rilis (bila tidak ada issue siap/berjalan, hanya `di-integrasi` yang tersisa; issue `epic` tidak dihitung)
 1. `bash ${CLAUDE_PLUGIN_ROOT}/scripts/release-report.sh --test-cmd "<perintah tes penuh>" --dry-run` lebih dulu. Skrip memvonis FAKTA
    (PR tanpa komentar `Bukti selesai`, issue belum di-integrasi, `needs-principal`, suite di salinan segar). `BELUM SIAP` → perbaiki yang disebut
    (mis. pasang komentar bukti yang hilang dari fakta nyata, bukan karangan), lalu ulangi; yang butuh owner dilaporkan dan berhenti.

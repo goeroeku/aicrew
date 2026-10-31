@@ -19,8 +19,8 @@ issues="$(gh issue list --state all --limit 200 --json number,title,state,labels
 prs="$(gh pr list --state all --limit 200 --json number,title,state,baseRefName,comments,body,labels,closingIssuesReferences)" || { echo "release-report: gagal membaca PR (BELUM SIAP)" >&2; exit 1; }
 merged="$(jq --arg b "$integ" '[.[]|select(.state=="MERGED" and .baseRefName==$b)]' <<<"$prs")"
 has() { jq --arg l "$1" 'map(select(.labels|map(.name)|index($l)))' <<<"$2"; }
-blocking="$(jq --arg l "$L_INT" '[.[]|select(.state=="OPEN" and ((.labels|map(.name)|index($l))|not))]' <<<"$issues")"
-needs="$(jq '[.[]|select(.state=="OPEN")]' <<<"$issues" | jq 'map(select(.labels|map(.name)|index("needs-principal")))')"
+blocking="$(jq --arg l "$L_INT" '[.[]|select(.state=="OPEN" and ((.labels|map(.name)|(index($l) or index("epic")))|not))]' <<<"$issues")"
+needs="$(jq '[.[]|select(.state=="OPEN" and ((.labels|map(.name)|index("epic"))|not))]' <<<"$issues" | jq 'map(select(.labels|map(.name)|index("needs-principal")))')"
 auto="$(has "$L_AUTO" "$issues")"
 noevid="$(jq '[.[]|select((.comments|map(.body)|map(contains("Bukti selesai"))|any)|not)]' <<<"$merged")"
 # jejak audit: PR ter-merge berlabel needs-security/needs-perf (label PR + issue yang ditutup badan PR) dan bukti laporannya
