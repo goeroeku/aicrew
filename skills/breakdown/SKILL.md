@@ -50,7 +50,9 @@ Jangan memecah PRD yang belum disetujui; bila `Status PRD` tidak tercatat, tanya
    isi `blocked-by` pada isi issue. Catat nomor issue ke tabel gelombang di akhir PRD (satu blok,
    jangan membuat berkas baru).
 
-## Epic per journey (bila PRD punya bagian Journeys)
+## Epic per journey
+**Bila PRD belum punya Journeys** (mis. PRD lama atau proyek yang sudah berjalan): susun *Usulan journey* dari kebutuhan PRD dan issue yang ada (pengelompokan hasil bagi pengguna, bukan teknis; tandai mana tebakan Anda),
+tampilkan sekali dalam tabel `J-ID | journey | R/N-ID | issue yang ada`, dan minta persetujuan owner. Setelah disetujui, tulis bagian *Journeys* ke PRD (perubahan PRD ini hanya atas persetujuan itu), lalu lanjut ke epic di bawah. Tanpa persetujuan, tidak ada epic dan PRD tidak diubah.
 Lead membaca journey, agen mengerjakan issue kecil. Hierarkinya: Journey (epic) → kebutuhan (R-ID/N-ID) → issue.
 - Setelah issue dibuat, buat satu epic per journey dari `${CLAUDE_PLUGIN_ROOT}/templates/EPIC.md` (label `epic`, judul `[J1] ...`). Daftar centang `- [ ] #n` berisi issue anaknya;
   GitHub menghitung progresnya sendiri. Kebutuhan yang melayani dua journey muncul di dua epic; issue-nya tetap dibuat sekali.

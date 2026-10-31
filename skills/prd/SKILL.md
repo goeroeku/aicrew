@@ -12,6 +12,8 @@ Menulis PRD dari hasil diskusi/brainstorming. Bahasa Indonesia. Tidak menulis ko
 - Bila PRD sudah ada (lihat `WORKFLOW.md` → `PRD:`), jangan menimpa: tampilkan celahnya terhadap templat dan usulkan perubahan.
 - Tiap kebutuhan wajib punya ID dan kriteria yang bisa diuji. Kriteria tidak bisa ditulis → masuk "Pertanyaan terbuka" dan tanyakan owner.
 - Tandai keputusan sulit dibalik (skema DB, bentuk API, auth, uang) sebagai kandidat `needs-principal`.
+- **Journeys**: saat diskusi, tanyakan "apa yang bisa dilakukan pengguna setelah ini selesai?" dan isi bagian *Journeys* (satu baris per hasil yang dipahami lead) serta *Kebutuhan non-fungsional* dari jawabannya.
+  Tiap kebutuhan (R-ID) harus masuk minimal satu journey, atau ditandai `infrastruktur` (mis. CI, migrasi) bila memang tidak melayani journey. Journey tanpa kebutuhan = celah: tanyakan owner.
 - Jangan mengarang kebutuhan yang tidak dibahas; yang diasumsikan ditulis sebagai asumsi.
 
 ## Langkah
