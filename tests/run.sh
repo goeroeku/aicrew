@@ -818,7 +818,7 @@ V() { jq -nc --arg id "$1" --arg al "$2" --arg sv "$3" '{id:$id,aliases:($al|spl
 : > "$CVE_FIX/calls"; LOCK lodash 4.17.15
 out="$(CK "$tmp/cve/w/package-lock.json" 2>/dev/null)"; ok "cve: bersih -> exit 0, tanpa keluaran" "$?|$out" '0|'
 FX npm lodash 4.17.15 "{\"vulns\":[$(V GHSA-aaaa-1111-bbbb CVE-2020-28500 HIGH)]}"
-out="$(CK "$tmp/cve/w/package-lock.json" 2>/dev/null)"; rc=$?; ok "cve: HIGH prod -> exit 1 dan baris 9 kolom persis" "$rc|$(tr '\t' '|' <<<"$out")" '1|lodash|4.17.15|GHSA-aaaa-1111-bbbb|CVE-2020-28500|HIGH|prod|-|-|baru'
+out="$(CK "$tmp/cve/w/package-lock.json" 2>/dev/null)"; rc=$?; ok "cve: HIGH prod -> exit 1 dan baris 9 kolom persis" "$rc|$(tr '\t' '|' <<<"$out")" '1|lodash|4.17.15|GHSA-aaaa-1111-bbbb|CVE-2020-28500|HIGH|prod|-|tanpa-perbaikan|baru'
 LOCK @scope/pkg 1.2.3; FX npm @scope/pkg 1.2.3 "{\"vulns\":[$(V GHSA-cccc-2222-dddd CVE-2021-1 CRITICAL)]}"
 out="$(CK "$tmp/cve/w/package-lock.json" 2>/dev/null)"; rc=$?; ok "cve: nama berskop @scope/pkg -> kueri dan keluaran benar" "$rc|$(cut -f1,5 <<<"$out" | tr '\t' '|')" '1|@scope/pkg|CRITICAL'
 mkdir -p "$tmp/cve/w/go"; printf 'module m\n\nrequire golang.org/x/net v0.7.0\n' > "$tmp/cve/w/go/go.mod"
@@ -837,5 +837,31 @@ LOCK paged 1.0; printf '%s' "{\"vulns\":[$(V GHSA-p1p1-0000-aaaa CVE-1 HIGH)],\"
 out="$(CK "$tmp/cve/w/package-lock.json" 2>/dev/null)"; ok "cve: next_page_token -> dua halaman digabung" "$(cut -f3 <<<"$out" | paste -sd, -)" 'GHSA-p1p1-0000-aaaa,GHSA-p2p2-0000-bbbb'
 jq -n '{lockfileVersion:3,packages:{"":{},"node_modules/twin":{version:"1.0.0"},"node_modules/a/node_modules/twin":{version:"1.0.0",dev:true}}}' > "$tmp/cve/w/package-lock.json"; : > "$CVE_FIX/calls"; FX npm twin 1.0.0 "{\"vulns\":[$(V GHSA-tttt-0000-cccc CVE-3 LOW)]}"
 out="$(CK "$tmp/cve/w/package-lock.json" 2>/dev/null)"; ok "cve: pasangan kembar (prod dan dev) dikueri sekali, dua baris" "$(grep -c '^npm twin 1.0.0' "$CVE_FIX/calls")|$(grep -c . <<<"$out")" '1|2'
+
+# 3j-3. cve-check.sh: target versi, saran, dan paparan baru (--base)
+LK() { jq -n --arg n "$2" --arg v "$3" '{lockfileVersion:3,packages:{"":{},("node_modules/"+$n):{version:$v}}}' > "$1"; }   # berkas nama versi
+VF() { jq -nc --arg id "$1" --arg al "$2" --arg sv "$3" --arg n "$4" --arg fx "$5" '{id:$id,aliases:($al|split(",")|map(select(.!=""))),database_specific:{severity:$sv},affected:[{package:{name:$n,ecosystem:"npm"},ranges:[{type:"SEMVER",events:([{introduced:"0"}]+($fx|split(",")|map(select(.!=""))|map({fixed:.})))}]}]}'; }   # id aliases sev nama fixed-csv
+CKT() { CK "$@" 2>/dev/null | cut -f1,7,8 | tr '\t' '|' | paste -sd';' -; }   # paket|target|saran
+W="$tmp/cve/w/t3"; mkdir -p "$W"
+LK "$W/a.json" sa 4.17.15; cp "$W/a.json" "$W/package-lock.json"; FX npm sa 4.17.15 "{\"vulns\":[$(VF GHSA-s1s1-0000-aaaa CVE-1 HIGH sa 4.17.21)]}"
+ok "cve: saran patch" "$(CKT "$W/package-lock.json")" 'sa|4.17.21|patch'
+LK "$W/package-lock.json" sb 1.2.0; FX npm sb 1.2.0 "{\"vulns\":[$(VF GHSA-s2s2-0000-aaaa CVE-2 HIGH sb 1.3.1)]}"; ok "cve: saran minor" "$(CKT "$W/package-lock.json")" 'sb|1.3.1|minor'
+LK "$W/package-lock.json" sc 1.2.0; FX npm sc 1.2.0 "{\"vulns\":[$(VF GHSA-s3s3-0000-aaaa CVE-3 HIGH sc 2.0.0)]}"; ok "cve: saran major" "$(CKT "$W/package-lock.json")" 'sc|2.0.0|major'
+LK "$W/package-lock.json" sd 4.17.15; FX npm sd 4.17.15 "{\"vulns\":[$(VF GHSA-s4s4-0000-aaaa CVE-4 HIGH sd 4.17.19),$(VF GHSA-s5s5-0000-aaaa CVE-5 HIGH sd 4.17.21)]}"
+ok "cve: dua kerentanan (4.17.19 dan 4.17.21) -> target tunggal 4.17.21 di kedua baris" "$(CKT "$W/package-lock.json")" 'sd|4.17.21|patch;sd|4.17.21|patch'
+LK "$W/package-lock.json" se 4.17.9; FX npm se 4.17.9 "{\"vulns\":[$(VF GHSA-s6s6-0000-aaaa CVE-6 HIGH se 3.0.0,4.17.21)]}"; ok "cve: 4.17.9 vs 4.17.21 numerik, cabang 3.0.0 diabaikan" "$(CKT "$W/package-lock.json")" 'se|4.17.21|patch'
+LK "$W/package-lock.json" sf 1.0.0-rc.1; FX npm sf 1.0.0-rc.1 "{\"vulns\":[$(VF GHSA-s7s7-0000-aaaa CVE-7 HIGH sf 1.0.0-rc.2,1.0.0)]}"; ok "cve: pra-rilis: target terkecil di atas rc.1 adalah rc.2" "$(CKT "$W/package-lock.json")" 'sf|1.0.0-rc.2|patch'
+LK "$W/package-lock.json" sg 1.0.0-rc.1; FX npm sg 1.0.0-rc.1 "{\"vulns\":[$(VF GHSA-s8s8-0000-aaaa CVE-8 HIGH sg 1.0.0)]}"; ok "cve: 1.0.0-rc.1 < 1.0.0 (rilis final lebih besar)" "$(CKT "$W/package-lock.json")" 'sg|1.0.0|patch'
+LK "$W/package-lock.json" sh 2.0.0; FX npm sh 2.0.0 "{\"vulns\":[$(VF GHSA-s9s9-0000-aaaa CVE-9 HIGH sh ""),$(VF GHSA-t1t1-0000-aaaa CVE-10 HIGH sh 2.0.5)]}"
+ok "cve: tanpa versi perbaikan -> tanpa-perbaikan; yang lain tetap punya target" "$(CKT "$W/package-lock.json")" 'sh|-|tanpa-perbaikan;sh|2.0.5|patch'
+LK "$W/head.json" sm 4.17.15; LK "$W/base.json" sm 4.17.15; cp "$W/head.json" "$W/package-lock.json"; cp "$W/base.json" "$W/base-lock.json"
+FX npm sm 4.17.15 "{\"vulns\":[$(VF GHSA-m1m1-0000-aaaa CVE-11 HIGH sm 4.17.21)]}"
+out="$(CK "$W/package-lock.json" --base "$W/base-lock.json" 2>/dev/null)"; rc=$?; ok "cve --base: pasangan identik dikeluarkan, exit 0" "$rc|$out" '0|'
+LK "$W/package-lock.json" sm 4.17.19; FX npm sm 4.17.19 "{\"vulns\":[$(VF GHSA-m1m1-0000-aaaa CVE-11 HIGH sm 4.17.21)]}"; FX npm sm 4.17.15 "{\"vulns\":[$(VF GHSA-m1m1-0000-aaaa CVE-11 HIGH sm 4.17.21),$(VF GHSA-m2m2-0000-aaaa CVE-12 HIGH sm 4.17.19)]}"
+out="$(CK "$W/package-lock.json" --base "$W/base-lock.json" 2>/dev/null)"; rc=$?; ok "cve --base: naik ke versi yang kerentanannya himpunan-bagian -> paparan=lama, exit 0" "$rc|$(cut -f3,9 <<<"$out" | tr '\t' '|')" '0|GHSA-m1m1-0000-aaaa|lama'
+FX npm sm 4.17.19 "{\"vulns\":[$(VF GHSA-m1m1-0000-aaaa CVE-11 HIGH sm 4.17.21),$(VF GHSA-m3m3-0000-aaaa CVE-13 HIGH sm 4.17.21)]}"
+out="$(CK "$W/package-lock.json" --base "$W/base-lock.json" 2>/dev/null)"; rc=$?; ok "cve --base: kerentanan baru di versi head -> baru dan exit 1; yang lama tetap lama" "$rc|$(cut -f3,9 <<<"$out" | tr '\t' '|' | paste -sd';' -)" '1|GHSA-m1m1-0000-aaaa|lama;GHSA-m3m3-0000-aaaa|baru'
+LK "$W/base-lock.json" other 1.0.0; out="$(CK "$W/package-lock.json" --base "$W/base-lock.json" 2>/dev/null)"; rc=$?; ok "cve --base: paket baru (tak ada di basis) -> semua baru, exit 1" "$rc|$(cut -f9 <<<"$out" | sort -u | paste -sd, -)" '1|baru'
+: > "$W/kosong.json"; out="$(CK "$W/package-lock.json" --base "$W/kosong.json" 2>/dev/null)"; rc=$?; ok "cve --base: berkas basis kosong (404) -> semua paket baru" "$rc" 1
 
 [ "$fails" = 0 ] && echo "SEMUA LULUS" || { echo "$fails GAGAL"; exit 1; }
