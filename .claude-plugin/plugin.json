@@ -1,7 +1,7 @@
 {
   "name": "aicrew",
   "displayName": "aiCrew",
-  "version": "0.9.1",
+  "version": "0.10.0",
   "description": "Brainstorm, PRD, breakdown ke issue, dan eksekusi paralel dengan role (principal, senior-coder, qa, security, perf, devops, ui-ux).",
   "author": {
     "name": "goeroeku"

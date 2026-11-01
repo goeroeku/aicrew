@@ -552,6 +552,8 @@ case "$*" in
   "api repos/o/r/issues/"*"/comments"*) cat "$FAKE/comments.txt" 2>/dev/null ;;
   "api repos/o/r/issues/"*"/parent"*) cat "$FAKE/parent.txt" 2>/dev/null || exit 1 ;;
   "api -X POST"*|"api -X PATCH"*) : ;;
+  "api repos/o/r/pulls?"*) [ ! -f "$FAKE/pulls.fail" ] || exit 1; cat "$FAKE/pulls.json" 2>/dev/null || echo "[]" ;;
+  "api repos/o/r/pulls/"*) cat "$FAKE/pull.json" 2>/dev/null ;;
   "api repos/o/r/issues/"*) n="${2##*/}"; echo $((1000+n)) ;;
   "issue view"*) cat "$FAKE/epicbody.txt" ;;
   "issue edit"*) printf '%s\n' "${@: -1}" > "$FAKE/epicbody.txt" ;;
@@ -583,8 +585,19 @@ echo '[{"number":20,"body":"- [ ] #5 a","labels":[{"name":"belum-dipecah"}]}]' >
 echo '[{"number":5,"state":"CLOSED","labels":[]}]' > "$FAKE/states.json"; EY
 ok "epic: label belum-dipecah -> tidak pernah In review" "$(grep 'item-edit' "$FAKE/calls" | grep -c 'I20.*OR')" 0
 echo '[{"number":8,"labels":[{"name":"di-integrasi"}]}]' > "$FAKE/integrated.json"; echo '[]' > "$FAKE/epics.json"
-printf -- '- Kartu Done: owner.\n- Tutup issue setelah merge integrasi: ya\n' > "$tmp/ec/w/docs/WORKFLOW.md"; EY
-ok "tutup issue di-integrasi: ya -> issue close 8" "$(grep -c '^issue close 8' "$FAKE/calls")" 1
+printf -- '- Kartu Done: owner.\n- Tutup issue setelah merge integrasi: ya\n- Cabang integrasi: integ\n' > "$tmp/ec/w/docs/WORKFLOW.md"
+echo '[{"number":32,"merged_at":"2026-11-01T00:00:00Z"}]' > "$FAKE/pulls.json"; echo '{"merged_at":"2026-11-01T00:00:00Z","merge_commit_sha":"m","head":{"sha":"h"},"base":{"ref":"integ"}}' > "$FAKE/pull.json"; EY
+ok "tutup issue di-integrasi: ya, satu PR merged ke integrasi -> issue close 8" "$(grep -c '^issue close 8' "$FAKE/calls")" 1
+echo '{"merged_at":"2026-11-01T00:00:00Z","merge_commit_sha":"m","head":{"sha":"h"},"base":{"ref":"issue-7"}}' > "$FAKE/pull.json"; EY
+ok "tutup issue di-integrasi: PR merged ke cabang induk (bukan integrasi, tak bisa dibuktikan) -> TIDAK ditutup" "$(grep -c '^issue close' "$FAKE/calls")" 0
+echo '[]' > "$FAKE/pulls.json"; EY; ok "tutup issue di-integrasi: tanpa PR merged -> tidak ditutup" "$(grep -c '^issue close' "$FAKE/calls")" 0
+echo '[{"number":32,"merged_at":"2026-11-01T00:00:00Z"},{"number":33,"merged_at":"2026-11-01T00:00:00Z"}]' > "$FAKE/pulls.json"; EY; ok "tutup issue di-integrasi: dua PR merged -> tidak ditutup" "$(grep -c '^issue close' "$FAKE/calls")" 0
+echo '[{"number":32,"merged_at":"2026-11-01T00:00:00Z"}]' > "$FAKE/pulls.json"; echo '{"merged_at":"2026-11-01T00:00:00Z","merge_commit_sha":"m","head":{"sha":"h"},"base":{"ref":"integ"}}' > "$FAKE/pull.json"
+echo '[{"number":8,"labels":[{"name":"di-integrasi"},{"name":"menunggu-rilis"}]}]' > "$FAKE/integrated.json"; EY
+ok "tutup issue di-integrasi: berlabel menunggu-rilis -> tidak ditutup" "$(grep -c '^issue close' "$FAKE/calls")" 0
+echo '[{"number":8,"labels":[{"name":"di-integrasi"}]}]' > "$FAKE/integrated.json"; printf -- '- Kartu Done: owner.\n- Tutup issue setelah merge integrasi: ya\n- Cabang integrasi: integ\n' > "$tmp/ec/w/docs/WORKFLOW.md"
+touch "$FAKE/pulls.fail"; EY; ok "tutup issue di-integrasi: REST pulls gagal -> --sync tetap exit 0 (tidak fatal), issue tidak ditutup" "$?|$(grep -c '^issue close' "$FAKE/calls")" '0|0'; rm -f "$FAKE/pulls.fail"
+echo '[{"number":8,"labels":[{"name":"di-integrasi"}]}]' > "$FAKE/integrated.json"
 printf -- '- Kartu Done: owner.\n- Tutup issue setelah merge integrasi: tidak\n' > "$tmp/ec/w/docs/WORKFLOW.md"; EY
 ok "tutup issue di-integrasi: tidak -> tidak menutup" "$(grep -c '^issue close' "$FAKE/calls")" 0
 printf -- '- Label discovery: eksplorasi\n- Label epic belum dipecah: mentah\n' > "$tmp/ec/w/docs/WORKFLOW.md"
@@ -662,6 +675,8 @@ case "$*" in
   "api repos/o/r/issues?"*) [ "${RESTFAIL:-0}" = 1 ] && { echo "HTTP 500" >&2; exit 1; }
     a="$*"; p="${a##*page=}"; p="${p%%&*}"; f="$FAKE/issues.json"; case "$a" in *labels=epic*) [ -f "$FAKE/issues-epic.json" ] && f="$FAKE/issues-epic.json" ;; esac
     jq -c ".[$(((p-1)*100)):$((p*100))]" "$f" ;;
+  "api repos/o/r/pulls?"*) echo '[{"number":90,"merged_at":"2026-11-01T00:00:00Z"}]' ;;
+  "api repos/o/r/pulls/"*) echo '{"merged_at":"2026-11-01T00:00:00Z","merge_commit_sha":"m","head":{"sha":"h"},"base":{"ref":"integ"}}' ;;
   "api repos/o/r/issues/"*"/parent"*) echo "HTTP 404: Not Found" >&2; exit 1 ;;
   "api repos/o/r/issues/7") cat "$FAKE/issue7.json" ;;
   "api repos/o/r/issues/"[59]) a="$*"; n="${a##*/}"; echo "{\"id\":${n}000,\"body\":\"\"}" ;;
@@ -786,7 +801,7 @@ ok "board --sync: anak proses tidak memanggil GraphQL lagi (hanya satu percobaan
 ok "board --sync: komentar progres epic tetap ditulis" "$(cat "$FAKE/body.out")" $'<!-- aicrew-progress -->\naicrew-progress: 0/1 Done'
 : > "$FAKE/calls"; (BD o 3 --sync >"$tmp/rl/out" 2>"$tmp/rl/err"); rc=$?
 ok "board --sync: tanpa batas -> exit 0 tanpa PERINGATAN" "$rc|$(grep -c PERINGATAN "$tmp/rl/err")" '0|0'
-printf -- '- Kartu Done: agen-setelah-merge.\n- Tutup issue setelah merge integrasi: ya\n' > "$tmp/rl/w/docs/WORKFLOW.md"
+printf -- '- Kartu Done: agen-setelah-merge.\n- Tutup issue setelah merge integrasi: ya\n- Cabang integrasi: integ\n' > "$tmp/rl/w/docs/WORKFLOW.md"
 : > "$FAKE/calls"; rm -f "$FAKE/patch.json"
 (export GHX_SIM=1 PROJ_ERR=404; BD o 3 --sync >"$tmp/rl/out" 2>"$tmp/rl/err"); rc=$?
 ok "board --sync: REST kartu 404 -> exit 0, 2 langkah dilewati, tidak ada PATCH kartu, tutup issue di-integrasi tetap jalan" "$rc|$(grep -c 'PERINGATAN: 2 langkah dilewati' "$tmp/rl/err")|$([ -e "$FAKE/patch.json" ] && echo patch || echo nopatch)|$(grep -c 'PATCH repos/o/r/issues/[23] -f state=closed' "$FAKE/calls")|$(grep -c -- '-X POST repos/o/r/issues/1/comments' "$FAKE/calls")" '0|1|nopatch|2|0'
@@ -908,6 +923,7 @@ case "$*" in
     if [ -f "$CF/$r/$p" ]; then cat "$CF/$r/$p"; else echo "gh: Not Found (HTTP 404)" >&2; exit 1; fi ;;
   *"/pulls/"*"/files"*) if [ -n "${FILES_JSON:-}" ]; then echo "$FILES_JSON"; else printf '%s\n' "${DIFF:-}" | sed -n 's#^diff --git a/.* b/\(.*\)$#\1#p' | jq -R '{filename:.,status:"modified"}' | jq -cs .; fi ;;
   *"/compare/"*) echo "{\"merge_base_commit\":{\"sha\":\"${MB:-main}\"}}" ;;
+  "api repos/o/r") echo "{\"default_branch\":\"${CF_DEFAULT:-main}\"}" ;;
   *) exec "$PMB/gh" "$@" ;;
 esac
 EOF
@@ -1097,7 +1113,11 @@ grep -q 'Paket privat:' templates/WORKFLOW.md; ok "templat WORKFLOW memuat 'Pake
 grep -q 'Paket privat:' PRIVACY.md && grep -q '~/.npmrc' PRIVACY.md; ok "PRIVACY: sumber pola dan ~/.npmrc tidak dibaca" $? 0
 grep -q 'Paket privat:' README.md; ok "README menyebut 'Paket privat:'" $? 0
 grep -q 'Paket privat' skills/cve-audit/SKILL.md; ok "skill cve-audit menyebut paket privat" $? 0
-grep -q '"version": "0.9.1"' .claude-plugin/plugin.json; ok "plugin.json versi 0.9.1" $? 0
+grep -q '"version": "0.10.0"' .claude-plugin/plugin.json; ok "plugin.json versi 0.10.0" $? 0
+# 0.10.0: skill orchestrate, templat WORKFLOW, README memuat integrasi terverifikasi dan menunggu-rilis (#28, #32)
+for k in 'terintegrasi.sh' 'periksa-rilis' 'menunggu-rilis.sh --tandai' 'alur-terjadwal.sh'; do grep -qF -- "$k" skills/orchestrate/SKILL.md; ok "orchestrate memuat '$k'" $? 0; done
+grep -q 'Label menunggu rilis' templates/WORKFLOW.md; ok "templat WORKFLOW: Label menunggu rilis" $? 0
+grep -q 'Integrasi terverifikasi (0.10.0)' README.md; ok "README: Integrasi terverifikasi (0.10.0)" $? 0
 
 # 3l-5. perbaikan hasil review akhir #25
 printf -- '- Paket privat: @acme/*, git.corp.com/tim. Penjelasan, panjang.\n' > "$Q/wfa.md"
@@ -1237,5 +1257,91 @@ OUT="$(CLN --no-fetch --apply)"
 ok "PR merged ke cabang induk (bukan bawaan/integrasi) -> bukan bukti ter-merge, issue-11 tetap ada (lokal dan remote)" "$(LB | tr ' ' '\n' | grep -cx issue-11)|$(RB | tr ' ' '\n' | grep -cx issue-11)|$(grep -c $'^cabang-lokal\tissue-11\t.*\t-\tlewati:belum-ter-merge' <<<"$OUT")" '1|1|1'
 ok "PR merged ke cabang integrasi -> tetap bukti sah, issue-12 dihapus" "$(LB | tr ' ' '\n' | grep -cx issue-12)|$(RB | tr ' ' '\n' | grep -cx issue-12)" '0|0'
 MK; DBM=false out="$(cd "$CL/w" && GH_REPO=o/r PATH="$CL/bin:$PATH" bash "$root/scripts/preflight.sh" github 2>&1)"; ok "preflight: AWAS menyebut dampak PR bertumpuk salah-base" "$(grep -c 'PR bertumpuk' <<<"$out")" 1
+
+# 3m. integrasi terverifikasi (#28, #32): gh palsu REST (berkas $MI_FX/<path dgn / ? = & jadi _>), repo git sementara + remote bare
+MI="$tmp/mi"; mkdir -p "$MI/bin" "$MI/fx"
+cat > "$MI/bin/gh" <<'GHEOF'
+#!/usr/bin/env bash
+# gh palsu: hanya `gh api [-X M] [-H x] [--paginate] [-f k=v] <path>`; GET membaca $MI_FX/<path>, selain GET dicatat di $MI_FX/calls
+ORIG="$*"; [ "$1" = api ] || exit 1; shift; m=GET; path=""
+while [ $# -gt 0 ]; do case "$1" in -X) m="$2"; shift 2 ;; -H|-f|-F|--jq|-q|--input) shift 2 ;; --paginate) shift ;; -*) shift ;; *) path="$1"; shift ;; esac; done
+[ "${MI_FAIL:-}" != 1 ] || { echo "HTTP 500" >&2; exit 1; }
+[ "$m" = GET ] || { echo "$m $path :: $ORIG" >> "$MI_FX/calls"; echo '{}'; exit 0; }
+f="$MI_FX/$(printf '%s' "$path" | sed 's#[/?=&]#_#g')"; [ -f "$f" ] && cat "$f" || { echo "HTTP 404 Not Found" >&2; exit 1; }
+GHEOF
+chmod +x "$MI/bin/gh"
+git init -q --bare "$MI/o.git"; git init -q "$MI/w" && cd "$MI/w" || exit 1
+git remote add origin "$MI/o.git"; git checkout -q -b main; echo a > a; git add a; git commit -q -m A; git push -q origin main
+git checkout -q -b integrasi; echo i > i; git add i; git commit -q -m I1; I1="$(git rev-parse HEAD)"; git push -q origin integrasi
+git checkout -q -b induk main; echo x > x; git add x; git commit -q -m X; X1="$(git rev-parse HEAD)"; git push -q origin induk; git checkout -q main
+mkdir -p docs; printf -- '- Cabang integrasi: integrasi\n' > docs/WORKFLOW.md
+MIPR() { printf '{"merged_at":%s,"merge_commit_sha":"%s","head":{"sha":"%s"},"base":{"ref":"%s"}}' "$2" "$3" "$4" "$5" > "$MI/fx/repos_o_r_pulls_$1"; } # n merged_at merge_sha head_sha base
+echo '{"default_branch":"main"}' > "$MI/fx/repos_o_r"
+TI() { (cd "$MI/w" && GH_REPO=o/r MI_FX="$MI/fx" PATH="$MI/bin:$PATH" bash "$root/scripts/terintegrasi.sh" "$@" 2>&1); }
+MIPR 1 '"2026-11-01T00:00:00Z"' "$X1" "$X1" integrasi; out="$(TI 1)"; ok "terintegrasi: base = integrasi dan merged -> 0" "$?" 0
+MIPR 2 '"2026-11-01T00:00:00Z"' "$I1" "$X1" induk; out="$(TI 2)"; ok "terintegrasi: base induk, merge_commit_sha leluhur integrasi -> 0" "$?" 0
+MIPR 3 '"2026-11-01T00:00:00Z"' "$X1" "$I1" induk; out="$(TI 3)"; ok "terintegrasi: base induk, head.sha leluhur integrasi -> 0" "$?" 0
+MIPR 4 '"2026-11-01T00:00:00Z"' "$X1" "$X1" induk; out="$(TI 4)"; rc=$?; ok "terintegrasi: base induk, tak ada SHA leluhur -> 1, pesan menyebut induk dan integrasi" "$rc|$(grep -c 'ter-merge ke induk, belum ke integrasi' <<<"$out")" '1|1'
+MIPR 5 null "$X1" "$X1" integrasi; out="$(TI 5)"; rc=$?; ok "terintegrasi: merged_at kosong walau base = integrasi -> 1" "$rc|$(grep -c 'belum merged' <<<"$out")" '1|1'
+mv "$MI/w/docs/WORKFLOW.md" "$MI/w/docs/WF.bak"; out="$(TI 4)"; ok "terintegrasi: WORKFLOW tak terbaca dan base bukan bawaan -> 2 (bukan 'tanpa integrasi')" "$?" 2
+MIPR 6 '"2026-11-01T00:00:00Z"' "$X1" "$X1" main; out="$(TI 6)"; ok "terintegrasi: WORKFLOW tak terbaca tetapi base = bawaan -> 0" "$?" 0
+mv "$MI/w/docs/WF.bak" "$MI/w/docs/WORKFLOW.md"; printf -- '- Pemeriksaan CVE: ya\n' > "$MI/w/docs/WORKFLOW.md"; out="$(TI 6)"; ok "terintegrasi: WORKFLOW terbaca tanpa baris Cabang integrasi, PR ke cabang bawaan -> 0" "$?" 0
+out="$(TI 4)"; ok "terintegrasi: tanpa baris Cabang integrasi, PR ke cabang induk (bukan bawaan) -> 2 (tidak lolos diam-diam)" "$?" 2
+printf -- '- Cabang integrasi: tidak ada\n' > "$MI/w/docs/WORKFLOW.md"; out="$(TI 6)"; ok "terintegrasi: 'Cabang integrasi: tidak ada' bukan nama cabang -> PR ke bawaan 0" "$?" 0
+out="$(TI 4)"; ok "terintegrasi: 'Cabang integrasi: tidak ada' dan PR ke induk -> 2 (bukan fetch 'tidak')" "$?|$(grep -c 'origin/tidak' <<<"$out")" '2|0'
+printf -- '- Cabang integrasi: integrasi\n' > "$MI/w/docs/WORKFLOW.md"; out="$(MI_FAIL=1 TI 4)"; ok "terintegrasi: REST gagal -> 2" "$?" 2
+
+# 3m-2. alur-terjadwal.sh dan peringatan gerbang (#32)
+AT() { (cd "$MI/w" && GH_REPO=o/r MI_FX="$MI/fx" PATH="$MI/bin:$PATH" bash "$root/scripts/alur-terjadwal.sh" "$@" 2>&1); }
+WF=".github_workflows"; pf() { printf '%s' "$2" > "$MI/fx/repos_o_r_contents_.github_workflows_$1_ref_H1"; }
+pf v.yml $'on:\n  schedule:\n    - cron: "0 3 * * *"\njobs: {}\n'; pf d.yml $'on:\n  workflow_dispatch:\njobs: {}\n'; pf inline.yml $'on: [push, workflow_dispatch]\n'; pf ci.yml $'on:\n  push:\njobs: {}\n'
+echo '[{"filename":".github/workflows/v.yml","status":"added"},{"filename":".github/workflows/ci.yml","status":"modified"},{"filename":".github/workflows/gone.yml","status":"removed"},{"filename":".github/workflows/d.yml","status":"renamed"},{"filename":".github/dependabot.yml","status":"added"},{"filename":"README.md","status":"modified"}]' > "$MI/fx/repos_o_r_pulls_7_files"
+out="$(AT 7 H1)"; rc=$?; ok "alur-terjadwal: schedule, workflow_dispatch (rename), dependabot terdaftar; ci biasa, removed, README tidak" "$rc|$(sort <<<"$out" | tr '\n' ' ')" '0|.github/dependabot.yml .github/workflows/d.yml .github/workflows/v.yml '
+echo '[{"filename":".github/workflows/inline.yml","status":"added"}]' > "$MI/fx/repos_o_r_pulls_8_files"; out="$(AT 8 H1)"; ok "alur-terjadwal: workflow_dispatch bentuk inline (on: [push, workflow_dispatch]) terdaftar" "$out" ".github/workflows/inline.yml"
+echo '[{"filename":"README.md","status":"modified"}]' > "$MI/fx/repos_o_r_pulls_9_files"; out="$(AT 9 H1)"; ok "alur-terjadwal: PR tanpa berkas .github -> kosong, exit 0" "$?|$out" '0|'
+echo '[{"filename":".github/workflows/missing.yml","status":"added"}]' > "$MI/fx/repos_o_r_pulls_10_files"; out="$(AT 10 H1)"; ok "alur-terjadwal: isi workflow tak terbaca -> exit 2" "$?" 2
+out="$(MI_FAIL=1 AT 7 H1)"; ok "alur-terjadwal: daftar berkas gagal (REST) -> exit 2" "$?" 2
+# gerbang: berkas workflow terjadwal di PR ke cabang non-bawaan -> PERINGATAN (tidak memblokir); ke cabang bawaan -> tanpa peringatan
+mkdir -p "$CF/abc1234567/.github/workflows"; printf 'on:\n  schedule:\n    - cron: "0 3 * * *"\n' > "$CF/abc1234567/.github/workflows/v.yml"; printf 'on:\n  push:\n' > "$CF/abc1234567/.github/workflows/ci.yml"
+DWF=$'diff --git a/.github/workflows/v.yml b/.github/workflows/v.yml\n+x'; DCI=$'diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml\n+x'
+out="$(export DIFF="$DWF" CF_DEFAULT=trunk; GE)"; rc=$?; ok "gerbang alur: workflow terjadwal, tujuan main bukan bawaan (trunk) -> PERINGATAN, exit 0" "$rc|$(grep -c '^PERINGATAN: alur terjadwal .github/workflows/v.yml tidak aktif sampai ada di cabang bawaan (trunk)' <<<"$out")" '0|1'
+out="$(export DIFF="$DWF" CF_DEFAULT=main; GE)"; rc=$?; ok "gerbang alur: tujuan = cabang bawaan -> tanpa peringatan" "$rc|$(grep -c 'alur terjadwal' <<<"$out")" '0|0'
+out="$(export DIFF="$DCI" CF_DEFAULT=trunk; GE)"; rc=$?; ok "gerbang alur: workflow tanpa pemicu terjadwal -> tanpa peringatan" "$rc|$(grep -c 'alur terjadwal' <<<"$out")" '0|0'
+out="$(export DIFF="$DWF" CF_DEFAULT=trunk CF_ERR=1 CF_ERR_PATH=.github/workflows/v.yml; GE)"; rc=$?; ok "gerbang alur: isi workflow tak terbaca -> PERINGATAN 'tidak dapat diperiksa', tetap exit 0 (bukan penghalang)" "$rc|$(grep -c '^PERINGATAN: alur terjadwal tidak dapat diperiksa' <<<"$out")" '0|1'
+rm -rf "$CF/abc1234567/.github"
+
+# 3m-3. label menunggu-rilis, menunggu-rilis.sh --tandai/--cek, resume.sh periksa-rilis (#32)
+LB() { (cd "$MI/w" && env -u AICREW_LABEL_WAITING "$@" bash "$root/scripts/label.sh" waiting 2>&1); }
+ok "label waiting: bawaan menunggu-rilis" "$(LB)" menunggu-rilis
+ok "label waiting: env AICREW_LABEL_WAITING" "$(AICREW_LABEL_WAITING=tunggu-x; cd "$MI/w" && AICREW_LABEL_WAITING=tunggu-x bash "$root/scripts/label.sh" waiting)" tunggu-x
+printf -- '- Cabang integrasi: integrasi\n- Label menunggu rilis: tunggu-rilis\n' > "$MI/w/docs/WORKFLOW.md"; ok "label waiting: baris 'Label menunggu rilis' di WORKFLOW" "$(LB)" tunggu-rilis
+printf -- '- Cabang integrasi: integrasi\n' > "$MI/w/docs/WORKFLOW.md"
+MR() { (cd "$MI/w" && GH_REPO=o/r MI_FX="$MI/fx" PATH="$MI/bin:$PATH" bash "$root/scripts/menunggu-rilis.sh" "$@" 2>&1); }
+MIPR 7 '"2026-11-01T00:00:00Z"' "$I1" H1 integrasi; : > "$MI/fx/calls"
+out="$(MR --tandai 55 7)"; rc=$?
+ok "menunggu-rilis --tandai: komentar berpenanda memuat jalur berkas, label dipasang" "$rc|$(grep -c '^POST repos/o/r/issues/55/comments' "$MI/fx/calls")|$(grep -c 'aicrew-menunggu-rilis' "$MI/fx/calls")|$(grep -c -- '- .github/workflows/v.yml' "$MI/fx/calls")|$(grep -c '^POST repos/o/r/issues/55/labels .*menunggu-rilis' "$MI/fx/calls")" '0|1|1|1|1'
+MIPR 9 '"2026-11-01T00:00:00Z"' "$I1" H1 integrasi; : > "$MI/fx/calls"; out="$(MR --tandai 56 9)"; ok "menunggu-rilis --tandai: PR tanpa berkas pemicu -> tidak menulis apa pun, exit 0" "$?|$(wc -l < "$MI/fx/calls" | tr -d ' ')" '0|0'
+out="$(MI_FAIL=1 MR --tandai 55 7)"; ok "menunggu-rilis --tandai: REST gagal -> exit 2" "$?" 2
+printf '[{"body":"komentar lain"},{"body":"<!-- aicrew-menunggu-rilis -->\\nMenunggu rilis.\\n- .github/workflows/v.yml\\n- .github/dependabot.yml"}]' > "$MI/fx/repos_o_r_issues_55_comments"
+printf 'x' > "$MI/fx/repos_o_r_contents_.github_workflows_v.yml_ref_main"
+out="$(MR --cek 55)"; rc=$?; ok "menunggu-rilis --cek: dependabot.yml belum ada di cabang bawaan -> exit 1, menyebut jalur yang belum" "$rc|$(grep -c '.github/dependabot.yml' <<<"$out")|$(grep -c 'siap' <<<"$out")" '1|1|0'
+printf 'x' > "$MI/fx/repos_o_r_contents_.github_dependabot.yml_ref_main"; out="$(MR --cek 55)"; ok "menunggu-rilis --cek: semua berkas ada di cabang bawaan -> exit 0 'siap'" "$?|$out" '0|siap'
+printf '[{"body":"komentar lain"}]' > "$MI/fx/repos_o_r_issues_57_comments"; out="$(MR --cek 57)"; ok "menunggu-rilis --cek: tanpa komentar berpenanda -> exit 2" "$?" 2
+out="$(MI_FAIL=1 MR --cek 55)"; ok "menunggu-rilis --cek: REST gagal -> exit 2" "$?" 2
+printf '[{"body":"<!-- aicrew-menunggu-rilis -->\\nPR lama.\\n- .github/workflows/old.yml"},{"body":"<!-- aicrew-menunggu-rilis -->\\nPR baru.\\n- .github/workflows/v.yml"}]' > "$MI/fx/repos_o_r_issues_58_comments"
+out="$(MR --cek 58)"; rc=$?; ok "menunggu-rilis --cek: jalur dari SEMUA komentar berpenanda dihitung (old.yml belum ada -> exit 1)" "$rc|$(grep -c 'old.yml' <<<"$out")" '1|1'
+# resume.sh: issue terbuka berlabel menunggu-rilis -> aksi periksa-rilis
+echo '[{"number":55,"labels":[{"name":"di-integrasi"},{"name":"menunggu-rilis"}]},{"number":56,"pull_request":{},"labels":[{"name":"menunggu-rilis"}]}]' > "$MI/fx/repos_o_r_issues_state_open_labels_menunggu-rilis_per_page_100"
+out="$(cd "$MI/w" && GH_REPO=o/r MI_FX="$MI/fx" PATH="$MI/bin:$PATH" bash "$root/scripts/resume.sh" 2>&1 | cut -f1,2 | tr '\t\n' '::')"; ok "resume: issue berlabel menunggu-rilis -> periksa-rilis (PR diabaikan)" "$out" "55:periksa-rilis:"
+
+# 3m-4. cve-audit.sh: alur terjadwal/dependabot yang hanya ada di cabang integrasi (#32)
+CAU() { (cd "$MI/w" && PATH="$MI/bin:$PATH" GH_REPO=o/r bash "$root/scripts/cve-audit.sh" 2>&1); }
+(cd "$MI/w" && git checkout -q integrasi && mkdir -p .github/workflows && printf 'on:\n  schedule:\n    - cron: "0 3 * * *"\n' > .github/workflows/v.yml && printf 'on:\n  push:\n' > .github/workflows/ci.yml && printf 'version: 2\n' > .github/dependabot.yml && git add .github && git commit -q -m alur && git push -q origin integrasi && git checkout -q main)
+ok "cve-audit: schedule + dependabot hanya di integrasi (ci biasa tidak dihitung) -> '2 alur terjadwal belum aktif'" "$(grep -c '^2 alur terjadwal belum aktif (hanya di integrasi)$' <<<"$(CAU)")" 1
+printf -- '- Pemeriksaan CVE: ya\n' > "$MI/w/docs/WORKFLOW.md"; ok "cve-audit: tanpa cabang integrasi -> tanpa baris alur" "$(grep -c 'alur terjadwal' <<<"$(CAU)")" 0
+printf -- '- Cabang integrasi: integrasi\n' > "$MI/w/docs/WORKFLOW.md"
+(cd "$MI/w" && git merge -q --no-edit integrasi && git push -q origin main)
+ok "cve-audit: alur sudah ada di cabang bawaan -> tanpa baris" "$(grep -c 'alur terjadwal' <<<"$(CAU)")" 0
+cd "$root" || exit 1
 
 [ "$fails" = 0 ] && echo "SEMUA LULUS" || { echo "$fails GAGAL"; exit 1; }

@@ -5,6 +5,7 @@
 #   lanjut-pr         PR terbuka -> lanjut verifikasi/QA/merge sesuai mode
 #   periksa-cabang    ada cabang issue-N tanpa PR -> baca diff, jalankan suite penuh, lanjut atau perbaiki (hitung satu percobaan)
 #   antre-ulang       tidak ada jejak kerja -> hapus label in-progress, masukkan antrean
+#   periksa-rilis     issue berlabel menunggu-rilis -> menunggu-rilis.sh --cek <issue>; siap -> lepas label, tutup issue (alur terjadwal baru aktif di cabang bawaan, #32)
 # Tidak mengubah apa pun; orkestrator yang bertindak.
 set -u
 for n in $(gh issue list --state open --json number,labels \
@@ -16,3 +17,10 @@ for n in $(gh issue list --state open --json number,labels \
     printf '%s\tperiksa-cabang\tissue-%s tanpa PR\n' "$n" "$n"
   else printf '%s\tantre-ulang\ttanpa cabang atau PR\n' "$n"; fi
 done
+# issue yang menunggu rilis ke cabang bawaan (REST; PR dikecualikan)
+source "$(dirname "$0")/ghx.sh"
+if repo="$(ghx_repo 2>/dev/null)" && [ -n "$repo" ]; then
+  wl="$(bash "$(dirname "$0")/label.sh" waiting)"
+  gh api "repos/$repo/issues?state=open&labels=$wl&per_page=100" 2>/dev/null \
+    | jq -r '.[]|select(.pull_request==null)|"\(.number)\tperiksa-rilis\tmenunggu rilis ke cabang bawaan"' 2>/dev/null || true
+fi

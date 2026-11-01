@@ -123,5 +123,15 @@ else
       [ "$cdown" = 0 ] || waiver_ok cve || fail "cve: OSV tidak terjangkau untuk PR yang menyentuh manifest; ulangi nanti, atau waiver owner (cve) untuk head PR"
     fi
   fi
+  # alur terjadwal/dependabot (#32): GitHub hanya mengaktifkannya dari cabang bawaan; peringatan saja, tidak memblokir
+  at="$(bash "$(dirname "$0")/alur-terjadwal.sh" "$pr" "$head")"; arc=$?
+  if [ "$arc" != 0 ]; then echo "PERINGATAN: alur terjadwal tidak dapat diperiksa"
+  elif [ -n "$at" ]; then
+    dflt="$(gh api "repos/$(ghx_repo)" 2>/dev/null | jq -r '.default_branch // empty' 2>/dev/null)"
+    if [ -z "$dflt" ]; then echo "PERINGATAN: alur terjadwal tidak dapat diperiksa (cabang bawaan tak terbaca)"
+    elif [ "$dst" != "$dflt" ]; then
+      while IFS= read -r af; do echo "PERINGATAN: alur terjadwal $af tidak aktif sampai ada di cabang bawaan ($dflt)"; done <<<"$at"
+    fi
+  fi
   echo "ok: gerbang lolos untuk head $head. Merge dengan: gh pr merge $pr --match-head-commit $head"
 fi
