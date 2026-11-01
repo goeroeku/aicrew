@@ -110,6 +110,8 @@ Token Telegram dibaca dari `~/.config/aicrew/env` (`export AICREW_TG_TOKEN=... A
 > pasang ke `.claude/settings.local.json` project dengan `bash scripts/install-permissions.sh` (menggabungkan, tidak menimpa; mengisi path milik Anda).
 > Jangan memakai `--dangerously-skip-permissions`. Argumen tambahan lewat `AICREW_CLAUDE_ARGS` (mis. `--max-budget-usd 3`).
 > Pola pesan limit adalah dugaan yang belum diuji dengan limit sungguhan; bila meleset, putaran dihitung sebagai error dan autopilot berhenti dengan aman setelah 3 kali.
+>
+> **Deteksi limit (0.8.2).** Limit dikenali bila teksnya ada di 20 baris terakhir **dan** (kode keluar `claude -p` bukan 0, atau keluarannya pendek, ≤3 baris). Laporan orkestrator yang normal dan panjang boleh memuat kalimat seperti "No agent hit a usage limit" tanpa memicu tidur 30 menit (kejadian nyata, #24). Kode keluar tiap putaran dicatat di `.aicrew/autopilot.log` (`putaran N: rc=...`), dan keluaran putaran yang menyebut limit atau berkode keluar bukan-0 diarsipkan di `.aicrew/archive/round-<jalan>-<putaran>-rc<kode>.log` (20 terakhir), supaya limit sungguhan berikutnya terekam utuh. Belum terbukti dengan limit sungguhan apakah kode keluarnya bukan 0 (ada laporan galat API berakhir kode 0); karena itu keluaran pendek tetap dianggap limit.
 
 ## 📋 Calon rilis
 `bash scripts/release-report.sh --test-cmd "<perintah tes penuh>" --dry-run` menulis `.aicrew/release-report.md`: vonis fakta SIAP/BELUM SIAP
