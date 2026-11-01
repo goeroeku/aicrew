@@ -7,7 +7,8 @@ case "${1:-}" in
   discovery) v="${AICREW_LABEL_DISCOVERY:-}"; k='Label discovery'; def='discovery phase:discovery' ;;
   notsplit) v="${AICREW_LABEL_NOTSPLIT:-}"; k='Label epic belum dipecah'; def=belum-dipecah ;;
   noparent) v="${AICREW_LABEL_NOPARENT:-}"; k='Label tanpa induk'; def=tanpa-induk ;;
-  *) echo "pakai: label.sh integrated|auto|discovery|notsplit|noparent" >&2; exit 64 ;;
+  waiting) v="${AICREW_LABEL_WAITING:-}"; k='Label menunggu rilis'; def=menunggu-rilis ;;
+  *) echo "pakai: label.sh integrated|auto|discovery|notsplit|noparent|waiting" >&2; exit 64 ;;
 esac
 [ -n "$v" ] || v="$(sed -n "s/^[- ]*$k: *\([A-Za-z0-9._:\/-]*\).*/\1/p" 2>/dev/null <<<"$(bash "$(dirname "$0")/workflow.sh")" | head -1)"
 echo "${v:-$def}"
