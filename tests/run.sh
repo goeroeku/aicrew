@@ -798,4 +798,44 @@ ok "cve --list requirements: nama==versi, extras/hash dibuang, bentuk lain dilew
 printf 'pytest==7.0.0\n' > "$tmp/cve/py/requirements-dev.txt"; ok "cve --list requirements-dev.txt -> lingkup dev" "$(L "$tmp/cve/py/requirements-dev.txt")" 'PyPI:pytest:7.0.0:dev'
 echo "gem 'rails'" > "$tmp/cve/Gemfile"; $CV --list "$tmp/cve/Gemfile" >/dev/null 2>&1; ok "cve --list Gemfile -> exit 64" $? 64
 
+# 3j-2. cve-check.sh: kueri OSV (curl palsu), pengelompokan alias, severity, kode keluar
+export CVE_FIX="$tmp/cve/fix"; mkdir -p "$CVE_FIX" "$tmp/cve/bin" "$tmp/cve/w"
+cat > "$tmp/cve/bin/curl" <<'EOF'
+#!/usr/bin/env bash
+d=""; while [ $# -gt 0 ]; do [ "$1" = -d ] && { d="$2"; break; }; shift; done
+[ "${CVE_DOWN:-0}" = 1 ] && exit 7
+[ "${CVE_HTTP:-0}" != 0 ] && exit "$CVE_HTTP"
+e="$(jq -r .package.ecosystem <<<"$d")"; n="$(jq -r .package.name <<<"$d")"; v="$(jq -r .version <<<"$d")"; t="$(jq -r '.page_token // ""' <<<"$d")"
+echo "$e $n $v $t" >> "$CVE_FIX/calls"
+k="$(printf '%s_%s_%s' "$e" "$n" "$v" | tr '/@' '__')"; f="$CVE_FIX/$k${t:+.$t}.json"
+if [ -f "$f" ]; then cat "$f"; else echo '{}'; fi
+EOF
+chmod +x "$tmp/cve/bin/curl"
+FX() { printf '%s' "$4" > "$CVE_FIX/$(printf '%s_%s_%s' "$1" "$2" "$3" | tr '/@' '__').json"; }   # eco nama versi json
+CK() { (PATH="$tmp/cve/bin:$PATH" $CV "$@"); }
+LOCK() { jq -n --arg n "$1" --arg v "$2" --argjson d "${3:-false}" '{lockfileVersion:3,packages:{"":{},("node_modules/"+$n):({version:$v}+(if $d then {dev:true} else {} end))}}' > "$tmp/cve/w/package-lock.json"; }   # nome versao [dev]
+V() { jq -nc --arg id "$1" --arg al "$2" --arg sv "$3" '{id:$id,aliases:($al|split(",")|map(select(.!=""))),database_specific:(if $sv=="" then {} else {severity:$sv} end)}'; }   # id aliases severity
+: > "$CVE_FIX/calls"; LOCK lodash 4.17.15
+out="$(CK "$tmp/cve/w/package-lock.json" 2>/dev/null)"; ok "cve: bersih -> exit 0, tanpa keluaran" "$?|$out" '0|'
+FX npm lodash 4.17.15 "{\"vulns\":[$(V GHSA-aaaa-1111-bbbb CVE-2020-28500 HIGH)]}"
+out="$(CK "$tmp/cve/w/package-lock.json" 2>/dev/null)"; rc=$?; ok "cve: HIGH prod -> exit 1 dan baris 9 kolom persis" "$rc|$(tr '\t' '|' <<<"$out")" '1|lodash|4.17.15|GHSA-aaaa-1111-bbbb|CVE-2020-28500|HIGH|prod|-|-|baru'
+LOCK @scope/pkg 1.2.3; FX npm @scope/pkg 1.2.3 "{\"vulns\":[$(V GHSA-cccc-2222-dddd CVE-2021-1 CRITICAL)]}"
+out="$(CK "$tmp/cve/w/package-lock.json" 2>/dev/null)"; rc=$?; ok "cve: nama berskop @scope/pkg -> kueri dan keluaran benar" "$rc|$(cut -f1,5 <<<"$out" | tr '\t' '|')" '1|@scope/pkg|CRITICAL'
+mkdir -p "$tmp/cve/w/go"; printf 'module m\n\nrequire golang.org/x/net v0.7.0\n' > "$tmp/cve/w/go/go.mod"
+FX Go golang.org/x/net 0.7.0 "{\"vulns\":[$(V GO-2023-1988 GHSA-2wrh-6pvc-2jm9,CVE-2023-39325 ""),$(V GHSA-2wrh-6pvc-2jm9 CVE-2023-39325 HIGH)]}"
+out="$(CK "$tmp/cve/w/go/go.mod" 2>/dev/null)"; rc=$?; ok "cve: GO- tanpa severity memakai kembaran GHSA, satu baris, path Go" "$rc|$(grep -c . <<<"$out")|$(cut -f1,3,4,5 <<<"$out" | tr '\t' '|')" '1|1|golang.org/x/net|GHSA-2wrh-6pvc-2jm9|CVE-2023-39325|HIGH'
+mkdir -p "$tmp/cve/w/py"; printf 'oldlib==1.0\n' > "$tmp/cve/w/py/requirements.txt"; FX PyPI oldlib 1.0 "{\"vulns\":[$(V PYSEC-2020-1 CVE-2020-9 "")]}"
+out="$(CK "$tmp/cve/w/py/requirements.txt" 2>/dev/null)"; rc=$?; ok "cve: tanpa kembaran -> UNKNOWN dan exit 1" "$rc|$(cut -f5 <<<"$out")" '1|UNKNOWN'
+LOCK midlib 2.0; FX npm midlib 2.0 "{\"vulns\":[$(V GHSA-eeee-3333-ffff CVE-2022-2 MODERATE)]}"
+out="$(CK "$tmp/cve/w/package-lock.json" 2>/dev/null)"; rc=$?; ok "cve: MODERATE prod -> exit 0 dengan baris" "$rc|$(cut -f5 <<<"$out")" '0|MODERATE'
+LOCK devlib 3.0 true; FX npm devlib 3.0 "{\"vulns\":[$(V GHSA-gggg-4444-hhhh CVE-2022-3 HIGH)]}"
+out="$(CK "$tmp/cve/w/package-lock.json" 2>/dev/null)"; rc=$?; ok "cve: HIGH dev -> exit 0 dengan baris" "$rc|$(cut -f5,6 <<<"$out" | tr '\t' '|')" '0|HIGH|dev'
+LOCK lodash 4.17.15; (export CVE_DOWN=1; CK "$tmp/cve/w/package-lock.json" >/dev/null 2>"$tmp/cve/err"); rc=$?
+ok "cve: OSV mati -> exit 2 dan pesan" "$rc|$(grep -c 'OSV tidak terjangkau' "$tmp/cve/err")" '2|1'
+(export CVE_HTTP=22; CK "$tmp/cve/w/package-lock.json" >/dev/null 2>&1); ok "cve: HTTP 4xx/5xx (curl -f) -> exit 2, bukan dianggap bersih" $? 2
+LOCK paged 1.0; printf '%s' "{\"vulns\":[$(V GHSA-p1p1-0000-aaaa CVE-1 HIGH)],\"next_page_token\":\"T2\"}" > "$CVE_FIX/npm_paged_1.0.json"; printf '%s' "{\"vulns\":[$(V GHSA-p2p2-0000-bbbb CVE-2 HIGH)]}" > "$CVE_FIX/npm_paged_1.0.T2.json"
+out="$(CK "$tmp/cve/w/package-lock.json" 2>/dev/null)"; ok "cve: next_page_token -> dua halaman digabung" "$(cut -f3 <<<"$out" | paste -sd, -)" 'GHSA-p1p1-0000-aaaa,GHSA-p2p2-0000-bbbb'
+jq -n '{lockfileVersion:3,packages:{"":{},"node_modules/twin":{version:"1.0.0"},"node_modules/a/node_modules/twin":{version:"1.0.0",dev:true}}}' > "$tmp/cve/w/package-lock.json"; : > "$CVE_FIX/calls"; FX npm twin 1.0.0 "{\"vulns\":[$(V GHSA-tttt-0000-cccc CVE-3 LOW)]}"
+out="$(CK "$tmp/cve/w/package-lock.json" 2>/dev/null)"; ok "cve: pasangan kembar (prod dan dev) dikueri sekali, dua baris" "$(grep -c '^npm twin 1.0.0' "$CVE_FIX/calls")|$(grep -c . <<<"$out")" '1|2'
+
 [ "$fails" = 0 ] && echo "SEMUA LULUS" || { echo "$fails GAGAL"; exit 1; }
