@@ -58,3 +58,38 @@ ghx_repo() {
 
 # awalan jalur REST Project v2: orgs/<owner> atau users/<owner> (tipe dari REST, bukan GraphQL)
 ghx_owner_base() { case "$(gh api "users/$1" -q .type)" in Organization) echo "orgs/$1" ;; *) echo "users/$1" ;; esac; }
+
+# --- operasi issue. Jalur GraphQL = panggilan gh yang sama persis seperti sebelum ada pustaka ini; batas -> REST sekali.
+# Catatan set -e: jangan tulis `ghx_gql ...; rc=$?` (kode 75 menghentikan skrip); pakai `|| rc=$?`.
+
+# ghx_issues <open|closed|all> <label|-> <batas> <json-fields>  -> larik JSON {number,title,body,labels,state(HURUF BESAR)} bila REST
+ghx_issues() {
+  local s="$1" l="$2" n="$3" f="$4" rc=0 repo page=1 acc='[]' pg q a=(--state "$1")
+  [ "$l" = - ] || a+=(--label "$l"); a+=(--limit "$n" --json "$f")
+  ghx_gql gh issue list "${a[@]}" || rc=$?; [ "$rc" = 75 ] || return "$rc"
+  repo="$(ghx_repo)" || return 1
+  while :; do   # REST per halaman 100; entri bergaris pull_request dibuang; berhenti saat batas terkumpul
+    q="repos/$repo/issues?state=$s&per_page=100&page=$page"; [ "$l" = - ] || q="$q&labels=$l"
+    pg="$(gh api "$q")" || { echo "ghx: REST juga gagal (GraphQL terblokir); coba lagi setelah reset" >&2; return 1; }
+    acc="$(jq -c --argjson p "$pg" '. + [$p[]|select(has("pull_request")|not)]' <<<"$acc")"
+    [ "$(jq length <<<"$pg")" -ge 100 ] && [ "$(jq length <<<"$acc")" -lt "$n" ] || break
+    page=$((page+1))
+  done
+  jq -c --argjson n "$n" '.[:$n]|map({number,title,body:(.body // ""),labels:(.labels // []),state:(.state|ascii_upcase)})' <<<"$acc"
+}
+
+ghx_issue_body() {   # <n> -> badan issue ("" bila kosong)
+  local rc=0; ghx_gql gh issue view "$1" --json body -q .body || rc=$?; [ "$rc" = 75 ] || return "$rc"
+  gh api "repos/$(ghx_repo)/issues/$1" | jq -r '.body // ""'
+}
+
+ghx_issue_set_body() {   # <n> <teks>; -f body= (bukan interpolasi) agar kutip, $ dan baris baru utuh
+  local rc=0; ghx_gql gh issue edit "$1" --body "$2" >/dev/null || rc=$?; [ "$rc" = 75 ] || return "$rc"
+  gh api -X PATCH "repos/$(ghx_repo)/issues/$1" -f body="$2" >/dev/null
+}
+
+ghx_issue_close() {   # <n> <komentar>
+  local rc=0 r; ghx_gql gh issue close "$1" --comment "$2" >/dev/null || rc=$?; [ "$rc" = 75 ] || return "$rc"
+  r="$(ghx_repo)"; gh api -X POST "repos/$r/issues/$1/comments" -f body="$2" >/dev/null \
+    && gh api -X PATCH "repos/$r/issues/$1" -f state=closed -f state_reason=completed >/dev/null
+}

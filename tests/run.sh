@@ -633,6 +633,10 @@ case "$*" in
   "api users/o"*) echo "${OWNER_TYPE:-User}" ;;
   "api graphql"*) printf 'HTTP/2.0 200 OK\nX-Ratelimit-Remaining: %s\nX-Ratelimit-Reset: 1793490517\n' "${REMAINING:-0}" ;;
   "issue list"*) echo '[]' ;;
+  "api repos/o/r/issues?"*) [ "${RESTFAIL:-0}" = 1 ] && { echo "HTTP 500" >&2; exit 1; }
+    a="$*"; p="${a##*page=}"; p="${p%%&*}"; jq -c ".[$(((p-1)*100)):$((p*100))]" "$FAKE/issues.json" ;;
+  "api repos/o/r/issues/7") cat "$FAKE/issue7.json" ;;
+  "api -X "*) for a in "$@"; do case "$a" in body=*) printf '%s' "${a#body=}" > "$FAKE/body.out" ;; esac; done ;;
 esac
 EOF
 chmod +x "$tmp/rl/bin/gh"; export FAKE="$tmp/rl"; : > "$FAKE/calls"
@@ -654,5 +658,28 @@ ok "ghx_owner_base: User" "$(RL ghx_owner_base o 2>/dev/null)" users/o
 ok "ghx_owner_base: Organization" "$(export OWNER_TYPE=Organization; RL ghx_owner_base o 2>/dev/null)" orgs/o
 ok "ghx_explain_limit: Remaining 0 -> penyebab dan jam reset" "$(RL ghx_explain_limit 2>/dev/null | grep -c 'batas GraphQL GitHub habis; reset 23:48:37 UTC')" 1
 ok "ghx_explain_limit: Remaining > 0 -> diam" "$(export REMAINING=7; RL ghx_explain_limit 2>/dev/null)" ""
+
+# 3i-2. ghx: operasi issue (GraphQL identik; batas -> REST sekali)
+git -C "$tmp/rl/w" remote add origin https://github.com/o/r.git
+jq -n '[range(1;151)|{number:.,title:"t\(.)",body:(if .%7==0 then null else "b" end),state:"open",labels:[{name:"epic"}]}+(if .%5==0 then {pull_request:{url:"x"}} else {} end)]' > "$FAKE/issues.json"
+echo '{"body":null}' > "$FAKE/issue7.json"
+: > "$FAKE/calls"; RL ghx_issues open epic 100 number,body >/dev/null 2>&1
+ok "ghx_issues: tanpa batas = panggilan identik" "$(grep -c '^issue list --state open --label epic --limit 100 --json number,body$' "$FAKE/calls")" 1
+R="$(export GHX_SIM=1; RL ghx_issues open epic 100 number,body 2>/dev/null)"
+ok "ghx_issues: batas -> REST tepat limit, tanpa PR" "$(jq 'length' <<<"$R")/$(jq '[.[]|select(.number%5==0)]|length' <<<"$R")" 100/0
+ok "ghx_issues: REST state huruf besar" "$(jq -r '.[0].state' <<<"$R")" OPEN
+ok "ghx_issues: REST body null -> teks kosong" "$(jq -c '[.[]|select(.number==7)|.body]' <<<"$R")" '[""]'
+: > "$FAKE/calls"; (export GHX_SIM=1; RL eval 'set -euo pipefail; a="$(ghx_issues open epic 100 number,body)"; b="$(ghx_issues open epic 100 number,body)"; :' >/dev/null 2>&1)
+ok "ghx_issues: setelah batas (di bawah set -e), panggilan berikutnya tidak memanggil 'issue list'" "$(grep -c '^issue list' "$FAKE/calls")" 1
+: > "$FAKE/calls"; (export GHX_SIM=1 RESTFAIL=1; RL ghx_issues open epic 100 number,body >/dev/null 2>&1); rc=$?
+ok "ghx_issues: REST juga gagal -> exit non-0 tanpa loop" "$([ $rc != 0 ] && echo gagal)/$(grep -c '^api repos/o/r/issues?' "$FAKE/calls")" gagal/1
+: > "$FAKE/calls"; (export ERR404=1; RL ghx_issues open epic 100 number,body >/dev/null 2>&1); rc=$?
+ok "ghx_issues: 404 bukan batas -> tanpa fallback REST" "$([ $rc != 0 ] && echo gagal)/$(grep -c '^api repos' "$FAKE/calls")" gagal/0
+ok "ghx_issue_body: REST body null -> teks kosong, bukan 'null'" "$(export GHX_SIM=1; RL ghx_issue_body 7 2>/dev/null)" ""
+echo '{"body":"abc"}' > "$FAKE/issue7.json"; ok "ghx_issue_body: REST teks" "$(export GHX_SIM=1; RL ghx_issue_body 7 2>/dev/null)" abc
+B='a "q" $HOME `x`'$'\n''- [ ] #5'
+(export GHX_SIM=1; RL ghx_issue_set_body 7 "$B" >/dev/null 2>&1); ok "ghx_issue_set_body: badan utuh via REST" "$(cat "$FAKE/body.out")" "$B"
+: > "$FAKE/calls"; (export GHX_SIM=1; RL ghx_issue_close 7 "Sudah masuk" >/dev/null 2>&1)
+ok "ghx_issue_close: REST = komentar lalu tutup" "$(grep -E '^api -X (POST|PATCH) repos/o/r/issues/7' "$FAKE/calls" | awk '{print $3}' | tr '\n' ' ')" "POST PATCH "
 
 [ "$fails" = 0 ] && echo "SEMUA LULUS" || { echo "$fails GAGAL"; exit 1; }
