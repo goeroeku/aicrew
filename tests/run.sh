@@ -1571,4 +1571,27 @@ if command -v caffeinate >/dev/null 2>&1; then
   ok "watchdog: jalur caffeinate (tanpa AICREW_CAFF) -> sesi idle diinterupsi dan putaran berikut jalan" "$rc|$(cat "$AP3FX/n")|$(APLOG | grep -c 'diinterupsi (SIGINT)')" '0|2|1'
 else ok "watchdog: caffeinate tak tersedia (Linux); jalur dilewati" 0 0; fi
 
+# 3p-4. #17: blocked-by dihitung 'menunggu owner' (waiting_on_owner); kode keluar lama tak berubah
+bj() { jq -nc --argjson n "$1" --arg l "$2" --arg b "$3" '{number:$n,state:"OPEN",labels:($l|split(",")|map(select(.!="")|{name:.})),body:$b}'; }
+bl() { printf '## Summary\nx\n\n## Blocked by\n%s\n\n## Other\ny\n' "$1"; }
+WO="--wait 1 --wait-max 2"
+ap3 "$(jq -sc . <(bj 1 role:qa "$(bl '- #2')") <(bj 2 needs-principal ''))" $'noop' $WO; rc=$?
+ok "blocked-by: A diblokir B (needs-principal) -> menunggu owner: exit 3, claude hanya 1 putaran" "$rc|$(cat "$AP3FX/n")" '3|1'
+ap3 "$(jq -sc . <(bj 1 role:qa "$(bl '- #2')") <(bj 2 role:qa ''))" $'noop'; rc=$?
+ok "blocked-by: blocker berupa pekerjaan Ready -> BUKAN menunggu owner (putaran berjalan, buntu exit 2)" "$rc|$(cat "$AP3FX/n")" '2|3'
+ap3 "$(jq -sc . <(bj 12 needs-principal '') <(bj 6 role:qa "$(bl '- #12')"))" $'noop' $WO; rc=$?
+ok "blocked-by: #12 needs-principal memblokir #6 -> menunggu: exit 3" "$rc" 3
+ap3 "$(jq -sc . <(bj 12 needs-principal '') <(bj 5 role:qa "$(bl '- #1')"))" $'noop' $WO; rc=$?
+ok "blocked-by: '#1' tidak cocok dengan '#12' (blocker #1 sudah tak terbuka -> #5 Ready): exit 2" "$rc" 2
+ap3 "$(jq -sc . <(bj 1 role:qa "$(bl 'none')"))" $'noop' $WO; rc=$?
+ok "blocked-by: 'none' -> Ready, exit 2" "$rc" 2
+ap3 "$(jq -sc . <(bj 12 needs-principal '') <(bj 6 role:qa "$(bl '- other/repo#12')"))" $'noop' $WO; rc=$?
+ok "blocked-by: blocker lintas repo (other/repo#12) diabaikan -> #6 Ready, exit 2" "$rc" 2
+ap3 "$(jq -sc . <(bj 7 di-integrasi '') <(bj 8 role:qa "$(bl '- #7')"))" $'noop' $WO; rc=$?
+ok "blocked-by: blocker berlabel di-integrasi sudah terpenuhi -> #8 Ready, exit 2" "$rc" 2
+ap3 "$(jq -sc . <(bj 1 role:qa "$(bl '- #2')") <(bj 2 role:qa "$(bl '- #3')") <(bj 3 needs-principal ''))" $'noop' $WO; rc=$?
+ok "blocked-by: rantai A->B->C(needs-principal) -> menunggu: exit 3" "$rc" 3
+ap3 "$(jq -sc . <(bj 1 role:qa "$(bl '- #2')") <(bj 2 role:qa "$(bl '- #1')"))" $'noop' $WO; rc=$?
+ok "blocked-by: siklus A<->B tanpa yang menunggu -> bukan menunggu, tidak berputar selamanya (exit 2)" "$rc" 2
+
 [ "$fails" = 0 ] && echo "SEMUA LULUS" || { echo "$fails GAGAL"; exit 1; }

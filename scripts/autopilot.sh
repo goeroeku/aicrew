@@ -30,9 +30,25 @@ fingerprint() { { gh issue list --state all --limit 200 --json number,state,labe
 
 # semua issue terbuka hanya menunggu manusia: needs-principal, atau punya PR terbuka (cabang issue-N, konvensi yang sama dengan resume.sh)
 waiting_on_owner() {
-  for n in $(jq -r '.[]|select(.labels|map(.name)|index("needs-principal")|not)|.number' <<<"$1"); do
-    [ "$(gh pr list --head "issue-$n" --state open --json number,state -q '[.[]|select(.state=="OPEN")]|length' 2>/dev/null)" -ge 1 ] 2>/dev/null || return 1
+  # menunggu = needs-principal, atau punya PR terbuka, atau semua blocker yang belum terpenuhi (bagian "## Blocked by" di badan issue; blocker terpenuhi bila tak ada di $1:
+  # ditutup atau berlabel integrasi) sendiri menunggu (dihitung berulang sampai tetap). Blocker berupa pekerjaan Ready berarti BUKAN menunggu. #17
+  local open="$1" n b w="" ch=1 all blk nums
+  nums="$(jq -r '.[].number' <<<"$open")"
+  for n in $nums; do
+    if jq -e --argjson n "$n" '.[]|select(.number==$n)|.labels|map(.name)|index("needs-principal")' <<<"$open" >/dev/null 2>&1; then w="$w $n"
+    elif [ "$(gh pr list --head "issue-$n" --state open --json number,state -q '[.[]|select(.state=="OPEN")]|length' 2>/dev/null)" -ge 1 ] 2>/dev/null; then w="$w $n"; fi
   done
+  while [ "$ch" = 1 ]; do ch=0
+    for n in $nums; do
+      case " $w " in *" $n "*) continue ;; esac
+      # nomor #n pada bagian Blocked by; "owner/repo#n" (lintas repo) diabaikan; hanya yang masih terbuka (ada di $nums) yang belum terpenuhi
+      blk="$(jq -r --argjson n "$n" '.[]|select(.number==$n)|.body // ""' <<<"$open" | awk 'tolower($0) ~ /^##[ \t]+blocked by/{f=1;next} /^##/{f=0} f' | grep -oE '(^|[^A-Za-z0-9_./-])#[0-9]+' | grep -oE '[0-9]+' | sort -u)"
+      all=1; has=0
+      for b in $blk; do [ "$b" != "$n" ] || continue; case " $(echo $nums) " in *" $b "*) has=1; case " $w " in *" $b "*) ;; *) all=0 ;; esac ;; esac; done
+      if [ "$has" = 1 ] && [ "$all" = 1 ]; then w="$w $n"; ch=1; fi
+    done
+  done
+  for n in $nums; do case " $w " in *" $n "*) ;; *) return 1 ;; esac; done
   return 0
 }
 # watchdog idle (#48): subshell latar selama satu putaran; claude tetap di latar depan (perintah asinkron dari shell non-interaktif mengabaikan SIGINT).
@@ -83,7 +99,7 @@ errs=0; same=0; was_limit=0; last="$(fingerprint)"
 for ((i=1; i<=max_rounds; i++)); do
   cur_round=$i
   # issue berlabel integrasi ($L_INT, bawaan di-integrasi) sudah selesai (menunggu merge ke main oleh owner): bukan pekerjaan tersisa
-  open="$(gh issue list --state open --limit 200 --json number,labels | jq --arg l "$L_INT" '[.[]|select(.labels|map(.name)|(index($l) or index("epic"))|not)]')"  # epic = pengelompokan journey, bukan pekerjaan
+  open="$(gh issue list --state open --limit 200 --json number,labels,body | jq --arg l "$L_INT" '[.[]|select(.labels|map(.name)|(index($l) or index("epic"))|not)]')"  # epic = pengelompokan journey, bukan pekerjaan
   n_open="$(jq length <<<"$open")"
   n_wait="$(jq '[.[]|select(.labels|map(.name)|index("needs-principal"))]|length' <<<"$open")"
   [ "$n_open" = 0 ] && { set_phase selesai "$((i-1))"; note "autopilot: semua issue selesai (putaran $((i-1)))"; exit 0; }
