@@ -1017,4 +1017,24 @@ OPEN_FAIL=1 CLN --no-fetch | grep -q "^cabang-remote.issue-1.*lewati:pr-tak-terb
 G remote set-head origin integ >/dev/null; ok "cleanup laporan: cabang bawaan bukan main (origin/HEAD=integ) dikenali" "$(CLN --no-fetch | cut -f2 | grep -cxE 'integ')" 0; G remote set-head origin main >/dev/null
 printf -- '- Backend: gitlab — repo: o/r\n' > "$CL/w/docs/WORKFLOW.md"; out="$(CLN --no-fetch)"; rc=$?; ok "cleanup: Backend gitlab -> exit 0, pesan tidak didukung, tanpa tabel" "$rc|$(grep -c 'tidak didukung' "$CL/err")|$(grep -c . <<<"$out")" '0|1|0'
 
+# 3k-2. cleanup.sh --apply: urutan worktree -> cabang lokal -> remote; hanya yang terbukti; SHA dicetak; idempoten
+LB() { G for-each-ref --format='%(refname:short)' refs/heads | LC_ALL=C sort | paste -sd' ' -; }
+RB() { git --git-dir="$CL/remote.git" for-each-ref --format='%(refname:short)' refs/heads | LC_ALL=C sort | paste -sd' ' -; }
+MK; OUT="$(CLN --no-fetch --apply)"; rc=$?
+ok "cleanup apply: exit 0" $rc 0
+ok "cleanup apply: cabang lokal tersisa hanya yang tak terbukti/dilindungi" "$(LB)" 'fitur/x integ issue-2 issue-4 issue-6 issue-7 issue-8 main stack-base stack-child'
+ok "cleanup apply: cabang remote tersisa hanya yang tak terbukti/dilindungi" "$(RB)" 'fitur/x integ issue-2 main stack-base stack-child'
+ok "cleanup apply: worktree bersih dihapus; kotor, terkunci, terlepas, Orca tetap ada" "$([ -d "$CL/w-wt-5" ] && echo ada || echo hilang)|$([ -d "$CL/w-wt-6" ] && echo ada)|$([ -d "$CL/w-wt-7" ] && echo ada)|$([ -d "$CL/w-detached" ] && echo ada)|$([ -d "$CL/orca/workspaces/w-wt-8" ] && echo ada)" 'hilang|ada|ada|ada|ada'
+SHA1="$(awk -F'\t' '$1=="cabang-lokal" && $2=="issue-1"{print $3}' <<<"$OUT")"
+ok "cleanup apply: SHA ujung dicetak (40 hex) dan aksi dihapus" "$(grep -c "^cabang-lokal.issue-1.${SHA1}.leluhur.dihapus" <<<"$OUT")|${#SHA1}" '1|40'
+G branch pulih "$SHA1" 2>/dev/null; ok "cleanup apply: cabang yang dihapus dapat dipulihkan dari SHA yang dicetak" "$(G rev-parse --verify -q refs/heads/pulih >/dev/null && echo pulih)" pulih
+G branch -q -D pulih; OUT2="$(CLN --no-fetch --apply)"; rc=$?; ok "cleanup apply: dijalankan lagi -> tak ada yang dihapus, exit 0" "$rc|$(grep -c $'\tdihapus$' <<<"$OUT2")" '0|0'
+MK; CLN --no-fetch --issue 1 --apply >/dev/null; ok "cleanup apply --issue 1: hanya issue-1 yang hilang" "$(LB | tr ' ' '\n' | grep -cE '^issue-(1)$')|$(LB | tr ' ' '\n' | grep -cE '^issue-3$')" '0|1'
+MK; G checkout -q -b bebas main; echo b > "$CL/w/bebas.txt"; G add -A; G commit -q -m bebas; G push -q origin bebas; G checkout -q main; G merge -q --no-ff bebas -m "merge bebas"; G push -q origin main
+CLN --no-fetch --only orkestrator --apply >/dev/null; ok "cleanup apply --only orkestrator: cabang ter-merge bernama bebas tidak disentuh" "$(LB | tr ' ' '\n' | grep -cx bebas)|$(RB | tr ' ' '\n' | grep -cx bebas)" '1|1'
+MK; git --git-dir="$CL/remote.git" branch -q -D issue-1; OUT="$(CLN --no-fetch --apply)"; rc=$?
+ok "cleanup apply: cabang remote yang sudah dihapus GitHub -> dihapus (idempoten), exit 0" "$rc|$(grep -c $'^cabang-remote\tissue-1\t.*\tdihapus$' <<<"$OUT")" '0|1'
+MK; G remote set-url origin "$CL/tidak-ada.git"; OUT="$(CLN --no-fetch --apply)"; rc=$?
+ok "cleanup apply: push gagal (bukan 'sudah terhapus') -> lewati:gagal dan exit 1, lokal tetap diproses" "$rc|$(grep -c $'^cabang-remote.*lewati:gagal' <<<"$OUT" | awk '{print ($1>0)?"ada":"nol"}')|$(LB | tr ' ' '\n' | grep -cx issue-1)" '1|ada|0'
+
 [ "$fails" = 0 ] && echo "SEMUA LULUS" || { echo "$fails GAGAL"; exit 1; }

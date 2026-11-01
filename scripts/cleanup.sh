@@ -1,16 +1,19 @@
 #!/usr/bin/env bash
 # aicrew cleanup: laporkan cabang dan worktree yang TERBUKTI ter-merge dan aman dihapus. Pakai:
-#   cleanup.sh [--no-fetch] [--only orkestrator] [--issue <n>]
-# Keluaran TSV: jenis  nama  sha  bukti  aksi   (jenis cabang-lokal|cabang-remote|worktree; bukti leluhur|pr-merged|-; aksi hapus|lewati:<alasan>).
+#   cleanup.sh [--apply] [--no-fetch] [--only orkestrator] [--issue <n>]    (tanpa --apply hanya melaporkan)
+# Keluaran TSV: jenis  nama  sha  bukti  aksi   (jenis worktree|cabang-lokal|cabang-remote; bukti leluhur|pr-merged|-; aksi hapus|dihapus|lewati:<alasan>).
+# --apply menghapus berurutan: worktree (tanpa --force), cabang lokal (git branch -d, cadangan update-ref -d <ref> <sha> yang hanya berhasil bila ujung belum berubah), remote
+# (git push --delete; "remote ref does not exist" = sudah terhapus). Setiap baris memuat SHA ujung supaya bisa dipulihkan: git branch <nama> <sha>. Kode keluar 1 bila ada yang gagal.
 # Bukti ter-merge: (a) ujung cabang leluhur origin/<bawaan> atau origin/<integrasi>; (b) PR merged dengan head.sha sama dengan ujung (squash/rebase).
 # Tidak pernah kandidat: cabang bawaan dan integrasi, cabang yang head atau base PR terbuka, cabang ter-checkout di worktree yang tidak ikut dihapus,
 # worktree kotor/terkunci/terlepas/di ~/orca/workspaces/. Hanya git dan REST (gh api), tanpa GraphQL. GitHub saja (backend lain: keluar 0).
 set -u
 here="$(dirname "$0")"; source "$here/ghx.sh"
-usage() { echo "pakai: cleanup.sh [--no-fetch] [--only orkestrator] [--issue <n>]" >&2; exit 64; }
-only=""; issue=""; fetch=1
+usage() { echo "pakai: cleanup.sh [--apply] [--no-fetch] [--only orkestrator] [--issue <n>]" >&2; exit 64; }
+only=""; issue=""; fetch=1; apply=0
 while [ $# -gt 0 ]; do
   case "$1" in
+    --apply) apply=1 ;;
     --no-fetch) fetch=0 ;;
     --only) only="${2:-}"; [ "$only" = orkestrator ] || usage; shift ;;
     --issue) issue="${2:-}"; [[ "$issue" =~ ^[0-9]+$ ]] || usage; shift ;;
@@ -92,17 +95,31 @@ while IFS="$tab" read -r p b h l; do
   printf 'worktree\t%s\t%s\t%s\t%s\t%s\n' "$nm" "$h" "$ev" "$act" "$p" >> "$T/wt"
 done < <(git worktree list --porcelain | awk 'BEGIN{RS="";FS="\n"}{p="";b="-";h="";l=0;for(k=1;k<=NF;k++){if($k~/^worktree /)p=substr($k,10);else if($k~/^HEAD /)h=substr($k,6);else if($k~/^branch refs\/heads\//)b=substr($k,19);else if($k~/^locked/)l=1}printf "%s\t%s\t%s\t%d\n",p,b,h,l}')
 
-# 3. keluaran final
+# 3. keluaran final dan, bila --apply, penghapusan berurutan: worktree -> cabang lokal -> remote
+fails=0
+emit() { # <jenis> <nama> <ujung> <bukti> <aksi> <path>
+  local act="$5" msg
+  if [ "$apply" = 1 ] && [ "$act" = hapus ]; then
+    case "$1" in
+      worktree) if msg="$(git worktree remove "$6" 2>&1)"; then act=dihapus; else act="lewati:gagal:$(tr '\n' ' ' <<<"$msg")"; fi ;;
+      cabang-lokal) if git branch -d "$2" >/dev/null 2>&1 || git update-ref -d "refs/heads/$2" "$3" 2>/dev/null; then git config --remove-section "branch.$2" 2>/dev/null; act=dihapus; else act="lewati:gagal:ujung-berubah-atau-tak-terhapus"; fi ;;
+      cabang-remote) msg="$(git push -q origin --delete "$2" 2>&1)"; if [ $? = 0 ] || grep -q 'remote ref does not exist' <<<"$msg"; then git update-ref -d "refs/remotes/origin/$2" 2>/dev/null; act=dihapus; else act="lewati:gagal:$(tr '\n' ' ' <<<"$msg")"; fi ;;
+    esac
+    case "$act" in lewati:gagal*) fails=1 ;; esac
+  fi
+  printf '%s\t%s\t%s\t%s\t%s\n' "$1" "$2" "$3" "$4" "$act" >> "$T/out"
+}
 : > "$T/out"
+while IFS="$tab" read -r k nm h ev act p; do emit "$k" "$nm" "$h" "$ev" "$act" "$p"; done < "$T/wt"
 while IFS="$tab" read -r n tip ev r; do
   if [ -n "$r" ]; then act="lewati:$r"; elif inlist "$n" "$(cat "$T/surv")"; then act="lewati:checkout"; else act="hapus"; fi
-  printf 'cabang-lokal\t%s\t%s\t%s\t%s\n' "$n" "$tip" "$ev" "$act" >> "$T/out"
+  emit cabang-lokal "$n" "$tip" "$ev" "$act" ""
 done < "$T/loc"
 while IFS="$tab" read -r n tip ev r; do
   if [ -n "$r" ]; then act="lewati:$r"; else act="hapus"; fi
-  printf 'cabang-remote\t%s\t%s\t%s\t%s\n' "$n" "$tip" "$ev" "$act" >> "$T/out"
+  emit cabang-remote "$n" "$tip" "$ev" "$act" ""
 done < "$T/rem"
-cut -f1-5 "$T/wt" >> "$T/out"
 cat "$T/out"
-echo "cleanup: $(grep -c "${tab}hapus\$" "$T/out") kandidat hapus, $(grep -c "${tab}lewati:" "$T/out") dilewati (mode laporan)" >&2
-exit 0
+mode="mode laporan"; [ "$apply" = 0 ] || mode="apply"
+echo "cleanup: $(grep -c "${tab}\(hapus\|dihapus\)\$" "$T/out") $([ "$apply" = 1 ] && echo dihapus || echo kandidat hapus), $(grep -c "${tab}lewati:" "$T/out") dilewati ($mode)" >&2
+exit "$fails"
