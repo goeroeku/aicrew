@@ -17,7 +17,7 @@ Bahasa dokumen: Indonesia. Jangan menulis kode project di skill ini.
 Jangan menulis ulang. Bandingkan dengan `templates/WORKFLOW.md`: ukuran task, label, aturan berhenti,
 batas, bukti selesai, perintah backend, PRD/Kode ada. Laporkan tabel *sesuai / kurang / bertentangan*
 (dengan baris yang bersangkutan). Aturan lokal yang sengaja berbeda dihormati dan hanya dicatat.
-Siapkan perubahan siap-terapkan (diff) dan minta persetujuan owner sekali sebelum menerapkannya.
+Baris `Catatan rilis:` yang hilang dilaporkan sebagai *kurang* dan disarankan (tidak diterapkan otomatis). Siapkan perubahan siap-terapkan (diff) dan minta persetujuan owner sekali sebelum menerapkannya.
 
 ## Langkah
 0. **PRD yang sudah ada**: cari `PRD*`, `docs/`, `spec*`. Jika ada, minta owner mengonfirmasi lokasi dan
@@ -37,6 +37,7 @@ Siapkan perubahan siap-terapkan (diff) dan minta persetujuan owner sekali sebelu
    sampaikan apa yang kurang dan jangan lanjut ke tahap yang membutuhkannya. Tampilkan juga status Codex dan Telegram. Bila preflight mencetak `AWAS` (workflow jalan saat push ke main), catat di gerbang 4 `WORKFLOW.md` dan tanyakan owner. Tulis perintah backend di satu bagian `WORKFLOW.md` supaya mudah diganti.
 4. **Role aktif**: pilih dari `agents/` (principal, senior-coder, qa, security, perf, devops, ui-ux).
 5. **Gerbang & aturan berhenti**: mulai dari bawaan di `templates/WORKFLOW.md`; owner boleh menimpa. Tanyakan juga apakah memakai board kanban (GitHub Project; perlu scope `gh` `project`: preflight menampilkan perintahnya). Bila ya dan belum ada board, buat dengan `bash ${CLAUDE_PLUGIN_ROOT}/scripts/board-init.sh <owner> "<nama project>"` (cetak nomornya; catat di `WORKFLOW.md`); bila owner sudah punya, pakai nomornya sebagai argumen ketiga. Tanyakan juga siapa yang memindahkan kartu ke Done: `owner` (bawaan) atau `agen-setelah-merge` (autopilot, cocok dengan mode merge `agen-setelah-QA`). Tanyakan juga siapa yang memutuskan `needs-principal` tingkat 1: `owner` (bawaan) atau `principal-auto` (butuh role principal aktif; tingkat 2 tetap owner). Tanyakan mode merge ke cabang integrasi: `owner` (bawaan, manual) atau `agen-setelah-QA` (otomatis setelah QA lulus; rekomendasi: merge ke `main` tetap owner).
+5a. **Catatan rilis**: tanyakan opsi `Catatan rilis:` (`CHANGELOG.md` | `dikelola alat lain` | `tidak ada`); rekomendasikan `CHANGELOG.md` untuk proyek baru dan jelaskan bahwa PR perlu baris `Catatan rilis: <Added|Changed|Fixed|Security> - <teks>`. Proyek lama tanpa baris itu = `tidak ada` (opt-in; jangan menambahkannya tanpa persetujuan owner).
 5b. **Batas perangkat keras**: tanyakan IOPS disk, RAM, tier volume, opsi mount, dan batas container host; isi bagian `Batas perangkat keras` di `WORKFLOW.md`. Belum tahu → tulis "tidak diketahui" (bukan angka tebakan).
 6. **Batas**: paralel maksimum, iterasi per sesi, gagal berturut-turut per issue.
 6b. **`.gitignore`**: jalankan `bash ${CLAUDE_PLUGIN_ROOT}/scripts/ensure-gitignore.sh` (menambah `.aicrew/` dan `.claude/settings.local.json`, idempoten) dan sebutkan hasilnya ke owner. Di dalam workspace Orca (preflight mencetak `AWAS` Orca), tanyakan juga path absolut basis worktree dan isi baris `Basis worktree:`; sampaikan bahwa Orca meluncurkan agen dengan `--dangerously-skip-permissions` secara bawaan.

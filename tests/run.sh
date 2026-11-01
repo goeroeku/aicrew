@@ -1116,7 +1116,7 @@ grep -q 'Paket privat:' templates/WORKFLOW.md; ok "templat WORKFLOW memuat 'Pake
 grep -q 'Paket privat:' PRIVACY.md && grep -q '~/.npmrc' PRIVACY.md; ok "PRIVACY: sumber pola dan ~/.npmrc tidak dibaca" $? 0
 grep -q 'Paket privat:' README.md; ok "README menyebut 'Paket privat:'" $? 0
 grep -q 'Paket privat' skills/cve-audit/SKILL.md; ok "skill cve-audit menyebut paket privat" $? 0
-grep -q '"version": "0.10.1"' .claude-plugin/plugin.json; ok "plugin.json versi 0.10.1" $? 0
+grep -q '"version": "0.11.0"' .claude-plugin/plugin.json; ok "plugin.json versi 0.11.0" $? 0
 grep -q 'file yang di-ignore' templates/WORKFLOW.md; ok "templat WORKFLOW: Bersihkan setelah merge menyebut file yang di-ignore ikut terhapus (#44)" $? 0
 # 0.10.0: skill orchestrate, templat WORKFLOW, README memuat integrasi terverifikasi dan menunggu-rilis (#28, #32)
 for k in 'terintegrasi.sh' 'periksa-rilis' 'menunggu-rilis.sh --tandai' 'alur-terjadwal.sh'; do grep -qF -- "$k" skills/orchestrate/SKILL.md; ok "orchestrate memuat '$k'" $? 0; done
@@ -1356,5 +1356,118 @@ if python3 -c 'import yaml' 2>/dev/null; then python3 -c 'import sys,yaml; yaml.
 
 # 3m-5. skill cve-audit: pola jembatan untuk repo yang dirilis dari cabang non-bawaan (#42)
 grep -q 'Repo yang dirilis dari cabang non-bawaan' skills/cve-audit/SKILL.md && grep -q 'target-branch' skills/cve-audit/SKILL.md && grep -q 'ref:' skills/cve-audit/SKILL.md && grep -q 'add/add' skills/cve-audit/SKILL.md && grep -q 'menunggu-rilis' skills/cve-audit/SKILL.md; ok "skill cve-audit: pola jembatan (target-branch, ref:, add/add, menunggu-rilis)" $? 0
+
+# 3n-1. release-notes.sh: bagian catatan rilis dari baris bertanda di badan PR (#30)
+RN="$tmp/rn"; mkdir -p "$RN/fx" "$RN/w/docs"; git init -q --bare "$RN/o.git"; git init -q "$RN/w"
+(cd "$RN/w" && git remote add origin "$RN/o.git" && git checkout -q -b main && git commit -q --allow-empty -m A && git tag v0.1.0 && git commit -q --allow-empty -m PR10 && git tag v0.2.0 \
+  && for n in 11 12 13 14 15 16 17; do git commit -q --allow-empty -m "PR$n"; git tag "p$n"; done \
+  && git checkout -q -b integrasi v0.2.0 && git commit -q --allow-empty -m PR30 && git tag p30 && git checkout -q main && git push -q origin main integrasi --tags)
+SH() { git -C "$RN/w" rev-parse "$1"; }
+NP() { jq -nc --argjson n "$1" --arg base "$2" --arg sha "$3" --arg body "$4" --arg lab "$5" --argjson merged "${6:-true}" '{number:$n,title:("PR "+($n|tostring)),merged_at:(if $merged then "2026-11-01T00:00:00Z" else null end),merge_commit_sha:$sha,base:{ref:$base},body:$body,labels:($lab|split(",")|map(select(.!="")|{name:.}))}'; }
+PG="$RN/fx/repos_o_r_pulls_state_closed_per_page_100_page"
+{ NP 12 main "$(SH p12)" $'Catatan rilis: Fixed - bug dua\r\nPerubahan perilaku: bawaan x berubah\r' ""
+  NP 13 main "$(SH p13)" $'intro\n```\nCatatan rilis: Added - dalam blok kode\n```\n<!--\nCatatan rilis: Changed - dalam komentar\n-->\nCatatan rilis: -' ""
+  NP 14 main "$(SH p14)" 'tidak ada baris bertanda' ""
+  NP 15 main "$(SH p15)" 'Catatan rilis: Secuirty - typo kategori' ""
+  NP 16 main "$(SH p16)" 'Catatan rilis: Changed - perbaikan auth' "needs-security"
+  NP 17 main "$(SH p17)" '- Catatan rilis: Security - perbaiki sesi' ""
+  NP 30 integrasi "$(SH p30)" 'Catatan rilis: Added - fitur integrasi' ""; } | jq -sc . > "${PG}_1"
+{ NP 11 main "$(SH p11)" 'Catatan rilis: Added - fitur satu' ""
+  NP 10 main "$(SH v0.2.0)" 'Catatan rilis: Added - fitur lama' ""
+  NP 7 main "$(SH v0.1.0)" 'Catatan rilis: Added - sangat lama' ""
+  NP 18 main "$(SH p18 2>/dev/null || SH p17)" 'Catatan rilis: Added - tidak di-merge' "" false
+  NP 19 fitur "$(SH p17)" 'Catatan rilis: Added - basis lain' ""; } | jq -sc . > "${PG}_2"
+echo '[]' > "${PG}_3"; echo '{"default_branch":"main"}' > "$RN/fx/repos_o_r"
+printf -- '- Catatan rilis: CHANGELOG.md\n' > "$RN/w/docs/WORKFLOW.md"
+RNS() { (cd "$RN/w" && GH_REPO=o/r MI_FX="$RN/fx" PATH="$MI/bin:$PATH" bash "$root/scripts/release-notes.sh" "$@"); }
+EXP=$'## [0.3.0] - 2026-11-02\n\n### Added\n\n- fitur satu (#11)\n\n### Changed\n\n- perbaikan auth (#16)\n\n### Fixed\n\n- bug dua (#12)\n\n### Security\n\n- perbaiki sesi (#17)\n\n### Behavior changes\n\n- bawaan x berubah (#12)'
+out="$(RNS --versi 0.3.0 --tanggal 2026-11-02 2>"$RN/err")"; rc=$?
+ok "release-notes: bagian tersusun urut kategori dan nomor PR (halaman 2, CRLF, '- ' di depan baris, tag lama dan PR basis lain/tak ter-merge tidak ikut)" "$rc|$([ "$out" = "$EXP" ] && echo sama || echo beda)" '0|sama'
+ok "release-notes: tanpa \\r, tanpa isi blok kode/komentar HTML di keluaran" "$(printf '%s' "$out" | grep -c $'\r')|$(grep -c 'dalam blok kode\|dalam komentar' <<<"$out")" '0|0'
+ok "release-notes: PERINGATAN untuk PR tanpa baris (#14), kategori tak dikenal (#15), needs-security tanpa Security (#16); PR internal (#13) tanpa peringatan" "$(grep -c '^PERINGATAN: PR #14 ' "$RN/err")|$(grep -c '^PERINGATAN: PR #15 .*kategori tak dikenal' "$RN/err")|$(grep -c '^PERINGATAN: PR #16 .*needs-security' "$RN/err")|$(grep -c '#13' "$RN/err")" '1|1|1|0'
+out2="$(RNS --versi 0.3.0 --tanggal 2026-11-02 2>/dev/null)"; ok "release-notes: dijalankan ulang -> keluaran sama" "$([ "$out" = "$out2" ] && echo sama || echo beda)" sama
+out="$(RNS --versi 0.2.0 --tanggal 2026-11-02 2>/dev/null)"; ok "release-notes: versi yang sudah bertag memakai tag di bawahnya dan batas atas tag itu (hanya PR #10)" "$(grep -c 'fitur lama (#10)' <<<"$out")|$(grep -c 'fitur satu' <<<"$out")|$(grep -c 'sangat lama' <<<"$out")" '1|0|0'
+out="$(RNS --versi 0.1.0 2>"$RN/err")"; rc=$?; ok "release-notes: tanpa tag sebelumnya dan tanpa --sejak -> exit 2, stdout kosong, petunjuk --sejak" "$rc|$out|$(grep -c -- '--sejak' "$RN/err")" '2||1'
+out="$(RNS --versi 0.9.0 --sejak "$(SH v0.1.0)" --tanggal 2026-11-02 2>/dev/null)"; ok "release-notes: --sejak <ref> menggantikan tag sebelumnya (v0.9.0 belum bertag: #10 dan #11 ikut, #7 tidak)" "$(grep -c 'fitur lama (#10)' <<<"$out")|$(grep -c 'fitur satu (#11)' <<<"$out")|$(grep -c 'sangat lama' <<<"$out")" '1|1|0'
+out="$(MI_FAIL=1 RNS --versi 0.3.0 2>/dev/null)"; rc=$?; ok "release-notes: REST gagal -> exit 2, stdout kosong" "$rc|$out" '2|'
+printf -- '- Catatan rilis: CHANGELOG.md\n- Cabang integrasi: integrasi\n' > "$RN/w/docs/WORKFLOW.md"
+out="$(RNS --versi 0.3.0 --tanggal 2026-11-02 2>/dev/null)"; ok "release-notes: PR ke cabang integrasi ikut bila WORKFLOW menyebut integrasi" "$(grep -c 'fitur integrasi (#30)' <<<"$out")" 1
+for v in 'tidak ada' 'dikelola alat lain' ; do printf -- "- Catatan rilis: $v\n" > "$RN/w/docs/WORKFLOW.md"; out="$(RNS --versi 0.3.0 2>/dev/null)"; ok "release-notes: opsi '$v' -> stdout kosong, exit 0" "$?|$out" '0|'; done
+printf -- '- Catatan rilis: {{CHANGELOG.md (bawaan) | tidak ada}}\n' > "$RN/w/docs/WORKFLOW.md"; out="$(RNS --versi 0.3.0 2>/dev/null)"; ok "release-notes: placeholder belum diisi = tidak ada" "$?|$out" '0|'
+rm "$RN/w/docs/WORKFLOW.md"; out="$(RNS --versi 0.3.0 2>/dev/null)"; ok "release-notes: tanpa WORKFLOW.md = tidak ada" "$?|$out" '0|'
+printf -- '- Catatan rilis: CHANGELOG.md\n' > "$RN/w/docs/WORKFLOW.md"
+RNS --versi bukan-semver >/dev/null 2>&1; ok "release-notes: --versi bukan semver -> exit 64" "$?" 64
+
+# 3n-2. release-notes.sh --tulis (idempoten, opt-in) dan --ekstrak (#30)
+printf -- '- Catatan rilis: CHANGELOG.md\n' > "$RN/w/docs/WORKFLOW.md"; rm -f "$RN/w/CHANGELOG.md"
+RNS --versi 0.3.0 --tulis --tanggal 2026-11-02 >/dev/null 2>&1; rc=$?
+ok "release-notes --tulis: berkas baru dibuat dengan header Keep a Changelog dan satu bagian [0.3.0]" "$rc|$(head -1 "$RN/w/CHANGELOG.md")|$(grep -c '^## \[' "$RN/w/CHANGELOG.md")|$(grep -c 'fitur satu (#11)' "$RN/w/CHANGELOG.md")" '0|# Changelog|1|1'
+cp "$RN/w/CHANGELOG.md" "$RN/cl1"; RNS --versi 0.3.0 --tulis --tanggal 2026-11-02 >/dev/null 2>&1
+ok "release-notes --tulis: dijalankan ulang -> berkas identik (idempoten)" "$(cmp -s "$RN/cl1" "$RN/w/CHANGELOG.md" && echo sama || echo beda)" sama
+printf '# Changelog\n\nIntro.\n\n## [0.2.0] - 2026-10-01\n\n### Added\n\n- fitur lama (#10)\n' > "$RN/w/CHANGELOG.md"
+RNS --versi 0.3.0 --tulis --tanggal 2026-11-02 >/dev/null 2>&1
+ok "release-notes --tulis: bagian baru di atas bagian lama; bagian lama utuh; intro utuh" "$(grep -n '^## \[' "$RN/w/CHANGELOG.md" | cut -d: -f2 | tr '\n' ' ')|$(grep -c '^Intro\.$' "$RN/w/CHANGELOG.md")|$(grep -c 'fitur lama (#10)' "$RN/w/CHANGELOG.md")" '## [0.3.0] - 2026-11-02 ## [0.2.0] - 2026-10-01 |1|1'
+printf '# Changelog\n\n## [0.3.0] - 2026-11-01\n\n### Added\n\n- basi\n\n## [0.2.0] - 2026-10-01\n\n### Added\n\n- fitur lama (#10)\n' > "$RN/w/CHANGELOG.md"
+RNS --versi 0.3.0 --tulis --tanggal 2026-11-02 >/dev/null 2>&1
+ok "release-notes --tulis: bagian versi yang sama diganti (tanpa 'basi'), satu bagian [0.3.0], [0.2.0] utuh" "$(grep -c 'basi' "$RN/w/CHANGELOG.md")|$(grep -c '^## \[0.3.0\]' "$RN/w/CHANGELOG.md")|$(grep -c 'fitur lama (#10)' "$RN/w/CHANGELOG.md")" '0|1|1'
+cp "$RN/w/CHANGELOG.md" "$RN/cl2"; MI_FAIL=1 RNS --versi 0.3.0 --tulis >/dev/null 2>&1; rc=$?
+ok "release-notes --tulis: REST gagal -> exit 2 dan berkas tidak berubah" "$rc|$(cmp -s "$RN/cl2" "$RN/w/CHANGELOG.md" && echo sama || echo beda)" '2|sama'
+for v in 'tidak ada' 'dikelola alat lain'; do rm -f "$RN/w/CHANGELOG.md"; printf -- "- Catatan rilis: $v\n" > "$RN/w/docs/WORKFLOW.md"; RNS --versi 0.3.0 --tulis >/dev/null 2>&1; ok "release-notes --tulis: opsi '$v' -> exit 0, CHANGELOG.md tidak dibuat" "$?|$([ -e "$RN/w/CHANGELOG.md" ] && echo ada || echo tidak)" '0|tidak'; done
+printf '# Changelog\n\n## [0.3.0] - 2026-11-02\n\n### Added\n\n- fitur satu (#11)\n\n## [0.2.0] - 2026-10-01\n\n### Added\n\n- fitur lama (#10)\n' > "$RN/w/CHANGELOG.md"
+out="$(RNS --versi 0.2.0 --ekstrak)"; rc=$?; ok "release-notes --ekstrak: hanya bagian versi itu (opsi apa pun)" "$rc|$(grep -c 'fitur lama (#10)' <<<"$out")|$(grep -c 'fitur satu' <<<"$out")|$(head -1 <<<"$out")" '0|1|0|## [0.2.0] - 2026-10-01'
+out="$(RNS --versi 9.9.9 --ekstrak 2>/dev/null)"; rc=$?; ok "release-notes --ekstrak: versi tak ada -> exit 1, stdout kosong" "$rc|$out" '1|'
+rm -f "$RN/w/CHANGELOG.md"; printf -- '- Catatan rilis: CHANGELOG.md\n' > "$RN/w/docs/WORKFLOW.md"
+
+# 3n-3. gerbang: PR tanpa baris 'Catatan rilis:'; check-version.sh: peringatan bagian versi; release.yml memakai --ekstrak (#30)
+GE2() { (cd "$tmp/cve/gw" && BASE=main BODY="${GBODY:-x}" GH_REPO=o/r PMB="$tmp/pmb" PATH="$tmp/cve/gbin:$tmp/cve/bin:$PATH" bash "$root/scripts/pr-merge-check.sh" 9 main 2>&1); }
+DRM=$'diff --git a/README.md b/README.md\n+x'
+mkdir -p "$CF/main/docs"; printf -- '- Catatan rilis: CHANGELOG.md\n' > "$CF/main/docs/WORKFLOW.md"
+out="$(export DIFF="$DRM" GBODY="Closes #1"; GE2)"; rc=$?; ok "gerbang catatan: opsi CHANGELOG.md + badan tanpa baris -> PERINGATAN, exit 0" "$rc|$(grep -c "^PERINGATAN: PR tanpa baris 'Catatan rilis:'" <<<"$out")" '0|1'
+out="$(export DIFF="$DRM" GBODY=$'Closes #1\r\nCatatan rilis: Fixed - x\r'; GE2)"; ok "gerbang catatan: dengan baris (CRLF) -> tanpa peringatan" "$(grep -c "baris 'Catatan rilis:'" <<<"$out")" 0
+out="$(export DIFF="$DRM" GBODY=$'Closes #1\n- Catatan rilis: -'; GE2)"; ok "gerbang catatan: penanda internal -> tanpa peringatan" "$(grep -c "baris 'Catatan rilis:'" <<<"$out")" 0
+printf -- '- Catatan rilis: tidak ada\n' > "$CF/main/docs/WORKFLOW.md"; out="$(export DIFF="$DRM" GBODY="Closes #1"; GE2)"; ok "gerbang catatan: opsi tidak ada -> tanpa peringatan" "$(grep -c "baris 'Catatan rilis:'" <<<"$out")" 0
+rm -f "$CF/main/docs/WORKFLOW.md"; out="$(export DIFF="$DRM" GBODY="Closes #1"; GE2)"; ok "gerbang catatan: WORKFLOW 404 -> tanpa peringatan, exit 0" "$?|$(grep -c "baris 'Catatan rilis:'" <<<"$out")" '0|0'
+printf -- '- Catatan rilis: CHANGELOG.md\n' > "$CF/main/docs/WORKFLOW.md"; out="$(export DIFF="$DRM" GBODY="Closes #1" CF_ERR=1 CF_ERR_PATH=docs/WORKFLOW.md; GE2)"; ok "gerbang catatan: WORKFLOW galat 500 -> tidak memblokir, tanpa peringatan palsu" "$?|$(grep -c "baris 'Catatan rilis:'" <<<"$out")" '0|0'
+rm -rf "$CF/main/docs"
+CV="$tmp/cv"; mkdir -p "$CV/.claude-plugin" "$CV/scripts" "$CV/docs"; cp "$root/scripts/check-version.sh" "$root/scripts/workflow.sh" "$CV/scripts/"; echo '{"version":"0.3.0"}' > "$CV/.claude-plugin/plugin.json"
+CVR() { (cd "$CV" && bash scripts/check-version.sh v0.3.0 2>&1); }
+printf -- '- Catatan rilis: CHANGELOG.md\n' > "$CV/docs/WORKFLOW.md"; out="$(CVR)"; rc=$?; ok "check-version: opsi CHANGELOG.md tanpa berkas -> ::warning:: dan exit 0" "$rc|$(grep -c '^::warning::' <<<"$out")" '0|1'
+printf '# Changelog\n\n## [0.3.0] - 2026-11-02\n' > "$CV/CHANGELOG.md"; out="$(CVR)"; ok "check-version: bagian [0.3.0] ada -> tanpa peringatan" "$(grep -c '::warning::' <<<"$out")" 0
+printf '# Changelog\n\n## [0.2.0] - 2026-10-01\n' > "$CV/CHANGELOG.md"; out="$(CVR)"; ok "check-version: bagian versi hilang -> ::warning::" "$(grep -c '^::warning::' <<<"$out")" 1
+printf -- '- Catatan rilis: tidak ada\n' > "$CV/docs/WORKFLOW.md"; out="$(CVR)"; ok "check-version: opsi tidak ada -> tanpa peringatan" "$(grep -c '::warning::' <<<"$out")" 0
+for k in 'release-notes.sh' '--ekstrak' '--notes-file' '--generate-notes'; do grep -qF -- "$k" .github/workflows/release.yml; ok "release.yml memuat '$k'" $? 0; done
+
+# 3n-4. agen, templat, kickoff, README, dogfooding, laporan rilis (#30)
+cd "$root" || exit 1
+for k in 'Catatan rilis:' 'Perubahan perilaku:'; do grep -qF -- "$k" agents/senior-coder.md; ok "senior-coder memuat '$k'" $? 0; done
+grep -q 'Catatan rilis:' templates/WORKFLOW.md; ok "templat WORKFLOW memuat opsi Catatan rilis" $? 0
+grep -q 'Catatan rilis' skills/kickoff/SKILL.md; ok "kickoff menanyakan Catatan rilis" $? 0
+[ -f templates/pull_request_template.md ] && grep -q '<!--' templates/pull_request_template.md && grep -q 'Catatan rilis: Added' templates/pull_request_template.md; ok "templat badan PR ada, contoh baris di dalam komentar HTML" $? 0
+grep -q '^- Catatan rilis: CHANGELOG.md' docs/WORKFLOW.md; ok "docs/WORKFLOW.md aicrew memakai Catatan rilis: CHANGELOG.md (dogfooding)" $? 0
+grep -q 'Catatan rilis (0.11.0)' README.md; ok "README: Catatan rilis (0.11.0)" $? 0
+mkdir -p "$tmp/rrb"; cat > "$tmp/rrb/gh" <<'GHEOF'
+#!/bin/sh
+case "$*" in "issue list"*) echo '[{"number":1,"title":"a","state":"CLOSED","labels":[{"name":"di-integrasi"}]}]';; "pr list"*) echo '[{"number":5,"state":"MERGED","baseRefName":"integ","comments":[{"body":"**Bukti selesai** ok"}]}]';; *) echo '{}';; esac
+GHEOF
+chmod +x "$tmp/rrb/gh"
+RR2() { (cd "$tmp/rr" && PATH="$tmp/rrb:$PATH" bash "$root/scripts/release-report.sh" --out "$tmp/rr.md" --test-cmd true "$@" >/dev/null 2>&1); }
+printf '3. Cabang integrasi: integ.\n- Catatan rilis: CHANGELOG.md\n' > "$tmp/rr/docs/WORKFLOW.md"
+RR2 --versi 0.3.0; ok "release-report: opsi CHANGELOG.md + --versi -> bagian 'Catatan rilis (draf)'" "$(grep -c '^## Catatan rilis (draf)' "$tmp/rr.md")" 1
+RR2; ok "release-report: tanpa --versi -> tanpa bagian draf" "$(grep -c '^## Catatan rilis (draf)' "$tmp/rr.md")" 0
+echo "3. Cabang integrasi: integ." > "$tmp/rr/docs/WORKFLOW.md"; RR2 --versi 0.3.0; ok "release-report: tanpa opsi Catatan rilis -> tanpa bagian draf" "$(grep -c '^## Catatan rilis (draf)' "$tmp/rr.md")" 0
+cd "$root" || exit 1
+
+# 3n-5. perbaikan hasil review akhir #30
+grep -q '^- Bersihkan setelah merge: tidak' docs/WORKFLOW.md; ok "docs/WORKFLOW.md aicrew: Bersihkan setelah merge: tidak (berkas baru tak mengaktifkan hapus otomatis)" $? 0
+mkdir -p "$CF/main/docs"; printf -- '- Catatan rilis: CHANGELOG.md\n' > "$CF/main/docs/WORKFLOW.md"
+out="$(export DIFF="$DRM" GBODY=$'Closes #1\n<!--\nCatatan rilis: Added - contoh templat\n-->'; GE2)"; ok "gerbang catatan: contoh di komentar HTML (templat tak diisi) tetap diperingatkan" "$(grep -c "baris 'Catatan rilis:'" <<<"$out")" 1
+out="$(export DIFF="$DRM" GBODY=$'Closes #1\n```\nCatatan rilis: Added - dalam blok kode\n```'; GE2)"; ok "gerbang catatan: contoh di blok kode tetap diperingatkan" "$(grep -c "baris 'Catatan rilis:'" <<<"$out")" 1
+rm -rf "$CF/main/docs"
+! grep -q -- '--argjson a "\$all"' scripts/release-notes.sh; ok "release-notes: daftar PR tidak dikirim sebagai argumen proses (batas 128 KB per argumen di Linux)" $? 0
+printf '# Changelog\n\n## [0.2.0] - 2026-10-01\n\n### Added\n\n- fitur satu (#11)\n' > "$RN/w/CHANGELOG.md"
+out="$(RNS --versi 0.3.0 --tanggal 2026-11-02 2>/dev/null)"; ok "release-notes: PR yang nomornya sudah ada di bagian lain CHANGELOG.md tidak muncul lagi (#11), PR lain tetap (#12)" "$(grep -c 'fitur satu' <<<"$out")|$(grep -c 'bug dua (#12)' <<<"$out")" '0|1'
+printf '# Changelog\n\n## [0.3.0] - 2026-11-02\n\n### Added\n\n- fitur satu (#11)\n\n## [0.2.0] - 2026-10-01\n' > "$RN/w/CHANGELOG.md"
+out="$(RNS --versi 0.3.0 --tanggal 2026-11-02 2>/dev/null)"; ok "release-notes: nomor di bagian versi yang sedang disusun tidak dihitung 'sudah ada' (jalan ulang tetap memuat #11)" "$(grep -c 'fitur satu (#11)' <<<"$out")" 1
+rm -f "$RN/w/CHANGELOG.md"
 
 [ "$fails" = 0 ] && echo "SEMUA LULUS" || { echo "$fails GAGAL"; exit 1; }

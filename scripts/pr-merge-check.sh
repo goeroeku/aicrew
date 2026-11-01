@@ -133,5 +133,10 @@ else
       while IFS= read -r af; do echo "PERINGATAN: alur terjadwal $af tidak aktif sampai ada di cabang bawaan ($dflt)"; done <<<"$at"
     fi
   fi
+  # catatan rilis (#30): bila opsi di cabang tujuan = CHANGELOG.md, PR tanpa baris 'Catatan rilis:' diperingatkan (tidak memblokir; galat baca = tanpa peringatan)
+  wfr="$(gh api -H 'Accept: application/vnd.github.raw' "repos/$(ghx_repo)/contents/docs/WORKFLOW.md?ref=$dst" 2>/dev/null)" || wfr=""
+  if sed -En 's/^[- ]*Catatan rilis: *(CHANGELOG\.md).*$/\1/p' <<<"$wfr" | grep -q . && [ -z "$(bash "$(dirname "$0")/release-notes.sh" --parse-badan <<<"$body" 2>/dev/null)" ]; then
+    echo "PERINGATAN: PR tanpa baris 'Catatan rilis:' (docs/WORKFLOW.md di $dst memakai CHANGELOG.md); tulis 'Catatan rilis: <Added|Changed|Fixed|Security> - <teks>' atau 'Catatan rilis: -' bila internal"
+  fi
   echo "ok: gerbang lolos untuk head $head. Merge dengan: gh pr merge $pr --match-head-commit $head"
 fi

@@ -40,4 +40,8 @@ jobs:
         run: bash scripts/build-release.sh "${{ steps.v.outputs.version }}" dist
       - name: Buat tag dan rilis
         if: steps.v.outputs.released == 'false'
-        run: gh release create "v${{ steps.v.outputs.version }}" dist/* --target "$GITHUB_SHA" --title "v${{ steps.v.outputs.version }}" --generate-notes
+        run: |
+          v="${{ steps.v.outputs.version }}"
+          # catatan rilis dari CHANGELOG.md (sumber yang sama dengan berkasnya) bila bagian versi ada; selain itu catatan otomatis GitHub
+          if bash scripts/release-notes.sh --versi "$v" --ekstrak > notes.md 2>/dev/null && [ -s notes.md ]; then notes=(--notes-file notes.md); else notes=(--generate-notes); fi
+          gh release create "v$v" dist/* --target "$GITHUB_SHA" --title "v$v" "${notes[@]}"
