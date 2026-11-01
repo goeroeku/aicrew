@@ -1350,4 +1350,7 @@ DB="$root/templates/dependabot.yml"
 for k in 'version: 2' 'groups' 'github-actions' 'target-branch' 'needs-principal'; do grep -q -- "$k" "$DB" 2>/dev/null; ok "dependabot.yml memuat '$k'" $? 0; done
 if python3 -c 'import yaml' 2>/dev/null; then python3 -c 'import sys,yaml; yaml.safe_load(open(sys.argv[1]))' "$DB" 2>/dev/null; ok "dependabot.yml: YAML valid" $? 0; else ok "dependabot.yml: YAML dilewati (PyYAML tak ada)" 0 0; fi
 
+# 3m-5. skill cve-audit: pola jembatan untuk repo yang dirilis dari cabang non-bawaan (#42)
+grep -q 'Repo yang dirilis dari cabang non-bawaan' skills/cve-audit/SKILL.md && grep -q 'target-branch' skills/cve-audit/SKILL.md && grep -q 'ref:' skills/cve-audit/SKILL.md && grep -q 'add/add' skills/cve-audit/SKILL.md && grep -q 'menunggu-rilis' skills/cve-audit/SKILL.md; ok "skill cve-audit: pola jembatan (target-branch, ref:, add/add, menunggu-rilis)" $? 0
+
 [ "$fails" = 0 ] && echo "SEMUA LULUS" || { echo "$fails GAGAL"; exit 1; }
