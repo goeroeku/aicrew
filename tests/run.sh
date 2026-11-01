@@ -1418,4 +1418,23 @@ out="$(RNS --versi 0.2.0 --ekstrak)"; rc=$?; ok "release-notes --ekstrak: hanya 
 out="$(RNS --versi 9.9.9 --ekstrak 2>/dev/null)"; rc=$?; ok "release-notes --ekstrak: versi tak ada -> exit 1, stdout kosong" "$rc|$out" '1|'
 rm -f "$RN/w/CHANGELOG.md"; printf -- '- Catatan rilis: CHANGELOG.md\n' > "$RN/w/docs/WORKFLOW.md"
 
+# 3n-3. gerbang: PR tanpa baris 'Catatan rilis:'; check-version.sh: peringatan bagian versi; release.yml memakai --ekstrak (#30)
+GE2() { (cd "$tmp/cve/gw" && BASE=main BODY="${GBODY:-x}" GH_REPO=o/r PMB="$tmp/pmb" PATH="$tmp/cve/gbin:$tmp/cve/bin:$PATH" bash "$root/scripts/pr-merge-check.sh" 9 main 2>&1); }
+DRM=$'diff --git a/README.md b/README.md\n+x'
+mkdir -p "$CF/main/docs"; printf -- '- Catatan rilis: CHANGELOG.md\n' > "$CF/main/docs/WORKFLOW.md"
+out="$(export DIFF="$DRM" GBODY="Closes #1"; GE2)"; rc=$?; ok "gerbang catatan: opsi CHANGELOG.md + badan tanpa baris -> PERINGATAN, exit 0" "$rc|$(grep -c "^PERINGATAN: PR tanpa baris 'Catatan rilis:'" <<<"$out")" '0|1'
+out="$(export DIFF="$DRM" GBODY=$'Closes #1\r\nCatatan rilis: Fixed - x\r'; GE2)"; ok "gerbang catatan: dengan baris (CRLF) -> tanpa peringatan" "$(grep -c "baris 'Catatan rilis:'" <<<"$out")" 0
+out="$(export DIFF="$DRM" GBODY=$'Closes #1\n- Catatan rilis: -'; GE2)"; ok "gerbang catatan: penanda internal -> tanpa peringatan" "$(grep -c "baris 'Catatan rilis:'" <<<"$out")" 0
+printf -- '- Catatan rilis: tidak ada\n' > "$CF/main/docs/WORKFLOW.md"; out="$(export DIFF="$DRM" GBODY="Closes #1"; GE2)"; ok "gerbang catatan: opsi tidak ada -> tanpa peringatan" "$(grep -c "baris 'Catatan rilis:'" <<<"$out")" 0
+rm -f "$CF/main/docs/WORKFLOW.md"; out="$(export DIFF="$DRM" GBODY="Closes #1"; GE2)"; ok "gerbang catatan: WORKFLOW 404 -> tanpa peringatan, exit 0" "$?|$(grep -c "baris 'Catatan rilis:'" <<<"$out")" '0|0'
+printf -- '- Catatan rilis: CHANGELOG.md\n' > "$CF/main/docs/WORKFLOW.md"; out="$(export DIFF="$DRM" GBODY="Closes #1" CF_ERR=1 CF_ERR_PATH=docs/WORKFLOW.md; GE2)"; ok "gerbang catatan: WORKFLOW galat 500 -> tidak memblokir, tanpa peringatan palsu" "$?|$(grep -c "baris 'Catatan rilis:'" <<<"$out")" '0|0'
+rm -rf "$CF/main/docs"
+CV="$tmp/cv"; mkdir -p "$CV/.claude-plugin" "$CV/scripts" "$CV/docs"; cp "$root/scripts/check-version.sh" "$root/scripts/workflow.sh" "$CV/scripts/"; echo '{"version":"0.3.0"}' > "$CV/.claude-plugin/plugin.json"
+CVR() { (cd "$CV" && bash scripts/check-version.sh v0.3.0 2>&1); }
+printf -- '- Catatan rilis: CHANGELOG.md\n' > "$CV/docs/WORKFLOW.md"; out="$(CVR)"; rc=$?; ok "check-version: opsi CHANGELOG.md tanpa berkas -> ::warning:: dan exit 0" "$rc|$(grep -c '^::warning::' <<<"$out")" '0|1'
+printf '# Changelog\n\n## [0.3.0] - 2026-11-02\n' > "$CV/CHANGELOG.md"; out="$(CVR)"; ok "check-version: bagian [0.3.0] ada -> tanpa peringatan" "$(grep -c '::warning::' <<<"$out")" 0
+printf '# Changelog\n\n## [0.2.0] - 2026-10-01\n' > "$CV/CHANGELOG.md"; out="$(CVR)"; ok "check-version: bagian versi hilang -> ::warning::" "$(grep -c '^::warning::' <<<"$out")" 1
+printf -- '- Catatan rilis: tidak ada\n' > "$CV/docs/WORKFLOW.md"; out="$(CVR)"; ok "check-version: opsi tidak ada -> tanpa peringatan" "$(grep -c '::warning::' <<<"$out")" 0
+for k in 'release-notes.sh' '--ekstrak' '--notes-file' '--generate-notes'; do grep -qF -- "$k" .github/workflows/release.yml; ok "release.yml memuat '$k'" $? 0; done
+
 [ "$fails" = 0 ] && echo "SEMUA LULUS" || { echo "$fails GAGAL"; exit 1; }
