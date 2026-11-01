@@ -2,17 +2,17 @@
 
 <!-- Isi ringkasan. Tulis "Closes #<nomor>" satu per baris. -->
 
-## Catatan rilis
+## Release notes
 
 <!--
-Bila proyek memakai `Catatan rilis: CHANGELOG.md` di docs/WORKFLOW.md, tulis satu baris per entri DI LUAR komentar ini
+Bila proyek memakai `Release notes: CHANGELOG.md` di docs/WORKFLOW.md, tulis satu baris per entri DI LUAR komentar ini
 (hanya baris ini yang masuk CHANGELOG.md; jangan menaruh nama paket privat atau rahasia):
 
-Catatan rilis: Added - <teks untuk pengguna>
-Catatan rilis: Changed - <teks>
-Catatan rilis: Fixed - <teks>
-Catatan rilis: Security - <teks>
-Perubahan perilaku: <bawaan atau perilaku yang berubah>
+Release note: Added - <teks untuk pengguna>
+Release note: Changed - <teks>
+Release note: Fixed - <teks>
+Release note: Security - <teks>
+Behavior change: <bawaan atau perilaku yang berubah>
 
-PR internal, PR rilis (naik versi), atau PR yang hanya menulis CHANGELOG.md: tulis tepat "Catatan rilis: -".
+PR internal, PR rilis (naik versi), atau PR yang hanya menulis CHANGELOG.md: tulis tepat "Release note: -".
 -->
