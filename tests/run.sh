@@ -1116,7 +1116,11 @@ grep -q 'Paket privat:' templates/WORKFLOW.md; ok "templat WORKFLOW memuat 'Pake
 grep -q 'Paket privat:' PRIVACY.md && grep -q '~/.npmrc' PRIVACY.md; ok "PRIVACY: sumber pola dan ~/.npmrc tidak dibaca" $? 0
 grep -q 'Paket privat:' README.md; ok "README menyebut 'Paket privat:'" $? 0
 grep -q 'Paket privat' skills/cve-audit/SKILL.md; ok "skill cve-audit menyebut paket privat" $? 0
-grep -q '"version": "0.11.1"' .claude-plugin/plugin.json; ok "plugin.json versi 0.11.1" $? 0
+grep -q '"version": "0.12.0"' .claude-plugin/plugin.json; ok "plugin.json versi 0.12.0" $? 0
+# 0.12.0: watchdog idle autopilot terdokumentasi (#48, #17)
+grep -q 'Mode tanpa pengawasan (autopilot)' skills/orchestrate/SKILL.md && grep -q 'exec claude' skills/orchestrate/SKILL.md; ok "orchestrate: subbagian Mode tanpa pengawasan (autopilot) memuat aturan exec claude" $? 0
+grep -q 'Watchdog idle (0.12.0)' README.md && grep -q -- '--idle-limit' README.md; ok "README: Watchdog idle (0.12.0) menyebut --idle-limit" $? 0
+grep -q 'AICREW_IDLE_LIMIT' scripts/autopilot.sh && grep -q 'AICREW_TERM_GRACE' scripts/autopilot.sh && grep -q 'AICREW_TRANSCRIPT_DIR' scripts/autopilot.sh; ok "autopilot.sh: komentar kepala mendokumentasikan variabel watchdog" $? 0
 grep -q 'file yang di-ignore' templates/WORKFLOW.md; ok "templat WORKFLOW: Bersihkan setelah merge menyebut file yang di-ignore ikut terhapus (#44)" $? 0
 # 0.10.0: skill orchestrate, templat WORKFLOW, README memuat integrasi terverifikasi dan menunggu-rilis (#28, #32)
 for k in 'terintegrasi.sh' 'periksa-rilis' 'menunggu-rilis.sh --tandai' 'alur-terjadwal.sh'; do grep -qF -- "$k" skills/orchestrate/SKILL.md; ok "orchestrate memuat '$k'" $? 0; done

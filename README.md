@@ -100,6 +100,8 @@ putaran berikutnya jalan dan Resume menyelesaikan sisanya; Anda tidak perlu meng
 dan satu notifikasi. Sidik jari akhir putaran disimpan di `.aicrew/`, jadi setelah laptop mati lalu hidup lagi, autopilot langsung menunggu tanpa membakar putaran.
 
 ### Lanjut otomatis setelah laptop mati/tidur (macOS)
+**Watchdog idle (0.12.0).** Putaran `claude -p` yang menganggur (tidak ada berkas transkrip berubah dan tidak ada proses turunan sah, selain pembantu MCP/LSP) selama `--idle-limit` detik (bawaan 1800; 0 mematikan, juga `AICREW_IDLE_LIMIT`) diakhiri `autopilot.sh` dengan SIGINT; sesi yang bertahan dikirimi SIGTERM setelah masa tenggang (tidak pernah SIGKILL), lalu putaran berikutnya memuat daftar issue segar. `--round-timeout` (bawaan 0) menambah batas waktu putaran, dan tiga putaran idle tanpa perubahan berhenti lewat `--stuck` (kode 2). Ctrl-C pemilik tetap menghentikan autopilot. `.aicrew/autopilot.json` memuat fase (`putaran`, `menunggu-owner`, `tidur-limit`, `idle-diinterupsi`, `selesai`), nomor putaran, dan detak waktu. Issue dengan `## Blocked by` yang bergantung pada issue `needs-principal` atau PR terbuka kini dihitung menunggu owner (#17). Wrapper `AICREW_CLAUDE` wajib `exec claude ...`.
+
 `bash scripts/autostart.sh install <repo> --max-total N` memasang LaunchAgent per project (login dan tiap 15 menit) yang menjalankan `autopilot.sh` bila belum berjalan.
 `--max-total` wajib (batas biaya); izin dari `install-permissions.sh` harus sudah terpasang. Pengaman: `.aicrew/PAUSE` melewati tick; `.aicrew/halted` (autopilot berhenti
 dengan exit selain 0/3/4) menghentikan tick berikutnya sampai `autostart.sh resume <repo>`; kunci PID mencegah autopilot ganda; tanpa `gh`/jaringan tick dilewati.

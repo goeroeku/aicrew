@@ -6,6 +6,8 @@
 #   (slash command plugin tidak tersedia di mode -p; prompt bawaan meminta pemakaian skill lewat Skill tool)
 # Lingkungan: AICREW_CLAUDE (default claude), AICREW_PLUGIN_DIR (default: akar plugin ini; sesi -p tidak mewarisi plugin dari --plugin-dir sesi lain), AICREW_CLAUDE_ARGS (mis. --permission-mode ... --max-budget-usd ...),
 #   AICREW_TG_TOKEN/AICREW_TG_CHAT (opsional, lewat notify.sh). Jangan memakai --dangerously-skip-permissions.
+# Watchdog idle (#48): AICREW_IDLE_LIMIT/--idle-limit (bawaan 1800 dtk; 0 = mati), AICREW_ROUND_TIMEOUT/--round-timeout (bawaan 0 = mati), AICREW_IDLE_POLL (30), AICREW_IDLE_IGNORE (pembantu yang tak dihitung sibuk),
+#   AICREW_IDLE_GRACE (30) dan AICREW_TERM_GRACE (60): masa tenggang SIGINT -> SIGTERM, AICREW_TRANSCRIPT_DIR (menimpa ~/.claude/projects/<cwd>). Status kesehatan: .aicrew/autopilot.json. Wrapper AICREW_CLAUDE wajib `exec claude ...`.
 # Exit: 0 semua issue selesai, 1 error beruntun, 2 buntu (tanpa kemajuan), 3 hanya tersisa menunggu owner (needs-principal, atau PR terbuka menunggu merge: dipantau murah lewat gh, tanpa claude,
 #   sampai ada perubahan atau --wait-max), 4 batas total.
 set -u
