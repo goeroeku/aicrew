@@ -5,6 +5,7 @@
 #   pr-merge-check.sh <pr> <cabang-tujuan> --auto   seperti mode pertama, dan menolak PR/issue berlabel risk:L2 (auto-merge tidak boleh)
 #   pr-merge-check.sh <pr> <cabang-tujuan> --after  setelah merge: exit 1 bila commit merge tak ada di origin/<tujuan>
 set -u
+GHX_STATE=/dev/null  # gerbang tidak memakai mode cadangan: tanpa berkas status
 source "$(dirname "$0")/ghx.sh"  # hanya ghx_explain_limit: gerbang TIDAK pindah ke REST (closingIssuesReferences tak ada di REST)
 pr="${1:?pr}"; dst="${2:?cabang-tujuan}"
 if [ "${3:-}" = "--after" ]; then

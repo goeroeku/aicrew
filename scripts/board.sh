@@ -39,6 +39,7 @@ if [ "${3:-}" = "--sync" ]; then
     if [ "$unfinished" = 0 ] && [ "$real" = 1 ] && [ "$notsplit" = 0 ]; then want="In review"
     elif [ "$active" -gt 0 ] || [ "$done_n" -gt 0 ]; then want="In progress"; else want=Backlog; fi
     [ "$cards" = 0 ] || [ "$(st_of "$en")" = "$want" ] || bash "$0" "$owner" "$num" "$en" "$want" || true
+    [ "$cards" = 1 ] || continue  # kartu ditolak: angka Done dari data kosong akan salah; jangan menimpa komentar progres
     prog="aicrew-progress: $done_n/$total Done"; [ "$active" -gt 0 ] && prog="$prog, $active In progress"
     cid="$(gh api "repos/$repo/issues/$en/comments" --jq '[.[]|select(.body|startswith("<!-- aicrew-progress -->"))][0]|"\(.id)\t\(.body)"' 2>/dev/null || true)"
     cbody="<!-- aicrew-progress -->"$'\n'"$prog"

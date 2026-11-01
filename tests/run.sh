@@ -663,10 +663,13 @@ r=""; for t in "GraphQL: API rate limit already exceeded" "RATE_LIMIT" "graphql_
 ok "ghx_is_limit: 4 teks pemicu" "$r" 0000
 RL ghx_is_limit "HTTP 404: Not Found" 2>/dev/null; ok "ghx_is_limit: 404 bukan batas" $? 1
 ok "ghx_repo: GH_REPO menang" "$(export GH_REPO=x/y; RL ghx_repo 2>/dev/null)" x/y
-git -C "$tmp/rl/w" remote add origin git@github.com:a/b.git; ok "ghx_repo: remote ssh" "$(RL ghx_repo 2>/dev/null)" a/b
-git -C "$tmp/rl/w" remote set-url origin https://github.com/a/b; ok "ghx_repo: remote https" "$(RL ghx_repo 2>/dev/null)" a/b
-git -C "$tmp/rl/w" remote set-url origin https://github.com/a/b.git; ok "ghx_repo: remote https .git" "$(RL ghx_repo 2>/dev/null)" a/b
+git -C "$tmp/rl/w" remote add origin git@github.com:a/b.git; ok "ghx_repo: batas -> remote ssh" "$(export GHX_SIM=1; RL ghx_repo 2>/dev/null)" a/b
+git -C "$tmp/rl/w" remote set-url origin https://github.com/a/b; ok "ghx_repo: batas -> remote https" "$(export GHX_SIM=1; RL ghx_repo 2>/dev/null)" a/b
+git -C "$tmp/rl/w" remote set-url origin https://github.com/a/b.git; ok "ghx_repo: batas -> remote https .git" "$(export GHX_SIM=1; RL ghx_repo 2>/dev/null)" a/b
+ok "ghx_repo: tanpa batas -> gh repo view (perilaku lama), remote origin diabaikan" "$(RL ghx_repo 2>/dev/null)" o/viewed
+git -C "$tmp/rl/w" remote set-url origin git@github.com-work:a/b.git; ok "ghx_repo: batas -> remote dengan alias host" "$(export GHX_SIM=1; RL ghx_repo 2>/dev/null)" a/b
 git -C "$tmp/rl/w" remote remove origin; ok "ghx_repo: tanpa remote -> gh repo view" "$(RL ghx_repo 2>/dev/null)" o/viewed
+(export GHX_SIM=1; RL ghx_repo >/dev/null 2>&1); ok "ghx_repo: batas tanpa remote -> exit non-0" $? 1
 ok "ghx_gql: sukses meneruskan stdout" "$(RL ghx_gql gh issue list --json number 2>/dev/null)" '[]'
 ok "ghx_gql: batas -> exit 75 dan GHX_REST=1" "$(export GHX_SIM=1; RL eval 'ghx_gql gh issue list; echo "rc=$? rest=${GHX_REST:-0}"' 2>/dev/null)" "rc=75 rest=1"
 (export GHX_SIM=1; RL ghx_gql gh issue list >/dev/null 2>"$tmp/rl/err"); ok "ghx_gql: satu baris pengumuman" "$(grep -c 'mode cadangan REST' "$tmp/rl/err")" 1
@@ -721,7 +724,7 @@ ok "ghx_status_field: REST org, opsi dinormalkan" "$(export GHX_SIM=1 OWNER_TYPE
 echo "$FU" > "$FAKE/fields.json"
 ok "ghx_status_field: REST user, opsi dinormalkan" "$(export GHX_SIM=1; RL ghx_status_field o 3 2>/dev/null | jq -c '[.id,(.options|map(.name))]')" '[434173140,["Backlog","In review","Done"]]'
 ok "ghx_status_field: GraphQL = panggilan identik" "$(RL ghx_status_field o 3 2>/dev/null | jq -r .id)" F1
-: > "$FAKE/calls"; ok "ghx_card_add: GraphQL = item-add identik" "$(RL ghx_card_add o 3 5 2>/dev/null)|$(grep -c '^project item-add 3 --owner o --url https://github.com/o/r/issues/5 --format json$' "$FAKE/calls")" 'PVTI_new|1'
+: > "$FAKE/calls"; ok "ghx_card_add: GraphQL = item-add identik" "$(RL ghx_card_add o 3 5 2>/dev/null)|$(grep -c '^project item-add 3 --owner o --url https://github.com/o/viewed/issues/5 --format json$' "$FAKE/calls")" 'PVTI_new|1'
 : > "$FAKE/calls"; rm -f "$FAKE/postmode"
 ok "ghx_card_add: REST sukses, id kartu dari respons" "$(export GHX_SIM=1; RL ghx_card_add o 3 9 2>/dev/null)" 555
 ok "ghx_card_add: REST memakai id NUMERIK issue" "$(grep -c -- '-X POST users/o/projectsV2/3/items -f type=Issue -F id=9000' "$FAKE/calls")" 1
@@ -752,7 +755,7 @@ ok "board --sync: tanpa batas -> exit 0 tanpa PERINGATAN" "$rc|$(grep -c PERINGA
 printf -- '- Kartu Done: agen-setelah-merge.\n- Tutup issue setelah merge integrasi: ya\n' > "$tmp/rl/w/docs/WORKFLOW.md"
 : > "$FAKE/calls"; rm -f "$FAKE/patch.json"
 (export GHX_SIM=1 PROJ_ERR=404; BD o 3 --sync >"$tmp/rl/out" 2>"$tmp/rl/err"); rc=$?
-ok "board --sync: REST kartu 404 -> exit 0, 2 langkah dilewati, tidak ada PATCH kartu, tutup issue di-integrasi tetap jalan" "$rc|$(grep -c 'PERINGATAN: 2 langkah dilewati' "$tmp/rl/err")|$([ -e "$FAKE/patch.json" ] && echo patch || echo nopatch)|$(grep -c 'PATCH repos/o/r/issues/[23] -f state=closed' "$FAKE/calls")" '0|1|nopatch|2'
+ok "board --sync: REST kartu 404 -> exit 0, 2 langkah dilewati, tidak ada PATCH kartu, tutup issue di-integrasi tetap jalan" "$rc|$(grep -c 'PERINGATAN: 2 langkah dilewati' "$tmp/rl/err")|$([ -e "$FAKE/patch.json" ] && echo patch || echo nopatch)|$(grep -c 'PATCH repos/o/r/issues/[23] -f state=closed' "$FAKE/calls")|$(grep -c -- '-X POST repos/o/r/issues/1/comments' "$FAKE/calls")" '0|1|nopatch|2|0'
 ok "board <owner> <n> <issue> Done: batas -> PATCH opsi Done via REST" "$(export GHX_SIM=1; BD o 3 5 Done 2>/dev/null)|$(jq -c '.fields[0].value' "$FAKE/patch.json")" 'board: #5 -> Done|"98236657"'
 (export GHX_SIM=1 PROJ_ERR=403; BD o 3 5 Done >/dev/null 2>"$tmp/rl/err"); rc=$?
 ok "board <owner> <n> <issue> Done: REST kartu 403 -> exit non-0 dengan petunjuk scope" "$([ $rc != 0 ] && echo gagal)|$(grep -c "scope 'project'" "$tmp/rl/err")" 'gagal|1'
@@ -768,5 +771,15 @@ ok "pr-merge-check: kegagalan biasa (basis salah) -> tanpa baris Penyebab" "$rc|
 
 # 3i-7. README menjelaskan mode cadangan REST dan perilakunya
 grep -q 'mode cadangan REST' README.md && grep -q 'langkah dilewati' README.md; ok "README: mode cadangan REST dan PERINGATAN langkah dilewati" $? 0
+
+# 3i-8. perbaikan hasil review akhir
+jq -n '[range(1;101)|{number:.,title:"t",body:("x"*12000),state:"open",labels:[]}]' > "$FAKE/issues.json"
+R="$(export GHX_SIM=1; RL ghx_issues open - 100 number,body 2>/dev/null)"
+ok "ghx_issues: halaman REST >1 MB tidak melewati batas argumen" "$(jq 'length' <<<"$R" 2>/dev/null)" 100
+jq -n '[range(1;101)|{id:.,node_id:"n\(.)",content_type:"Issue",content:{number:.},fields:[{id:434173140,value:{name:{raw:"Done"}}}],pad:("x"*12000)}]' > "$FAKE/pitems.json"; echo "$FU" > "$FAKE/fields.json"
+ok "ghx_items: halaman REST >1 MB" "$(export GHX_SIM=1; RL ghx_items o 3 2>/dev/null | jq '.items|length')" 100
+ok "ghx: GHX_STATE tidak berbasis PID" "$(RL eval 'case "$GHX_STATE" in *.$$) echo pid ;; *) echo acak ;; esac')" acak
+D="$(mktemp -d)"; (export TMPDIR="$D" GHX_SIM=1; RL ghx_gql gh issue list >/dev/null 2>&1; PM >/dev/null 2>&1)
+ok "ghx: tidak ada berkas status tersisa" "$(ls "$D" | wc -l | tr -d ' ')" 0; rm -rf "$D"
 
 [ "$fails" = 0 ] && echo "SEMUA LULUS" || { echo "$fails GAGAL"; exit 1; }

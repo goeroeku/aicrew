@@ -5,7 +5,8 @@
 # diset di subshell hilang, berkas tidak. Anak proses (bash "$0" ...) mewarisi keduanya lewat lingkungan.
 
 _ghx_own=0; [ -n "${GHX_STATE:-}" ] || _ghx_own=1
-GHX_STATE="${GHX_STATE:-${TMPDIR:-/tmp}/ghx-state.$$}"; export GHX_STATE
+[ "$_ghx_own" = 0 ] || GHX_STATE="$(mktemp "${TMPDIR:-/tmp}/ghx-state.XXXXXX")"  # nama acak (bukan PID): tak basi, tak bisa ditebak
+export GHX_STATE
 [ "$_ghx_own" = 0 ] || [ -n "$(trap -p EXIT)" ] || trap 'rm -f "$GHX_STATE"' EXIT  # hanya pemilik status; jangan menimpa trap skrip
 
 # 0 bila teks galat adalah batas GraphQL ("unknown owner type" adalah gejala batas yang tak menyebut kata itu)
@@ -48,12 +49,15 @@ ghx_gql() {
   return "$rc"
 }
 
-# owner/repo tanpa GraphQL: GH_REPO, lalu remote origin, lalu gh repo view
+# owner/repo: GH_REPO; lalu `gh repo view` (perilaku lama, mengikuti repo bawaan gh); hanya bila batas tercapai, dari remote origin
+# (mendukung ssh, https, dan alias host seperti github.com-kerja:). Tanpa remote yang terbaca -> galat, bukan tebakan.
 ghx_repo() {
-  local u; [ -z "${GH_REPO:-}" ] || { echo "$GH_REPO"; return 0; }
+  local u o rc=0; [ -z "${GH_REPO:-}" ] || { echo "$GH_REPO"; return 0; }
+  o="$(ghx_gql gh repo view --json nameWithOwner -q .nameWithOwner)" || rc=$?
+  if [ "$rc" = 0 ]; then echo "$o"; return 0; fi; [ "$rc" = 75 ] || return "$rc"
   u="$(git remote get-url origin 2>/dev/null || true)"
-  case "$u" in *github.com[:/]*) u="${u#*github.com[:/]}"; echo "${u%.git}"; return 0 ;; esac
-  gh repo view --json nameWithOwner -q .nameWithOwner
+  case "$u" in *github.com*) u="${u#*github.com}"; u="${u#*[:/]}"; echo "${u%.git}"; return 0 ;; esac
+  echo "ghx: repo tak dapat ditentukan saat GraphQL terblokir (tak ada remote GitHub); set GH_REPO=owner/repo" >&2; return 1
 }
 
 # awalan jalur REST Project v2: orgs/<owner> atau users/<owner> (tipe dari REST, bukan GraphQL)
@@ -71,7 +75,7 @@ ghx_issues() {
   while :; do   # REST per halaman 100; entri bergaris pull_request dibuang; berhenti saat batas terkumpul
     q="repos/$repo/issues?state=$s&per_page=100&page=$page"; [ "$l" = - ] || q="$q&labels=$l"
     pg="$(gh api "$q")" || { echo "ghx: REST juga gagal (GraphQL terblokir); coba lagi setelah reset" >&2; return 1; }
-    acc="$(jq -c --argjson p "$pg" '. + [$p[]|select(has("pull_request")|not)]' <<<"$acc")"
+    acc="$({ printf '%s\n' "$acc"; printf '%s\n' "$pg"; } | jq -c -s '.[0] + [.[1][]|select(has("pull_request")|not)]')"  # stdin: halaman bisa >1 MB, argv terbatas
     [ "$(jq length <<<"$pg")" -ge 100 ] && [ "$(jq length <<<"$acc")" -lt "$n" ] || break
     page=$((page+1))
   done
@@ -139,7 +143,7 @@ ghx_items() {   # <owner> <num> -> {"items":[{"id","status","content":{"number",
   fld="$(_ghx_status_field_rest "$1" "$2")" || return $?; fid="$(jq -r '.id // empty' <<<"$fld")"
   while :; do   # semua halaman; Status hanya ikut bila diminta lewat ?fields=<id kolom>
     pg="$(_ghx_papi gh api "$b/items?per_page=100&fields=$fid&page=$page")" || return $?
-    acc="$(jq -c --argjson p "$pg" '. + $p' <<<"$acc")"
+    acc="$({ printf '%s\n' "$acc"; printf '%s\n' "$pg"; } | jq -c -s '.[0] + .[1]')"
     [ "$(jq length <<<"$pg")" -ge 100 ] || break; page=$((page+1))
   done
   jq -c --arg f "$fid" '{items:map({id,status:([.fields[]?|select((.id|tostring)==$f)|.value.name|if type=="object" then .raw else . end]|.[0]),content:{number:.content.number,type:.content_type}})}' <<<"$acc"
