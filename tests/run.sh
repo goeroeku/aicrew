@@ -1056,6 +1056,28 @@ printf -- '- Pemeriksaan CVE: tidak. uji\n- Paket privat: git.corp.com/team\n' >
 ok "gerbang privat: opt-out WORKFLOW tetap menang bersama pola" "$rc|$(grep -c 'dimatikan' <<<"$out")" '0|1'
 rm -rf "$CF/main" "$CF/abc1234567"; mkdir -p "$CF/main" "$CF/abc1234567"
 
+# 3l-4. cve-audit.sh dan dokumen: paket privat (#25)
+AUD="$tmp/cve/au"; mkdir -p "$AUD/priv" "$AUD/allpriv" "$AUD/np" "$AUD/docs"; : > "$CFA/calls"; echo '[]' > "$CFA/open.json"
+jq -n '{lockfileVersion:3,packages:{"":{},"node_modules/@acme/x":{version:"1.0.0"},"node_modules/zz":{version:"1.0.0"}}}' > "$AUD/priv/package-lock.json"
+jq -n '{lockfileVersion:3,packages:{"":{},"node_modules/@acme/x":{version:"1.0.0"},"node_modules/@acme/y":{version:"1.0.0"}}}' > "$AUD/allpriv/package-lock.json"
+FX npm @acme/x 1.0.0 "{\"vulns\":[$(VF GHSA-pa00-0001-aaaa CVE-PA1 HIGH @acme/x 1.0.1)]}"
+printf -- '- Paket privat: @acme/*\n' > "$AUD/docs/WORKFLOW.md"; : > "$CVE_FIX/calls"
+out="$(AU priv/package-lock.json)"; rc=$?
+ok "audit privat: pola WORKFLOW -> kalimat dengan jumlah, tanpa nama, curl tanpa nama, tanpa POST" "$rc|$(grep -c "tidak ada kerentanan diketahui di OSV per $(date -u +%F) untuk priv/package-lock.json (1 paket privat tidak diperiksa)" <<<"$out")|$(grep -c '@acme' <<<"$out")|$(grep -c '@acme' "$CVE_FIX/calls")|$(grep -c '^api -X POST' "$CFA/calls")" '0|1|0|0|0'
+out="$(AU allpriv/package-lock.json)"; ok "audit privat: semua dilewati -> kalimat khusus, bukan 'tidak ada kerentanan'" "$(grep -c 'semua dependensi dilewati (privat); tidak ada yang diperiksa untuk allpriv/package-lock.json' <<<"$out")|$(grep -c 'tidak ada kerentanan' <<<"$out")" '1|0'
+rm -f "$AUD/docs/WORKFLOW.md"; cp "$AUD/allpriv/package-lock.json" "$AUD/np/package-lock.json"; printf '@acme:registry=https://corp.example/\n//corp.example/:_authToken=SECRET123\n' > "$AUD/np/.npmrc"
+out="$(AU np/package-lock.json)"; ok "audit privat: .npmrc di direktori lockfile dibaca; token tidak tampil" "$(grep -c 'semua dependensi dilewati (privat)' <<<"$out")|$(grep -c 'SECRET123' <<<"$out")" '1|0'
+rm -f "$AUD/np/.npmrc"; printf '@acme:registry=https://corp.example/\n' > "$AUD/.npmrc"; out="$(AU np/package-lock.json)"; ok "audit privat: .npmrc di akar repo juga dibaca" "$(grep -c 'semua dependensi dilewati (privat)' <<<"$out")" 1
+rm -f "$AUD/.npmrc"
+jq -n '{lockfileVersion:3,packages:{"":{},"node_modules/@acme/x":{version:"1.0.0"},"node_modules/aa":{version:"1.0.0"}}}' > "$AUD/priv/package-lock.json"; printf -- '- Paket privat: @acme/*\n' > "$AUD/docs/WORKFLOW.md"; : > "$CFA/calls"; : > "$CFA/last-body"
+out="$(AU priv/package-lock.json)"; ok "audit privat: issue untuk paket publik tidak memuat nama privat (judul, badan, keluaran)" "$(grep -c '^api -X POST' "$CFA/calls")|$(grep -c '@acme' "$CFA/calls")|$(grep -c '@acme' "$CFA/last-body")|$(grep -c '@acme' <<<"$out")" '1|0|0|0'
+rm -f "$AUD/docs/WORKFLOW.md"
+grep -q 'Paket privat:' templates/WORKFLOW.md; ok "templat WORKFLOW memuat 'Paket privat:'" $? 0
+grep -q 'Paket privat:' PRIVACY.md && grep -q '~/.npmrc' PRIVACY.md; ok "PRIVACY: sumber pola dan ~/.npmrc tidak dibaca" $? 0
+grep -q 'Paket privat:' README.md; ok "README menyebut 'Paket privat:'" $? 0
+grep -q 'Paket privat' skills/cve-audit/SKILL.md; ok "skill cve-audit menyebut paket privat" $? 0
+grep -q '"version": "0.9.0"' .claude-plugin/plugin.json; ok "plugin.json versi 0.9.0" $? 0
+
 # 3k-1. cleanup.sh: laporan kandidat cabang/worktree ter-merge (repo git nyata + remote bare lokal; gh palsu untuk REST)
 CL="$tmp/cl"; mkdir -p "$CL/bin"; export CL
 cat > "$CL/bin/gh" <<'EOF'
