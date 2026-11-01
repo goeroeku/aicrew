@@ -766,4 +766,7 @@ ok "pr-merge-check: header reset hilang -> tetap menolak, pesan batas tanpa jam"
 out="$(export REMAINING=7; PM)"; rc=$?
 ok "pr-merge-check: kegagalan biasa (basis salah) -> tanpa baris Penyebab" "$rc|$(grep -c '^GAGAL: basis' <<<"$out")|$(grep -c '^Penyebab' <<<"$out")" '1|1|0'
 
+# 3i-7. README menjelaskan mode cadangan REST dan perilakunya
+grep -q 'mode cadangan REST' README.md && grep -q 'langkah dilewati' README.md; ok "README: mode cadangan REST dan PERINGATAN langkah dilewati" $? 0
+
 [ "$fails" = 0 ] && echo "SEMUA LULUS" || { echo "$fails GAGAL"; exit 1; }
