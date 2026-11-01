@@ -129,6 +129,11 @@ Entries before 0.11.0 were reconstructed from tags, merged pull requests and com
 
 - Outbound network to `api.osv.dev` (ecosystem, package name and version only); unranked severity (`UNKNOWN`) is treated like HIGH; the gate fails closed when OSV is unreachable (#23)
 
+### Behavior changes
+
+- The dependency CVE gate is on by default: a PR that touches a lockfile can be rejected for new HIGH/CRITICAL/UNKNOWN exposure on production dependencies, and an unreachable OSV rejects the PR (fail-closed). Opt out with `Pemeriksaan CVE: tidak`.
+
+
 ## [0.6.4] - 2026-11-01
 
 ### Added
@@ -226,6 +231,11 @@ Entries before 0.11.0 were reconstructed from tags, merged pull requests and com
 - `scripts/autostart.sh`: per-project macOS LaunchAgent that starts the autopilot (#5)
 - The autopilot waits for the owner (merge or decision) by polling `gh` cheaply instead of running `claude` (#5)
 
+### Behavior changes
+
+- When a round changes nothing and every remaining issue only waits for a human, the autopilot now stops running `claude` and polls `gh`, ending with exit 3 after the wait limit instead of looping.
+
+
 ## [0.2.0] - 2026-10-31
 
 ### Added
@@ -238,6 +248,11 @@ Entries before 0.11.0 were reconstructed from tags, merged pull requests and com
 ### Fixed
 
 - Closing references, scoped waivers, a sturdier scanner, last verdict wins, labels matched case-insensitively (#2, #3)
+
+### Behavior changes
+
+- PRs labeled `needs-security` or `needs-perf` can no longer be merged through the gate without a passing report bound to the head commit or an owner waiver.
+
 
 ## [0.1.2] - 2026-10-31
 

@@ -1653,7 +1653,7 @@ TAGDATES="0.1.0 2026-10-28
 0.11.1 2026-11-01
 0.12.0 2026-11-01"
 strip_code() { awk 'BEGIN{f=0} /^```/{f=!f; next} !f' "$1" 2>/dev/null | sed 's/`[^`]*`//g'; }
-IDN=' yang | dan | untuk | dengan | tidak | atau | bila | dari | ini | adalah |^#+ .*(Kebijakan|Peringatan|Prasyarat|Pasang|Alur|Lisensi|Opsi)'
+IDN='(^|[^A-Za-z])(yang|dan|untuk|dengan|tidak|atau|bila|dari|ini|adalah|pada|bisa|sudah|jika|karena|akan|sebagai|oleh|semua|juga|hanya|tanpa)([^A-Za-z]|$)|^#+ .*(Kebijakan|Peringatan|Prasyarat|Pasang|Alur|Lisensi|Opsi)|^#+ .*(^|[^A-Za-z])Tes($|[^A-Za-z])'
 idn_hits() { if [ -f "$1" ]; then strip_code "$1" | grep -ciE "$IDN" || true; else echo 99; fi; }
 miss=0; wrong=0
 while read -r v d; do [ -n "$v" ] || continue; grep -qE "^## \\[$v\\] - $d$" CHANGELOG.md 2>/dev/null || miss=$((miss+1)); done <<<"$TAGDATES"
@@ -1666,5 +1666,12 @@ txt="$(jq -r '[.description, (.userConfig[]? | .title, .description)] | .[] | se
 txt="$(jq -r '.description, (.plugins[]?.description)' .claude-plugin/marketplace.json | tr '\n' ' ')"; ok "bahasa publik: marketplace.json Inggris" "$(printf ' %s ' "$txt" | grep -ciE "$IDN" || true)" 0
 for sc in autopilot autostart board-init board cleanup cve-audit cve-check ensure-gitignore epic-link install-permissions lock menunggu-rilis notify release-notes release-report terintegrasi workflow; do grep -qF "scripts/$sc.sh" README.md; ok "README tetap menyebut scripts/$sc.sh" $? 0; done
 grep -qE '^#+ +[^A-Za-z]*Stability' README.md; ok "README: bagian Stability" $? 0
+# perbaikan hasil review akhir v1.0 (#34)
+nsk="$(ls skills | wc -l | tr -d ' ')"; nag="$(ls agents | wc -l | tr -d ' ')"; nhk="$(jq '[.hooks[]|length]|add' hooks/hooks.json)"
+grep -qF "Installed: $nsk skills, $nag agents, $nhk hooks" README.md; ok "README: jumlah skill/agen/hook sesuai isi repo ($nsk/$nag/$nhk)" $? 0
+! grep -q '380 tokens' README.md; ok "README: tanpa klaim ~380 token yang tak bersumber" $? 0
+for v in 0.1.2 0.2.0 0.3.0 0.4.0 0.7.0 0.8.0 0.9.0 0.10.0 0.11.1 0.12.0; do awk -v h="## [$v]" 'index($0,h)==1{p=1;next} /^## \[/{p=0} p' CHANGELOG.md | grep -q '^### Behavior changes'; ok "CHANGELOG [$v] memuat Behavior changes" $? 0; done
+grep -q 'none yet' README.md && grep -q 'Most keys' README.md; ok "README: 'Merge into main' = none yet; kunci WORKFLOW 'Most keys' Indonesia" $? 0
+for k in 'does not reject' 'is never deleted' 'report-only' 'response headers' 'not yet proven' 'through chat'; do grep -qF -- "$k" README.md; ok "README mempertahankan rincian: '$k'" $? 0; done
 
 [ "$fails" = 0 ] && echo "SEMUA LULUS" || { echo "$fails GAGAL"; exit 1; }
