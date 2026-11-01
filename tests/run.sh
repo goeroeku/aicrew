@@ -1078,6 +1078,19 @@ grep -q 'Paket privat:' README.md; ok "README menyebut 'Paket privat:'" $? 0
 grep -q 'Paket privat' skills/cve-audit/SKILL.md; ok "skill cve-audit menyebut paket privat" $? 0
 grep -q '"version": "0.9.0"' .claude-plugin/plugin.json; ok "plugin.json versi 0.9.0" $? 0
 
+# 3l-5. perbaikan hasil review akhir #25
+printf -- '- Paket privat: @acme/*, git.corp.com/tim. Penjelasan, panjang.\n' > "$Q/wfa.md"
+ok "final: kalimat penjelas sesudah '. ' tidak jadi pola" "$(CQ --workflow "$Q/wfa.md")" '*:@acme/*|*:git.corp.com/tim'
+sed -n 's/^\(- Paket privat: \).*/\1@a\/*, git.x.com\/t. x/p' templates/WORKFLOW.md > "$Q/wft.md"; ok "final: templat WORKFLOW terisi contoh tetap terurai bersih" "$(CQ --workflow "$Q/wft.md")" '*:@a/*|*:git.x.com/t'
+printf '@acme:registry=https://npm.corp.com/' > "$Q/nonl.npmrc"; ok "final: baris .npmrc terakhir tanpa newline tetap dibaca" "$(CQ --npmrc "$Q/nonl.npmrc")" 'npm:@acme/*'
+printf '@acme:registry=//npm.corp.com/\n' > "$Q/pr.npmrc"; ok "final: URL protokol-relatif (//host/) dianggap privat" "$(CQ --npmrc "$Q/pr.npmrc")" 'npm:@acme/*'
+printf -- '- Paket privat: a-lib\n- Paket privat: b-lib\n' > "$Q/wf2.md"; ok "final: beberapa baris Paket privat semuanya berlaku" "$(CQ --workflow "$Q/wf2.md")" '*:a-lib|*:b-lib'
+cp "$P/h.json" "$P/package-lock.json"
+for pat in '***' '?*' '?'; do PL '%s\n' "$pat"; : > "$CVE_FIX/calls"; out="$(CP "$P/package-lock.json" --private "$P/pat")"
+  ok "final: pola '$pat' (cocok semua) diabaikan dengan PERINGATAN" "$(grep -c '^npm lodash' "$CVE_FIX/calls")|$(grep -c "^PERINGATAN: pola '\*' mematikan pemeriksaan" "$P/err")" '1|1'; done
+printf 'Foo__Bar==1.0\nrequests==2.0.0\n' > "$P/py/requirements.txt"; ok "final: --list PyPI melipat deretan pemisah (PEP 503)" "$($CV --list "$P/py/requirements.txt" 2>/dev/null | cut -f2 | paste -sd, -)" 'foo-bar,requests'
+PL 'foo-bar\n'; : > "$CVE_FIX/calls"; out="$(CP "$P/py/requirements.txt" --private "$P/pat")"; ok "final: pola PyPI cocok nama dengan deretan pemisah" "$(grep -c 'foo-' "$CVE_FIX/calls")|$(grep -c '^PyPI requests' "$CVE_FIX/calls")" '0|1'
+
 # 3k-1. cleanup.sh: laporan kandidat cabang/worktree ter-merge (repo git nyata + remote bare lokal; gh palsu untuk REST)
 CL="$tmp/cl"; mkdir -p "$CL/bin"; export CL
 cat > "$CL/bin/gh" <<'EOF'
