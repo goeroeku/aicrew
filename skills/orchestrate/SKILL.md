@@ -28,7 +28,8 @@ tanpa rantai panjang. Izin dicocokkan per perintah; rantai dan variabel membuatn
 
 ## Resume (setiap sesi dimulai dengan ini; sesi bisa mati karena limit atau dijalankan ulang oleh `autopilot.sh`)
 Pulihkan state dari fakta, bukan ingatan: `bash ${CLAUDE_PLUGIN_ROOT}/scripts/resume.sh` (GitHub). Per baris keluaran:
-- `selesaikan-merge`: PR sudah MERGED → `pr-merge-check.sh --after`, label `di-integrasi`, cerminkan ke board (dan Done bila `Kartu Done: agen-setelah-merge`).
+- `selesaikan-merge`: PR sudah MERGED → `pr-merge-check.sh --after`, lalu `bash ${CLAUDE_PLUGIN_ROOT}/scripts/terintegrasi.sh <pr>`: exit 0 → label `di-integrasi`, cerminkan ke board (dan Done bila `Kartu Done: agen-setelah-merge`); exit 1 atau 2 (mis. PR bertumpuk ter-merge ke cabang induk) → JANGAN beri label, tutup issue, atau pindah kartu; laporkan alasannya. Bila `bash ${CLAUDE_PLUGIN_ROOT}/scripts/alur-terjadwal.sh <pr>` mencetak jalur (workflow terjadwal/`dependabot.yml` baru aktif dari cabang bawaan), jalankan `bash ${CLAUDE_PLUGIN_ROOT}/scripts/menunggu-rilis.sh --tandai <issue> <pr>` (label `menunggu-rilis`; issue tetap terbuka, kartu tidak ke Done).
+- `periksa-rilis`: issue berlabel `menunggu-rilis` → `bash ${CLAUDE_PLUGIN_ROOT}/scripts/menunggu-rilis.sh --cek <issue>`: exit 0 (`siap`) → lepas label `menunggu-rilis` dan tutup issue; exit 1 → tetap menunggu (laporkan jalur yang belum ada di cabang bawaan); exit 2 → laporkan, jangan menutup.
 - `lanjut-pr`: PR terbuka → lanjut dari langkah 5 (verifikasi, QA, merge sesuai mode); jangan membuat PR kedua.
 - `periksa-cabang`: ada cabang `issue-N` tanpa PR → baca diff dan jalankan suite penuh. Lulus → langkah 6. Rusak/setengah jadi → perbaiki sebagai satu percobaan (`budget.sh fail`).
 - `antre-ulang`: tanpa cabang/PR → hapus label `in-progress`, masuk antrean.
@@ -101,7 +102,7 @@ ambil alih dengan model Claude sesuai bobot tugas dan sebutkan di laporan.
   `blocked-by` → usulkan satu ke owner dan catat di `WORKFLOW.md` sebelum membuatnya.
 - **Auto-merge (`agen-setelah-QA`)**: hanya bila `WORKFLOW.md` menulisnya dan hanya ke cabang integrasi. Syarat semua terpenuhi
   pada PR itu: suite penuh hijau, laporan `aicrew-qa` lulus, `aicrew-security` lulus bila sensitif (`needs-security`), `aicrew-perf` lulus bila `needs-perf`, tidak ada `needs-principal`,
-  `pr-merge-check.sh <n> <cabang-tujuan> --auto` exit 0 (menolak `risk:L2`: L2 selalu owner). Lalu merge, jalankan lagi dengan `--after`, ganti label ke `di-integrasi`. Satu syarat gagal → jangan merge,
+  `pr-merge-check.sh <n> <cabang-tujuan> --auto` exit 0 (menolak `risk:L2`: L2 selalu owner). Lalu merge, jalankan lagi dengan `--after`, lalu `terintegrasi.sh <pr>` (exit 0 wajib), ganti label ke `di-integrasi`. Satu syarat gagal → jangan merge,
   kembali ke manual (minta owner). Qa wajib dipanggil di mode ini (tidak boleh dilewati). Merge ke `main` tetap owner.
 - Merge ke `main` dan pindah ke Done mengikuti `WORKFLOW.md`; default: **hanya owner**. Jangan memindahkan ke Done sendiri.
 - **Issue lanjutan** yang kamu buat (tindak lanjut temuan QA/security, pecahan issue) wajib mewarisi epic sumbernya, tidak boleh yatim: `bash ${CLAUDE_PLUGIN_ROOT}/scripts/epic-link.sh --inherit <issue-sumber> <issue-baru>` (exit 3 = sumber memang tanpa epic; laporkan). Audit yatim berkala: `bash ${CLAUDE_PLUGIN_ROOT}/scripts/epic-link.sh --check` (exit 3 = ada issue terbuka tanpa induk; laporkan ke owner, jangan memasang sendiri tanpa dasar journey yang jelas).

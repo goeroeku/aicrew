@@ -1111,7 +1111,11 @@ grep -q 'Paket privat:' templates/WORKFLOW.md; ok "templat WORKFLOW memuat 'Pake
 grep -q 'Paket privat:' PRIVACY.md && grep -q '~/.npmrc' PRIVACY.md; ok "PRIVACY: sumber pola dan ~/.npmrc tidak dibaca" $? 0
 grep -q 'Paket privat:' README.md; ok "README menyebut 'Paket privat:'" $? 0
 grep -q 'Paket privat' skills/cve-audit/SKILL.md; ok "skill cve-audit menyebut paket privat" $? 0
-grep -q '"version": "0.9.1"' .claude-plugin/plugin.json; ok "plugin.json versi 0.9.1" $? 0
+grep -q '"version": "0.10.0"' .claude-plugin/plugin.json; ok "plugin.json versi 0.10.0" $? 0
+# 0.10.0: skill orchestrate, templat WORKFLOW, README memuat integrasi terverifikasi dan menunggu-rilis (#28, #32)
+for k in 'terintegrasi.sh' 'periksa-rilis' 'menunggu-rilis.sh --tandai' 'alur-terjadwal.sh'; do grep -qF -- "$k" skills/orchestrate/SKILL.md; ok "orchestrate memuat '$k'" $? 0; done
+grep -q 'Label menunggu rilis' templates/WORKFLOW.md; ok "templat WORKFLOW: Label menunggu rilis" $? 0
+grep -q 'Integrasi terverifikasi (0.10.0)' README.md; ok "README: Integrasi terverifikasi (0.10.0)" $? 0
 
 # 3l-5. perbaikan hasil review akhir #25
 printf -- '- Paket privat: @acme/*, git.corp.com/tim. Penjelasan, panjang.\n' > "$Q/wfa.md"
