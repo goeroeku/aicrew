@@ -978,9 +978,9 @@ grep -q 'yarn.lock' README.md && grep -q 'pnpm-lock.yaml' README.md; ok "README:
 CL="$tmp/cl"; mkdir -p "$CL/bin"; export CL
 cat > "$CL/bin/gh" <<'EOF'
 #!/usr/bin/env bash
-a="$*"
+a="$*"; [ -n "${GHLOG:-}" ] && echo "$a" >> "$GHLOG"
 case "$a" in
-  "api repos/o/r") echo '{"default_branch":"main","delete_branch_on_merge":false}' ;;
+  "api repos/o/r") echo "{\"default_branch\":\"main\",\"delete_branch_on_merge\":${DBM:-false}}" ;;
   "api repos/o/r/pulls?state=open"*) [ -n "${OPEN_FAIL:-}" ] && { echo "HTTP 500" >&2; exit 1; }; cat "$CL/open.json" ;;
   "api repos/o/r/pulls?head="*) b="${a##*head=}"; b="${b%%&*}"; b="$(printf '%b' "${b//%/\\x}")"; b="${b#o:}"; f="$CL/pr-$(printf '%s' "$b" | tr / _).json"; if [ -f "$f" ]; then cat "$f"; else echo '[]'; fi ;;
 esac
@@ -1053,5 +1053,13 @@ ok "setelah-merge --issue 5: worktree w-wt-5 dan cabang issue-5 terhapus dalam s
 grep -q 'Bersihkan setelah merge:' templates/WORKFLOW.md; ok "templat WORKFLOW memuat 'Bersihkan setelah merge:'" $? 0
 grep -q 'cleanup.sh --setelah-merge' skills/orchestrate/SKILL.md && grep -q 'tidak pernah menghentikan' skills/orchestrate/SKILL.md; ok "orchestrate langkah 8 memanggil cleanup.sh --setelah-merge dan 'tidak pernah menghentikan'" $? 0
 jq -e '.permissions.allow|index("Bash(git update-ref:*)")' templates/autopilot-permissions.json >/dev/null; ok "autopilot-permissions.json memuat git update-ref" $? 0
+
+# 3k-4. preflight.sh: setelan GitHub hapus-cabang-saat-merge dan jumlah cabang ter-merge (bukti offline)
+PF() { (cd "$CL/w" && GH_REPO=o/r PATH="$CL/bin:$PATH" bash "$root/scripts/preflight.sh" github 2>&1); }
+MK; out="$(DBM=false PF)"; ok "preflight: delete_branch_on_merge=false -> AWAS beserta perintah PATCH" "$(grep -c '^AWAS.*delete_branch_on_merge=false.*gh api -X PATCH repos/o/r -F delete_branch_on_merge=true' <<<"$out")" 1
+out="$(DBM=true PF)"; ok "preflight: delete_branch_on_merge=true -> ok" "$(grep -c '^ok.*cabang dihapus otomatis saat merge' <<<"$out")|$(grep -c 'delete_branch_on_merge=false' <<<"$out")" '1|0'
+ok "preflight: ada cabang ter-merge -> info jumlah (bukti offline)" "$(DBM=true PF | grep -c '^info.* 7 cabang ter-merge')" 1
+rm -f "$CL/ghlog"; DBM=true GHLOG="$CL/ghlog" PF >/dev/null; ok "preflight: tidak memanggil REST pulls (bukti offline saja)" "$(grep -c 'pulls' "$CL/ghlog" 2>/dev/null; true)" 0
+G remote remove origin; ok "preflight: tanpa remote -> tanpa baris info jumlah" "$(DBM=true PF | grep -c 'cabang ter-merge')" 0
 
 [ "$fails" = 0 ] && echo "SEMUA LULUS" || { echo "$fails GAGAL"; exit 1; }

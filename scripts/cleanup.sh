@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # aicrew cleanup: laporkan cabang dan worktree yang TERBUKTI ter-merge dan aman dihapus. Pakai:
 #   cleanup.sh [--apply] [--no-fetch] [--only orkestrator] [--issue <n>]    (tanpa --apply hanya melaporkan)
+#   cleanup.sh --hitung                      dipakai preflight: cetak jumlah cabang ter-merge (bukti leluhur saja), TANPA fetch/REST/GraphQL
 #   cleanup.sh --setelah-merge --issue <n>   dipakai orchestrate langkah 8: = --only orkestrator --issue <n>; opsi WORKFLOW.md "Bersihkan setelah merge:" ya (bawaan,
 #                                            juga bila baris hilang) = --apply; laporkan (dan nilai tak dikenal) = hanya laporan; tidak = keluar 0 tanpa apa pun.
 # Keluaran TSV: jenis  nama  sha  bukti  aksi   (jenis worktree|cabang-lokal|cabang-remote; bukti leluhur|pr-merged|-; aksi hapus|dihapus|lewati:<alasan>).
@@ -12,10 +13,11 @@
 set -u
 here="$(dirname "$0")"; source "$here/ghx.sh"
 usage() { echo "pakai: cleanup.sh [--apply] [--no-fetch] [--only orkestrator] [--issue <n>] | --setelah-merge --issue <n>" >&2; exit 64; }
-only=""; issue=""; fetch=1; apply=0; aftermerge=0
+only=""; issue=""; fetch=1; apply=0; aftermerge=0; count=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --apply) apply=1 ;;
+    --hitung) count=1; fetch=0 ;;
     --setelah-merge) aftermerge=1 ;;
     --no-fetch) fetch=0 ;;
     --only) only="${2:-}"; [ "$only" = orkestrator ] || usage; shift ;;
@@ -34,18 +36,18 @@ if [ "$aftermerge" = 1 ]; then
 fi
 bk="$(sed -n 's/^[- ]*Backend: *\([A-Za-z]*\).*/\1/p' <<<"$wf" | head -1)"
 [ -z "$bk" ] || [ "$bk" = github ] || { echo "cleanup: tidak didukung (bukan GitHub: $bk)" >&2; exit 0; }
-repo="$(ghx_repo)" || { echo "cleanup: repo tak dapat ditentukan" >&2; exit 1; }; owner="${repo%%/*}"
-havegh=0; command -v gh >/dev/null 2>&1 && havegh=1
+repo=""; owner=""; havegh=0
+if [ "$count" = 0 ]; then repo="$(ghx_repo)" || { echo "cleanup: repo tak dapat ditentukan" >&2; exit 1; }; owner="${repo%%/*}"; command -v gh >/dev/null 2>&1 && havegh=1; fi
 [ "$fetch" = 0 ] || git fetch -q --prune origin 2>/dev/null || echo "cleanup: git fetch gagal; bukti bisa basi" >&2
 
 def="$(git symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null)"; def="${def#origin/}"
-[ -n "$def" ] || def="$(gh api "repos/$repo" 2>/dev/null | jq -r '.default_branch // empty' 2>/dev/null)"
+[ -n "$def" ] || [ "$count" = 1 ] || def="$(gh api "repos/$repo" 2>/dev/null | jq -r '.default_branch // empty' 2>/dev/null)"
 integ="$(sed -n 's/^[- ]*.*Cabang integrasi: *\([A-Za-z0-9._\/-]*\).*/\1/p' <<<"$wf" | head -1 | sed 's/[.,;:]*$//')"
 git show-ref --verify --quiet "refs/remotes/origin/${integ:-_}" || integ=""
 bases=""; for b in "$def" "$integ"; do [ -z "$b" ] || git show-ref --verify --quiet "refs/remotes/origin/$b" && bases="$bases $b"; done
 is_protected() { [ "$1" = "$def" ] || { [ -n "$integ" ] && [ "$1" = "$integ" ]; }; }
 
-openok=0; openj="$(gh api "repos/$repo/pulls?state=open&per_page=100" --paginate 2>/dev/null)" && openok=1
+openok=0; openj=""; [ "$count" = 1 ] || { openj="$(gh api "repos/$repo/pulls?state=open&per_page=100" --paginate 2>/dev/null)" && openok=1; }
 open_heads="$(jq -r '.[].head.ref' <<<"$openj" 2>/dev/null)"; open_bases="$(jq -r '.[].base.ref' <<<"$openj" 2>/dev/null)"
 inlist() { [ -n "$2" ] && grep -qxF -- "$1" <<<"$2"; }
 
@@ -127,6 +129,7 @@ while IFS="$tab" read -r n tip ev r; do
   if [ -n "$r" ]; then act="lewati:$r"; else act="hapus"; fi
   emit cabang-remote "$n" "$tip" "$ev" "$act" ""
 done < "$T/rem"
+if [ "$count" = 1 ]; then awk -F'\t' '$1 ~ /^cabang-/ && $4=="leluhur" && ($5=="hapus"||$5=="lewati:pr-tak-terbaca"||$5=="lewati:checkout"){print $2}' "$T/out" | sort -u | wc -l | tr -d ' '; exit 0; fi
 cat "$T/out"
 mode="mode laporan"; [ "$apply" = 0 ] || mode="apply"
 echo "cleanup: $(grep -c "${tab}\(hapus\|dihapus\)\$" "$T/out") $([ "$apply" = 1 ] && echo dihapus || echo kandidat hapus), $(grep -c "${tab}lewati:" "$T/out") dilewati ($mode)" >&2
