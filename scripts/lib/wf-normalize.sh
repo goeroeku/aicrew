@@ -24,21 +24,21 @@ wf_normalize() {
     -e 's/Role aktif:/Active roles:/g' \
     -e 's/Kode ada:/Existing code:/g' \
     -e 's/Profil:/Profile:/g' \
-    -e 's/(Integration branch: *)[Tt][Ii][Dd][Aa][Kk] [Aa][Dd][Aa]/\1none/' \
-    -e 's/(Clean up after merge: *)[Yy][Aa]([^A-Za-z0-9-]|$)/\1yes\2/' \
-    -e 's/(Clean up after merge: *)[Ll][Aa][Pp][Oo][Rr][Kk][Aa][Nn]([^A-Za-z0-9-]|$)/\1report\2/' \
-    -e 's/(Clean up after merge: *)[Tt][Ii][Dd][Aa][Kk]([^A-Za-z0-9-]|$)/\1no\2/' \
-    -e 's/(Close issues after integration merge: *)[Yy][Aa]([^A-Za-z0-9-]|$)/\1yes\2/' \
-    -e 's/(Close issues after integration merge: *)[Tt][Ii][Dd][Aa][Kk]([^A-Za-z0-9-]|$)/\1no\2/' \
-    -e 's/(CVE check: *)[Yy][Aa]([^A-Za-z0-9-]|$)/\1yes\2/' \
-    -e 's/(CVE check: *)[Tt][Ii][Dd][Aa][Kk]([^A-Za-z0-9-]|$)/\1no\2/' \
-    -e 's/(Existing code: *)[Yy][Aa]([^A-Za-z0-9-]|$)/\1yes\2/' \
-    -e 's/(Existing code: *)[Tt][Ii][Dd][Aa][Kk]([^A-Za-z0-9-]|$)/\1no\2/' \
-    -e 's/(Profile: *)[Rr][Ii][Nn][Gg][Aa][Nn]([^A-Za-z0-9-]|$)/\1light\2/' \
-    -e 's/(Profile: *)[Ss][Tt][Aa][Nn][Dd][Aa][Rr]([^A-Za-z0-9-]|$)/\1standard\2/' \
-    -e 's/(Profile: *)[Pp][Ee][Nn][Uu][Hh]([^A-Za-z0-9-]|$)/\1full\2/' \
-    -e 's/(Done card: *)agen-setelah-merge/\1agent-after-merge/' \
-    -e 's/(Merge PR to integration branch: *)agen-setelah-(QA|qa)/\1agent-after-qa/'
+    -e 's/(Integration branch:[*` ]*)[Tt][Ii][Dd][Aa][Kk] [Aa][Dd][Aa]/\1none/' \
+    -e 's/(Clean up after merge:[*` ]*)[Yy][Aa]([^A-Za-z0-9-]|$)/\1yes\2/' \
+    -e 's/(Clean up after merge:[*` ]*)[Ll][Aa][Pp][Oo][Rr][Kk][Aa][Nn]([^A-Za-z0-9-]|$)/\1report\2/' \
+    -e 's/(Clean up after merge:[*` ]*)[Tt][Ii][Dd][Aa][Kk]([^A-Za-z0-9-]|$)/\1no\2/' \
+    -e 's/(Close issues after integration merge:[*` ]*)[Yy][Aa]([^A-Za-z0-9-]|$)/\1yes\2/' \
+    -e 's/(Close issues after integration merge:[*` ]*)[Tt][Ii][Dd][Aa][Kk]([^A-Za-z0-9-]|$)/\1no\2/' \
+    -e 's/(CVE check:[*` ]*)[Yy][Aa]([^A-Za-z0-9-]|$)/\1yes\2/' \
+    -e 's/(CVE check:[*` ]*)[Tt][Ii][Dd][Aa][Kk]([^A-Za-z0-9-]|$)/\1no\2/' \
+    -e 's/(Existing code:[*` ]*)[Yy][Aa]([^A-Za-z0-9-]|$)/\1yes\2/' \
+    -e 's/(Existing code:[*` ]*)[Tt][Ii][Dd][Aa][Kk]([^A-Za-z0-9-]|$)/\1no\2/' \
+    -e 's/(Profile:[*` ]*)[Rr][Ii][Nn][Gg][Aa][Nn]([^A-Za-z0-9-]|$)/\1light\2/' \
+    -e 's/(Profile:[*` ]*)[Ss][Tt][Aa][Nn][Dd][Aa][Rr]([^A-Za-z0-9-]|$)/\1standard\2/' \
+    -e 's/(Profile:[*` ]*)[Pp][Ee][Nn][Uu][Hh]([^A-Za-z0-9-]|$)/\1full\2/' \
+    -e 's/(Done card:[*` ]*)agen-setelah-merge/\1agent-after-merge/' \
+    -e 's/(Merge PR to integration branch:[*` ]*)agen-setelah-(QA|qa)/\1agent-after-qa/'
 }
 # dijalankan langsung = filter stdin
 [ "${BASH_SOURCE[0]}" != "$0" ] || wf_normalize

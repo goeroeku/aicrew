@@ -10,7 +10,7 @@ mode="${1:-}"; issue="${2:?issue}"
 cant() { echo "menunggu-rilis: $*" >&2; exit 2; }
 repo="$(ghx_repo)" || cant "repo tak dapat ditentukan"
 case "$mode" in
-  --mark|--mark)
+  --mark|--tandai)
     pr="${3:?pr}"
     files="$(bash "$here/scheduled-workflow.sh" "$pr")" || cant "berkas PR #$pr tak terbaca"
     [ -n "$files" ] || { echo "tidak ada alur terjadwal pada PR #$pr"; exit 0; }
@@ -18,7 +18,7 @@ case "$mode" in
     gh api -X POST "repos/$repo/issues/$issue/comments" -f body="$body" >/dev/null || cant "komentar gagal ditulis"
     gh api -X POST "repos/$repo/issues/$issue/labels" -f "labels[]=$(bash "$here/label.sh" waiting)" >/dev/null || cant "label gagal dipasang"
     echo "issue #$issue menunggu rilis" ;;
-  --check|--check)
+  --check|--cek)
     cj="$(gh api "repos/$repo/issues/$issue/comments" --paginate)" || cant "komentar issue #$issue tak terbaca"
     paths="$(jq -rs --arg m "$marker" '[.[][]|select(.body|startswith($m))|.body]|join("\n")' <<<"$cj" | sed -n 's/^- //p')"
     [ -n "$paths" ] || cant "komentar berpenanda tidak ditemukan pada issue #$issue"

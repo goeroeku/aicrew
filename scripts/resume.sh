@@ -21,7 +21,7 @@ done
 source "$(dirname "$0")/ghx.sh"
 if repo="$(ghx_repo 2>/dev/null)" && [ -n "$repo" ]; then
   for wl in $(bash "$(dirname "$0")/label.sh" waiting --all); do
-  gh api "repos/$repo/issues?state=open&labels=$wl&per_page=100" 2>/dev/null \
-    | jq -r '.[]|select(.pull_request==null)|"\(.number)\tperiksa-rilis\tmenunggu rilis ke cabang bawaan"' 2>/dev/null || true
-  done
+    gh api "repos/$repo/issues?state=open&labels=$wl&per_page=100" 2>/dev/null \
+      | jq -r '.[]|select(.pull_request==null)|"\(.number)\tperiksa-rilis\tmenunggu rilis ke cabang bawaan"' 2>/dev/null || true
+  done | sort -u
 fi

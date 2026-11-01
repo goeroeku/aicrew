@@ -9,7 +9,7 @@ source "$(dirname "$0")/ghx.sh"  # cadangan REST saat GraphQL kena batas
 repo="$(ghx_repo)"
 if [ "${1:-}" = "--check" ]; then
   epics="$(ghx_issues open epic 100 number,body)"; orphan=0
-  np="$(bash "$(dirname "$0")/label.sh" noparent --all | jq -Rsc 'split("\n")|map(select(.!=""))')"  # yatim yang disengaja (mis. payung tindak lanjut) diberi label ini
+  np="$(bash "$(dirname "$0")/label.sh" noparent --json)"  # yatim yang disengaja (mis. payung tindak lanjut) diberi label ini
   while read -r i; do
     [ -n "$i" ] || continue; n="$(jq .number <<<"$i")"
     p="$(gh api "repos/$repo/issues/$n/parent" --jq .number 2>/dev/null || true)"; [[ "$p" =~ ^[0-9]+$ ]] && continue

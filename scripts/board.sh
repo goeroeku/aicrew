@@ -22,7 +22,7 @@ if [ "${3:-}" = "--sync" ]; then
   repo="$(ghx_repo)"
   # WORKFLOW terbaru (bisa di cabang integrasi, bukan checkout aktif)
   wfc="$(bash "$(dirname "$0")/workflow.sh")"
-  disc="$(bash "$(dirname "$0")/label.sh" discovery)"; nsl="$(bash "$(dirname "$0")/label.sh" notsplit --all | jq -Rsc 'split("\n")|map(select(.!=""))')"
+  disc="$(bash "$(dirname "$0")/label.sh" discovery)"; nsl="$(bash "$(dirname "$0")/label.sh" notsplit --json)"
   while read -r e; do
     [ -n "$e" ] || continue
     en="$(jq .number <<<"$e")"; kids="$(gh api "repos/$repo/issues/$en/sub_issues" --jq '.[].number' 2>/dev/null || true)"
@@ -53,7 +53,7 @@ if [ "${3:-}" = "--sync" ]; then
   # opsional: tutup issue anak yang sudah masuk cabang integrasi (GitHub hanya menutup issue lewat merge ke cabang bawaan,
   # jadi progres sub-issue tertahan 0%); WORKFLOW.md: "Close issues after integration merge: yes"
   if grep -qE '^[- ]*Close issues after integration merge: *yes' <<<"$wfc"; then
-    wl="$(bash "$(dirname "$0")/label.sh" waiting --all | jq -Rsc 'split("\n")|map(select(.!=""))')"
+    wl="$(bash "$(dirname "$0")/label.sh" waiting --json)"
     for n in $(for il in $(bash "$(dirname "$0")/label.sh" integrated --all); do ghx_issues open "$il" 200 number,labels; done | jq -r --argjson w "$wl" '.[]|select((.labels|map(.name)|index("epic"))|not)|select(((.labels|map(.name)) as $n|any($w[]; . as $x|$n|index($x)))|not)|.number' | sort -un); do
       # hanya bila tepat satu PR merged dari issue-<n> dan terbukti masuk cabang integrasi (#28); selain itu tidak ditutup dan dilaporkan
       prs="$(gh api "repos/$repo/pulls?state=all&head=${repo%%/*}:issue-$n&per_page=100" 2>/dev/null | jq -r '[.[]|select(.merged_at!=null)|.number]|join(" ")' 2>/dev/null)" || prs=""

@@ -6,12 +6,12 @@
 # penilaian (keamanan, smoke test, runbook) dicetak sebagai kotak kosong untuk diisi agen; skrip hanya memvonis fakta.
 # Exit: 0 SIAP, 1 BELUM SIAP, 64 argumen/cabang tidak diketahui.
 set -u
-here="$(cd "$(dirname "$0")" && pwd)"; L_INT="$(bash "$here/label.sh" integrated --all | jq -Rsc 'split("\n")|map(select(.!=""))')"; L_AUTO="$(bash "$here/label.sh" auto --all | jq -Rsc 'split("\n")|map(select(.!=""))')"
+here="$(cd "$(dirname "$0")" && pwd)"; L_INT="$(bash "$here/label.sh" integrated --json)"; L_AUTO="$(bash "$here/label.sh" auto --json)"
 integ=""; testcmd=""; out=""; base=main; open_pr=0; dry=0; versi=""; wf=docs/WORKFLOW.md
 while [ $# -gt 0 ]; do case "$1" in
   --integ) integ="$2"; shift 2 ;; --test-cmd) testcmd="$2"; shift 2 ;; --out) out="$2"; shift 2 ;; --base) base="$2"; shift 2 ;;
   --open-pr|--buka-pr) open_pr=1; shift ;; --dry-run) dry=1; shift ;; --version|--versi) versi="$2"; shift 2 ;; *) echo "argumen tak dikenal: $1" >&2; exit 64 ;; esac; done
-[ -n "$integ" ] || integ="$(bash "$here/lib/wf-normalize.sh" < "$wf" 2>/dev/null | grep -oE 'Integration branch: [A-Za-z0-9._/-]+' | head -1 | awk '{print $3}' | sed 's/[.]*$//')"
+[ -n "$integ" ] || integ="$({ bash "$here/lib/wf-normalize.sh" < "$wf"; } 2>/dev/null | grep -oE 'Integration branch: [A-Za-z0-9._/-]+' | head -1 | awk '{print $3}' | sed 's/[.]*$//')"
 [ -n "$integ" ] || { echo "release-report: cabang integrasi tidak diketahui (pakai --integ)" >&2; exit 64; }
 g="$(git rev-parse --git-common-dir)" && d="$(cd "$g/.." && pwd)/.aicrew"; mkdir -p "$d"; [ -n "$out" ] || out="$d/release-report.md"
 

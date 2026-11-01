@@ -23,7 +23,7 @@ case "$backend" in
     else say GAGAL "gh belum login (jalankan: gh auth login)"; rc=1; fi
     if grep -qsE 'Bash\(gh pr merge' ~/.claude/settings.json ~/.claude/settings.local.json .claude/settings.json .claude/settings.local.json; then
       say ok "aturan izin 'gh pr merge' ada"
-    else say info "tanpa aturan izin 'gh pr merge': agen akan ditolak (mode agen-setelah-QA butuh ini). Owner yang merge, atau ketik di prompt sesi: ! mkdir -p .claude && echo '{\"permissions\":{\"allow\":[\"Bash(gh pr merge:*)\"]}}' > .claude/settings.local.json  (jangan menimpa bila berkas sudah ada)"; fi
+    else say info "tanpa aturan izin 'gh pr merge': agen akan ditolak (mode agent-after-qa butuh ini). Owner yang merge, atau ketik di prompt sesi: ! mkdir -p .claude && echo '{\"permissions\":{\"allow\":[\"Bash(gh pr merge:*)\"]}}' > .claude/settings.local.json  (jangan menimpa bila berkas sudah ada)"; fi
     # setelan GitHub: hapus cabang otomatis saat merge (plugin tidak mengubahnya; milik owner repo) dan jumlah cabang ter-merge (bukti offline saja)
     if rp="$(ghx_repo 2>/dev/null)" && [ -n "$rp" ]; then
       case "$(gh api "repos/$rp" 2>/dev/null | jq -r '.delete_branch_on_merge | if . == null then empty else tostring end' 2>/dev/null)" in

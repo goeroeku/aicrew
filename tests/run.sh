@@ -1710,8 +1710,18 @@ ok "label.sh --all: label dari WORKFLOW lama tetap efektif, bawaan baru ikut" "$
 mkdir -p "$tmp/legacy/docs"; git init -q "$tmp/legacy" 2>/dev/null; printf -- '- Cabang integrasi: fitur-x\n- Bersihkan setelah merge: ya\n' > "$tmp/legacy/docs/WORKFLOW.md"
 ok "workflow.sh: WORKFLOW.md lama (kunci Indonesia) dibaca sebagai kunci Inggris" "$(cd "$tmp/legacy" && AICREW_INTEG_BRANCH= bash "$root/scripts/workflow.sh" | tr '\n' '|')" '- Integration branch: fitur-x|- Clean up after merge: yes|'
 
+# 3s-2b. perbaikan hasil review (#55)
+ok "alias opsi: awaiting-release --tandai/--cek tak dianggap argumen asing" "$(bash scripts/menunggu-rilis.sh --tandai 1 2 2>&1 </dev/null | grep -c '^pakai'):$(bash scripts/menunggu-rilis.sh --cek 1 2>&1 </dev/null | grep -c '^pakai')" '0:0'
+ok "normalize: nilai bermarkup (**Kunci:** ya) tetap dipetakan" "$(printf -- '- **Bersihkan setelah merge:** ya\n' | bash scripts/lib/wf-normalize.sh)" '- **Clean up after merge:** yes'
+ok "normalize: nilai bermarkup tidak" "$(printf -- '- **Bersihkan setelah merge:** tidak\n' | bash scripts/lib/wf-normalize.sh)" '- **Clean up after merge:** no'
+mkdir -p "$tmp/nowf" && git init -q "$tmp/nowf" 2>/dev/null
+ok "workflow.sh: tanpa docs/WORKFLOW.md tidak menulis ke stderr" "$(cd "$tmp/nowf" && bash "$root/scripts/workflow.sh" 2>&1 | wc -c | tr -d ' ')" 0
+ok "label.sh --all: label kustom tidak diperluas dengan bawaan/lama" "$(cd "$tmp/plain" && AICREW_LABEL_INTEGRATED=shipped bash "$root/scripts/label.sh" integrated --all | tr '\n' ' ')" 'shipped '
+ok "label.sh --json: array JSON nama efektif + alias" "$(cd "$tmp/plain" && bash "$root/scripts/label.sh" integrated --json)" '["integrated","di-integrasi"]'
+ok "preflight: pesan menyebut agent-after-qa, bukan agen-setelah-QA" "$(grep -c 'agen-setelah' scripts/preflight.sh)" 0
+
 # 3s-3. penjaga: tidak ada kunci/nilai/skrip/opsi Indonesia di permukaan teknis (kecuali bagian Deprecated aliases)
-IDTOK='Cabang integrasi|Bersihkan setelah merge|Pemeriksaan CVE|Paket privat:|Kartu Done|Board kanban|Basis worktree|Role aktif|Kode ada|Tutup issue setelah|Label (integrasi|discovery|menunggu|tanpa|keputusan|epic belum)|Profil:|agen-setelah-|di-integrasi|keputusan-otomatis|belum-dipecah|tanpa-induk|menunggu-rilis|alur-terjadwal|terintegrasi\.sh|--(versi|sejak|tanggal|tulis|ekstrak|buka-pr|cek|hitung|parse-badan|setelah-merge|tandai)([^a-z-]|$)'
+IDTOK='Bahasa artefak|Cabang integrasi|Bersihkan setelah merge|Pemeriksaan CVE|Paket privat:|Kartu Done|Board kanban|Basis worktree|Role aktif|Kode ada|Tutup issue setelah|Label (integrasi|discovery|menunggu|tanpa|keputusan|epic belum)|Profil:|agen-setelah-|di-integrasi|keputusan-otomatis|belum-dipecah|tanpa-induk|menunggu-rilis|alur-terjadwal|terintegrasi\.sh|--(versi|sejak|tanggal|tulis|ekstrak|buka-pr|cek|hitung|parse-badan|setelah-merge|tandai)([^a-z-]|$)'
 for f in templates/WORKFLOW.md templates/*.md skills/*/SKILL.md agents/*.md .github/workflows/release.yml; do
   ok "penjaga: tanpa nama teknis Indonesia di $f" "$(grep -vE '^\*\*Deprecated aliases' "$f" | grep -cE "$IDTOK")" 0
 done

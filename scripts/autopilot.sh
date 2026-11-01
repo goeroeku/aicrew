@@ -20,7 +20,7 @@ while [ $# -gt 0 ]; do case "$1" in
   --sleep) sleep_s="$2"; shift 2 ;; --max-rounds) max_rounds="$2"; shift 2 ;; --stuck) stuck_max="$2"; shift 2 ;; --wait) wait_s="$2"; shift 2 ;; --wait-max) wait_max="$2"; shift 2 ;;
   --idle-limit) idle_limit="$2"; shift 2 ;; --round-timeout) round_timeout="$2"; shift 2 ;;
   --max-total) max_total="$2"; shift 2 ;; --reset-total) reset_total=1; shift ;; --prompt) prompt="$2"; shift 2 ;; *) echo "argumen tak dikenal: $1" >&2; exit 64 ;; esac; done
-claude="${AICREW_CLAUDE:-claude}"; L_INT="$(bash "$here/label.sh" integrated --all | jq -Rsc 'split("\n")|map(select(.!=""))')"
+claude="${AICREW_CLAUDE:-claude}"; L_INT="$(bash "$here/label.sh" integrated --json)"
 g="$(git rev-parse --git-common-dir)" && d="$(cd "$g/.." && pwd)/.aicrew"; mkdir -p "$d"; run="$(date +%Y%m%d-%H%M%S)"   # nama unik per jalan untuk arsip keluaran putaran (round-N.log ditimpa tiap jalan)
 [ "$reset_total" = 1 ] && rm -f "$d/total"
 log() { printf '%s %s\n' "$(date '+%F %T')" "$*" | tee -a "$d/autopilot.log"; printf '%s\n' "$*" > "$d/autopilot.status"; }
