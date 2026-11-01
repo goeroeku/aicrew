@@ -1398,4 +1398,24 @@ rm "$RN/w/docs/WORKFLOW.md"; out="$(RNS --versi 0.3.0 2>/dev/null)"; ok "release
 printf -- '- Catatan rilis: CHANGELOG.md\n' > "$RN/w/docs/WORKFLOW.md"
 RNS --versi bukan-semver >/dev/null 2>&1; ok "release-notes: --versi bukan semver -> exit 64" "$?" 64
 
+# 3n-2. release-notes.sh --tulis (idempoten, opt-in) dan --ekstrak (#30)
+printf -- '- Catatan rilis: CHANGELOG.md\n' > "$RN/w/docs/WORKFLOW.md"; rm -f "$RN/w/CHANGELOG.md"
+RNS --versi 0.3.0 --tulis --tanggal 2026-11-02 >/dev/null 2>&1; rc=$?
+ok "release-notes --tulis: berkas baru dibuat dengan header Keep a Changelog dan satu bagian [0.3.0]" "$rc|$(head -1 "$RN/w/CHANGELOG.md")|$(grep -c '^## \[' "$RN/w/CHANGELOG.md")|$(grep -c 'fitur satu (#11)' "$RN/w/CHANGELOG.md")" '0|# Changelog|1|1'
+cp "$RN/w/CHANGELOG.md" "$RN/cl1"; RNS --versi 0.3.0 --tulis --tanggal 2026-11-02 >/dev/null 2>&1
+ok "release-notes --tulis: dijalankan ulang -> berkas identik (idempoten)" "$(cmp -s "$RN/cl1" "$RN/w/CHANGELOG.md" && echo sama || echo beda)" sama
+printf '# Changelog\n\nIntro.\n\n## [0.2.0] - 2026-10-01\n\n### Added\n\n- fitur lama (#10)\n' > "$RN/w/CHANGELOG.md"
+RNS --versi 0.3.0 --tulis --tanggal 2026-11-02 >/dev/null 2>&1
+ok "release-notes --tulis: bagian baru di atas bagian lama; bagian lama utuh; intro utuh" "$(grep -n '^## \[' "$RN/w/CHANGELOG.md" | cut -d: -f2 | tr '\n' ' ')|$(grep -c '^Intro\.$' "$RN/w/CHANGELOG.md")|$(grep -c 'fitur lama (#10)' "$RN/w/CHANGELOG.md")" '## [0.3.0] - 2026-11-02 ## [0.2.0] - 2026-10-01 |1|1'
+printf '# Changelog\n\n## [0.3.0] - 2026-11-01\n\n### Added\n\n- basi\n\n## [0.2.0] - 2026-10-01\n\n### Added\n\n- fitur lama (#10)\n' > "$RN/w/CHANGELOG.md"
+RNS --versi 0.3.0 --tulis --tanggal 2026-11-02 >/dev/null 2>&1
+ok "release-notes --tulis: bagian versi yang sama diganti (tanpa 'basi'), satu bagian [0.3.0], [0.2.0] utuh" "$(grep -c 'basi' "$RN/w/CHANGELOG.md")|$(grep -c '^## \[0.3.0\]' "$RN/w/CHANGELOG.md")|$(grep -c 'fitur lama (#10)' "$RN/w/CHANGELOG.md")" '0|1|1'
+cp "$RN/w/CHANGELOG.md" "$RN/cl2"; MI_FAIL=1 RNS --versi 0.3.0 --tulis >/dev/null 2>&1; rc=$?
+ok "release-notes --tulis: REST gagal -> exit 2 dan berkas tidak berubah" "$rc|$(cmp -s "$RN/cl2" "$RN/w/CHANGELOG.md" && echo sama || echo beda)" '2|sama'
+for v in 'tidak ada' 'dikelola alat lain'; do rm -f "$RN/w/CHANGELOG.md"; printf -- "- Catatan rilis: $v\n" > "$RN/w/docs/WORKFLOW.md"; RNS --versi 0.3.0 --tulis >/dev/null 2>&1; ok "release-notes --tulis: opsi '$v' -> exit 0, CHANGELOG.md tidak dibuat" "$?|$([ -e "$RN/w/CHANGELOG.md" ] && echo ada || echo tidak)" '0|tidak'; done
+printf '# Changelog\n\n## [0.3.0] - 2026-11-02\n\n### Added\n\n- fitur satu (#11)\n\n## [0.2.0] - 2026-10-01\n\n### Added\n\n- fitur lama (#10)\n' > "$RN/w/CHANGELOG.md"
+out="$(RNS --versi 0.2.0 --ekstrak)"; rc=$?; ok "release-notes --ekstrak: hanya bagian versi itu (opsi apa pun)" "$rc|$(grep -c 'fitur lama (#10)' <<<"$out")|$(grep -c 'fitur satu' <<<"$out")|$(head -1 <<<"$out")" '0|1|0|## [0.2.0] - 2026-10-01'
+out="$(RNS --versi 9.9.9 --ekstrak 2>/dev/null)"; rc=$?; ok "release-notes --ekstrak: versi tak ada -> exit 1, stdout kosong" "$rc|$out" '1|'
+rm -f "$RN/w/CHANGELOG.md"; printf -- '- Catatan rilis: CHANGELOG.md\n' > "$RN/w/docs/WORKFLOW.md"
+
 [ "$fails" = 0 ] && echo "SEMUA LULUS" || { echo "$fails GAGAL"; exit 1; }

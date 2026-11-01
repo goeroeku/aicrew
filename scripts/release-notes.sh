@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # aicrew release-notes: bagian CHANGELOG.md per versi, disusun dari baris bertanda di badan PR yang ter-merge (#30). REST + git saja, deterministik (bukan model).
-#   release-notes.sh --versi X.Y.Z [--sejak REF] [--tanggal YYYY-MM-DD]
+#   release-notes.sh --versi X.Y.Z [--sejak REF] [--tanggal YYYY-MM-DD] [--tulis | --ekstrak]
 # Opt-in: hanya bila docs/WORKFLOW.md memuat "Catatan rilis: CHANGELOG.md" (lain/hilang/placeholder = tidak ada: tidak mencetak dan tidak menyentuh berkas).
 # Baris bertanda di badan PR (satu baris per entri; blok kode dan komentar HTML diabaikan):
 #   Catatan rilis: <Added|Changed|Fixed|Security> - <teks>     Catatan rilis: -   (PR internal, tanpa entri)     Perubahan perilaku: <teks>
@@ -9,13 +9,21 @@
 # Kode keluar: 0, 1 (--ekstrak: bagian versi tak ada), 2 tak bisa disusun, 64 argumen.
 set -u
 here="$(cd "$(dirname "$0")" && pwd)"; source "$here/ghx.sh"
-versi=""; sejak=""; tanggal=""
+versi=""; sejak=""; tanggal=""; mode=cetak
 while [ $# -gt 0 ]; do case "$1" in
   --versi) versi="${2:-}"; shift 2 ;; --sejak) sejak="${2:-}"; shift 2 ;; --tanggal) tanggal="${2:-}"; shift 2 ;;
-  *) echo "pakai: release-notes.sh --versi X.Y.Z [--sejak REF] [--tanggal YYYY-MM-DD]" >&2; exit 64 ;; esac; done
+  --tulis) mode=tulis; shift ;; --ekstrak) mode=ekstrak; shift ;;
+  *) echo "pakai: release-notes.sh --versi X.Y.Z [--sejak REF] [--tanggal YYYY-MM-DD] [--tulis | --ekstrak]" >&2; exit 64 ;; esac; done
 printf '%s' "$versi" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$' || { echo "release-notes: --versi harus X.Y.Z" >&2; exit 64; }
 cant() { echo "release-notes: $*" >&2; exit 2; }
 CL=CHANGELOG.md
+
+# bagian "## [versi]" dari CHANGELOG.md (sampai "## [" berikutnya atau akhir berkas)
+ekstrak() { awk -v h="## [$versi]" 'index($0,h)==1{p=1;print;next} /^## \[/{p=0} p' "$CL" 2>/dev/null; }
+if [ "$mode" = ekstrak ]; then
+  out="$(ekstrak)"; [ -n "$out" ] || { echo "release-notes: bagian [$versi] tidak ada di $CL" >&2; exit 1; }
+  printf '%s\n' "$out"; exit 0
+fi
 
 opsi="$(bash "$here/workflow.sh" 2>/dev/null | sed -En 's/^[- ]*Catatan rilis: *(CHANGELOG\.md|dikelola alat lain|tidak ada).*$/\1/p' | head -1)"
 if [ "$opsi" != "CHANGELOG.md" ]; then echo "release-notes: Catatan rilis bukan CHANGELOG.md; tidak ada yang disusun" >&2; exit 0; fi
@@ -110,4 +118,21 @@ for k in Added Changed Fixed Security Behavior; do
   while IFS="$(printf '\t')" read -r num txt; do sec="$sec"$'\n'"- $txt (#$num)"; done < "$td/$k"
 done
 
-printf '%s\n' "$sec"
+if [ "$mode" = cetak ]; then printf '%s\n' "$sec"; exit 0; fi
+# --tulis: sisipkan di atas bagian "## [" pertama; ganti bagian versi yang sama; buat kerangka bila berkas belum ada
+new="$td/CHANGELOG.new"; printf '%s\n' "$sec" > "$td/sec"
+if [ ! -f "$CL" ]; then
+  { printf '# Changelog\n\nAll notable changes to this project are documented in this file.\nThe format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).\n\n'; cat "$td/sec"; } > "$new"
+else
+  awk -v h="## [$versi]" -v secfile="$td/sec" '
+    function emit(  l) { while ((getline l < secfile) > 0) print l; close(secfile); print ""; done = 1 }
+    index($0, h) == 1 { if (!done) emit(); skip = 1; next }
+    /^## \[/ { if (skip) skip = 0; if (!done) emit() }
+    skip { next }
+    { print }
+    END { if (!done) { print ""; emit() } }' "$CL" > "$new" || cant "gagal menyusun $CL"
+fi
+# buang baris kosong di akhir berkas supaya hasil sama baik berkas baru maupun diganti (idempoten)
+awk '{ a[NR] = $0 } END { n = NR; while (n > 0 && a[n] == "") n--; for (i = 1; i <= n; i++) print a[i] }' "$new" > "$new.trim" || cant "gagal merapikan $CL"
+cat "$new.trim" > "$CL" || cant "gagal menulis $CL"
+echo "release-notes: bagian [$versi] ditulis ke $CL"
