@@ -18,7 +18,7 @@ case "${1:-}" in
     mi="${2:?maxIter}"; mf="${3:?maxFail}"
     [ "$(num $d/iter)" -ge "$mi" ] && { echo "STOP: batas iterasi ($mi) tercapai"; exit 2; }
     if [ -n "${4:-}" ] && [ "$(num "$d/fail-$4")" -ge "$mf" ]; then echo "STOP: issue $4 gagal $mf kali"; exit 3; fi
-    [ -n "${5:-}" ] && [ "$(num $d/total)" -ge "$5" ] && { echo "STOP: batas total proyek ($5) tercapai"; exit 4; }
+    [ -n "${5:-}" ] && [ "$(num $d/total)" -ge "$5" ] && { echo "STOP: total $(num $d/total) >= $5 (--max-total)"; exit 4; }
     echo "lanjut" ;;
   *) echo "pakai: budget.sh iter|newrun|fail N|reset N|check maxIter maxFail [N] [maxTotal]" >&2; exit 64 ;;
 esac

@@ -2,7 +2,7 @@
 # aicrew autopilot: jalankan orkestrator berulang (sesi baru tiap putaran) sampai selesai, buntu, atau menunggu owner.
 # Tahan limit token/mingguan: bila putaran berakhir karena limit, tidur lalu coba lagi. State ada di GitHub dan .aicrew/,
 # jadi putaran baru melanjutkan (skill orchestrate: bagian Resume). Jalankan dari akar repo project. GitHub/gh saja.
-#   autopilot.sh [--sleep DETIK=1800] [--max-rounds N=500] [--stuck N=3] [--max-total ITERASI] [--wait DETIK=600] [--wait-max DETIK=604800] [--prompt TEKS]
+#   autopilot.sh [--sleep DETIK=1800] [--max-rounds N=500] [--stuck N=3] [--max-total ITERASI] [--reset-total] [--wait DETIK=600] [--wait-max DETIK=604800] [--prompt TEKS]
 #   (slash command plugin tidak tersedia di mode -p; prompt bawaan meminta pemakaian skill lewat Skill tool)
 # Lingkungan: AICREW_CLAUDE (default claude), AICREW_PLUGIN_DIR (default: akar plugin ini; sesi -p tidak mewarisi plugin dari --plugin-dir sesi lain), AICREW_CLAUDE_ARGS (mis. --permission-mode ... --max-budget-usd ...),
 #   AICREW_TG_TOKEN/AICREW_TG_CHAT (opsional, lewat notify.sh). Jangan memakai --dangerously-skip-permissions.
@@ -12,12 +12,13 @@ set -u
 here="$(cd "$(dirname "$0")" && pwd)"
 # jaga Mac tetap bangun selama loop
 [ -z "${AICREW_CAFF:-}" ] && command -v caffeinate >/dev/null 2>&1 && AICREW_CAFF=1 exec caffeinate -i bash "$0" "$@"
-sleep_s=1800; max_rounds=500; stuck_max=3; max_total=""; wait_s=600; wait_max=604800; prompt="Gunakan skill aicrew:orchestrate (panggil lewat Skill tool) di repo ini sekarang dan ikuti sampai selesai atau sampai aturan berhenti. Mode tanpa pengawasan: jangan bertanya ke owner; tandai dan lanjut."
+sleep_s=1800; max_rounds=500; stuck_max=3; max_total=""; reset_total=0; wait_s=600; wait_max=604800; prompt="Gunakan skill aicrew:orchestrate (panggil lewat Skill tool) di repo ini sekarang dan ikuti sampai selesai atau sampai aturan berhenti. Mode tanpa pengawasan: jangan bertanya ke owner; tandai dan lanjut."
 while [ $# -gt 0 ]; do case "$1" in
   --sleep) sleep_s="$2"; shift 2 ;; --max-rounds) max_rounds="$2"; shift 2 ;; --stuck) stuck_max="$2"; shift 2 ;; --wait) wait_s="$2"; shift 2 ;; --wait-max) wait_max="$2"; shift 2 ;;
-  --max-total) max_total="$2"; shift 2 ;; --prompt) prompt="$2"; shift 2 ;; *) echo "argumen tak dikenal: $1" >&2; exit 64 ;; esac; done
+  --max-total) max_total="$2"; shift 2 ;; --reset-total) reset_total=1; shift ;; --prompt) prompt="$2"; shift 2 ;; *) echo "argumen tak dikenal: $1" >&2; exit 64 ;; esac; done
 claude="${AICREW_CLAUDE:-claude}"; L_INT="$(bash "$here/label.sh" integrated)"
 g="$(git rev-parse --git-common-dir)" && d="$(cd "$g/.." && pwd)/.aicrew"; mkdir -p "$d"; run="$(date +%Y%m%d-%H%M%S)"   # nama unik per jalan untuk arsip keluaran putaran (round-N.log ditimpa tiap jalan)
+[ "$reset_total" = 1 ] && rm -f "$d/total"
 log() { printf '%s %s\n' "$(date '+%F %T')" "$*" | tee -a "$d/autopilot.log"; printf '%s\n' "$*" > "$d/autopilot.status"; }
 note() { log "$*"; command -v jq >/dev/null && jq -n --arg m "$*" '{message:$m}' | bash "$here/notify.sh"; return 0; }
 fingerprint() { { gh issue list --state all --limit 200 --json number,state,labels; gh pr list --state all --limit 200 --json number,state; } | shasum | cut -d' ' -f1; }
@@ -42,7 +43,7 @@ for ((i=1; i<=max_rounds; i++)); do
     m="autopilot: $n_open issue tersisa semuanya needs-principal; butuh keputusan owner"
     if [ "$(cat "$d/principal-note" 2>/dev/null)" = "$m" ]; then log "$m"; else note "$m"; printf '%s' "$m" > "$d/principal-note"; fi  # satu notifikasi per keadaan, tidak tiap tick autostart
     exit 3; }
-  if [ -n "$max_total" ]; then bash "$here/budget.sh" check 999999 999 "" "$max_total" >/dev/null; [ $? = 4 ] && { note "autopilot: batas total iterasi ($max_total) tercapai"; exit 4; }; fi
+  if [ -n "$max_total" ]; then msg="$(bash "$here/budget.sh" check 999999 999 "" "$max_total")"; [ $? = 4 ] && { note "autopilot: $msg; total kumulatif antar-jalan, nolkan dengan --reset-total atau hapus .aicrew/total"; exit 4; }; fi
 
   # menunggu owner: sudah ada putaran tanpa perubahan dan semua issue tersisa hanya menunggu manusia -> pantau murah lewat gh (tanpa claude)
   if [ "$same" -ge 1 ] && waiting_on_owner "$open"; then

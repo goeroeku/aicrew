@@ -161,6 +161,14 @@ run_ap "$OPEN" $'fail\nfail\nfail\nfail'; ok "autopilot: 3 gagal beruntun -> exi
 run_ap '[{"number":1,"state":"OPEN","labels":[{"name":"needs-principal"}]}]' "close"; r=$?; ok "autopilot: hanya needs-principal -> exit 3" $r 3; ok "autopilot: claude tidak dipanggil" "$(cat $F/n 2>/dev/null || echo 0)" 0
 run_ap '[{"number":1,"state":"OPEN","labels":[{"name":"di-integrasi"}]},{"number":2,"state":"OPEN","labels":[{"name":"di-integrasi"}]}]' "close"; r=$?; ok "autopilot: issue di-integrasi dianggap selesai -> exit 0" $r 0; ok "autopilot: claude tidak dipanggil (di-integrasi)" "$(cat $F/n 2>/dev/null || echo 0)" 0
 run_ap '[{"number":1,"state":"OPEN","labels":[{"name":"di-integrasi"}]},{"number":2,"state":"OPEN","labels":[{"name":"role:qa"}]}]' $'close'; ok "autopilot: sisa satu issue biasa tetap dikerjakan" "$(cat $F/n)" 1
+# #18: total kumulatif antar-jalan harus disebut di pesan berhenti; --reset-total memulai dari nol
+rm -rf .aicrew; mkdir -p .aicrew; echo 50 > .aicrew/total
+printf 'noop\n' > "$F/script"; rm -f "$F/n"; echo "$OPEN" > "$F/issues.json"
+o18="$(PATH="$P" AICREW_CAFF=1 AICREW_CLAUDE=claude $AP --max-total 20 2>&1)"; r=$?
+ok "autopilot #18: total awal 50 > --max-total 20 -> exit 4" $r 4
+ok "autopilot #18: pesan menyebut 50 dan 20" "$(grep -c 'total 50 >= 20 (--max-total)' <<<"$o18")" 1
+printf 'close\n' > "$F/script"; rm -f "$F/n"; echo "$OPEN" > "$F/issues.json"
+PATH="$P" AICREW_CAFF=1 AICREW_CLAUDE=claude $AP --max-total 20 --reset-total >/dev/null 2>&1; ok "autopilot #18: --reset-total memulai dari nol -> exit 0" $? 0
 # 2b1. #24: laporan normal panjang yang memuat kata limit (rc=0) bukan limit; limit sungguhan menunda; rc tercatat; keluaran mencurigakan diarsipkan
 APO() { printf '%s\n' "$1" > "$F/script"; rm -f "$F/n"; echo "$OPEN" > "$F/issues.json"; rm -rf .aicrew; PATH="$P" AICREW_CAFF=1 AICREW_ERR_SLEEP=0 AICREW_CLAUDE=claude $AP 2>&1; }
 out="$(APO $'neg\nclose')"; rc=$?
