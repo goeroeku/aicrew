@@ -883,14 +883,14 @@ cat > "$tmp/cve/gbin/gh" <<'EOF'
 #!/usr/bin/env bash
 case "$*" in
   *"/contents/"*) a="$*"; u="${a##*contents/}"; r="${u##*ref=}"; p="${u%%\?ref=*}"; p="$(printf '%b' "${p//%/\\x}")"
-    [ -n "${CF_ERR:-}" ] && { echo "gh: Server Error (HTTP 500)" >&2; exit 1; }
+    [ -n "${CF_ERR:-}" ] && { [ -z "${CF_ERR_PATH:-}" ] || [ "$p" = "$CF_ERR_PATH" ]; } && { echo "gh: Server Error (HTTP 500)" >&2; exit 1; }
     if [ -f "$CF/$r/$p" ]; then cat "$CF/$r/$p"; else echo "gh: Not Found (HTTP 404)" >&2; exit 1; fi ;;
   *"/pulls/"*"/files"*) if [ -n "${FILES_JSON:-}" ]; then echo "$FILES_JSON"; else printf '%s\n' "${DIFF:-}" | sed -n 's#^diff --git a/.* b/\(.*\)$#\1#p' | jq -R '{filename:.,status:"modified"}' | jq -cs .; fi ;;
   *"/compare/"*) echo "{\"merge_base_commit\":{\"sha\":\"${MB:-main}\"}}" ;;
   *) exec "$PMB/gh" "$@" ;;
 esac
 EOF
-chmod +x "$tmp/cve/gbin/gh"
+chmod +x "$tmp/cve/gbin/gh"; printf '#!/bin/sh\nexit 1\n' > "$tmp/cve/gbin/go"; chmod +x "$tmp/cve/gbin/go"
 GE() { (cd "$tmp/cve/gw" && BASE=main BODY=x GH_REPO=o/r PMB="$tmp/pmb" PATH="$tmp/cve/gbin:$tmp/cve/bin:$PATH" bash "$root/scripts/pr-merge-check.sh" 9 main 2>&1); }
 DGO=$'diff --git a/go.mod b/go.mod\n--- a/go.mod\n+++ b/go.mod\n@@ -1 +1 @@\n+require golang.org/x/net v0.7.0'
 printf 'module m\n\nrequire golang.org/x/net v0.7.0\n' > "$CF/abc1234567/go.mod"
@@ -986,6 +986,110 @@ FX npm aa 0.9.0 "{\"vulns\":[$(VF GHSA-aaaa-0009-aaaa CVE-A9 HIGH aa 1.0.2)]}"; 
 ok "audit: paket sama di dua versi -> satu issue dalam satu putaran" "$(grep -c '^api -X POST' "$CFA/calls")" 1
 grep -q 'privat' PRIVACY.md; ok "PRIVACY: menyebut nama paket privat/internal ikut terkirim" $? 0
 grep -q 'yarn.lock' README.md && grep -q 'pnpm-lock.yaml' README.md; ok "README: jujur soal lockfile yang belum tercakup (yarn.lock, pnpm-lock.yaml)" $? 0
+
+# 3l-1. cve-check.sh: paket privat tidak pernah dikirim ke OSV (#25)
+P="$tmp/cve/w/priv"; mkdir -p "$P"
+PL() { printf "$@" > "$P/pat"; }   # tulis berkas pola (printf: \t = tab)
+LK2() { jq -n --arg n1 "$2" --arg v1 "$3" --arg n2 "$4" --arg v2 "$5" '{lockfileVersion:3,packages:{"":{},("node_modules/"+$n1):{version:$v1},("node_modules/"+$n2):{version:$v2}}}' > "$1"; }   # berkas n1 v1 n2 v2
+CP() { (PATH="$tmp/cve/bin:$PATH" $CV "$@" 2>"$P/err"); }
+LK2 "$P/package-lock.json" @acme/x 1.0.0 lodash 4.17.15; FX npm @acme/x 1.0.0 "{\"vulns\":[$(V GHSA-priv-0000-aaaa CVE-P1 HIGH)]}"
+rm -f "$CVE_FIX/npm_lodash_4.17.15.json"; PL 'npm\t@acme/*\n'; : > "$CVE_FIX/calls"; out="$(CP "$P/package-lock.json" --private "$P/pat")"; rc=$?
+ok "cve privat: npm @acme/x tidak dikueri, publik tetap, 1 laporan dilewati" "$rc|$(grep -c '@acme' "$CVE_FIX/calls")|$(grep -c '^npm lodash 4.17.15' "$CVE_FIX/calls")|$(grep -c '^dilewati (privat): @acme/x@1.0.0$' "$P/err")" '0|0|1|1'
+LK2 "$P/h.json" @acme/x 2.0.0 lodash 4.17.15; LK2 "$P/b.json" @acme/x 1.0.0 lodash 4.17.15; cp "$P/h.json" "$P/package-lock.json"; : > "$CVE_FIX/calls"
+out="$(CP "$P/package-lock.json" --base "$P/b.json" --private "$P/pat")"; ok "cve privat: kueri basis tidak membocorkan nama" "$(grep -c '@acme' "$CVE_FIX/calls")|$(grep -c '^dilewati (privat): @acme/x@' "$P/err")" '0|1'
+mkdir -p "$P/go"; printf 'module m\n\nrequire (\n\tgit.corp.com/team/x v1.0.0\n\tgit.corp.com/teamx/y v1.0.0\n)\n' > "$P/go/go.mod"; PL 'Go\tgit.corp.com/team\n'; : > "$CVE_FIX/calls"
+out="$(CP "$P/go/go.mod" --private "$P/pat")"; ok "cve privat: Go awalan modul (team/x dilewati, teamx/y tidak)" "$(grep -c ' git.corp.com/team/x ' "$CVE_FIX/calls")|$(grep -c ' git.corp.com/teamx/y ' "$CVE_FIX/calls")" '0|1'
+PL 'Go\t@acme/*\n'; cp "$P/h.json" "$P/package-lock.json"; : > "$CVE_FIX/calls"; out="$(CP "$P/package-lock.json" --private "$P/pat")"
+ok "cve privat: pola ekosistem lain tidak berlaku" "$(grep -c '@acme/x' "$CVE_FIX/calls")" 1
+mkdir -p "$P/py"; printf 'Internal_Lib==1.0\nrequests==2.0.0\n' > "$P/py/requirements.txt"; PL 'Internal.Lib\n'; : > "$CVE_FIX/calls"; out="$(CP "$P/py/requirements.txt" --private "$P/pat")"
+ok "cve privat: PyPI dinormalisasi, pola tanpa tab berlaku untuk semua ekosistem" "$(grep -c 'internal-lib' "$CVE_FIX/calls")|$(grep -c '^PyPI requests' "$CVE_FIX/calls")" '0|1'
+cp "$P/h.json" "$P/package-lock.json"; : > "$CVE_FIX/calls"; out="$( (export CVE_PRIVATE='zzz,@acme/*'; CP "$P/package-lock.json") )"
+ok "cve privat: env CVE_PRIVATE dipisah koma" "$(grep -c '@acme/x' "$CVE_FIX/calls")" 0
+for pat in '*' '**'; do PL '%s\n' "$pat"; : > "$CVE_FIX/calls"; out="$(CP "$P/package-lock.json" --private "$P/pat")"
+  ok "cve privat: pola '$pat' diabaikan dengan PERINGATAN (lodash tetap dikueri)" "$(grep -c '^npm lodash' "$CVE_FIX/calls")|$(grep -c "^PERINGATAN: pola '\*' mematikan pemeriksaan" "$P/err")" '1|1'; done
+PL 'npm\t*\n'; : > "$CVE_FIX/calls"; out="$(CP "$P/package-lock.json" --private "$P/pat")"; ok "cve privat: pola 'npm<tab>*' juga diabaikan" "$(grep -c '^npm lodash' "$CVE_FIX/calls")" 1
+LK2 "$P/package-lock.json" @acme/x 1.0.0 @acme/y 1.0.0; PL 'npm\t@acme/*\n'; out="$(CP "$P/package-lock.json" --private "$P/pat")"; rc=$?
+ok "cve privat: semua entri dilewati -> exit 0 tanpa keluaran" "$rc|$out" '0|'
+LK2 "$P/package-lock.json" @acme/x 1.0.0 lodash 4.17.15; FX npm lodash 4.17.15 "{\"vulns\":[$(V GHSA-pub-0000-aaaa CVE-P2 HIGH)]}"; out="$(CP "$P/package-lock.json" --private "$P/pat")"; rc=$?
+ok "cve privat: publik HIGH di lockfile campuran -> exit 1 dan hanya lodash" "$rc|$(cut -f1 <<<"$out")" '1|lodash'
+$CV --list "$P/package-lock.json" 2>/dev/null | grep -q '@acme/x'; ok "cve --list tidak menyaring" $? 0
+
+# 3l-2. cve-private.sh: pengumpul pola dari WORKFLOW, .npmrc, GOPRIVATE (#25)
+CPV="$root/scripts/cve-private.sh"; Q="$tmp/cve/w/priv2"; mkdir -p "$Q"
+CQ() { (unset GOPRIVATE; PATH="$Q/nogo:$PATH" bash "$CPV" "$@" 2>&1 | tr '\t' ':' | paste -sd'|' -); }
+printf -- '# t\n- Paket privat: @acme/*, git.corp.com/team,  internal-lib.\n' > "$Q/wf.md"
+ok "cve-private: baris Paket privat dari WORKFLOW (spasi dipangkas, titik penutup dibuang)" "$(CQ --workflow "$Q/wf.md")" '*:@acme/*|*:git.corp.com/team|*:internal-lib'
+printf -- '- Paket privat: \n- Pemeriksaan CVE: ya\n' > "$Q/wf0.md"; ok "cve-private: baris Paket privat kosong -> tanpa pola" "$(CQ --workflow "$Q/wf0.md")" ''
+printf '@acme:registry=https://corp.example/npm/\n@pub:registry=https://REGISTRY.npmjs.org/\n@y:registry="https://registry.yarnpkg.com"\n' > "$Q/.npmrc"
+ok "cve-private: .npmrc scope ke proxy -> npm @scope/*; npmjs/yarnpkg (huruf besar, kutip, / akhir) -> publik" "$(CQ --npmrc "$Q/.npmrc")" 'npm:@acme/*'
+printf '//corp.example/:_authToken=SECRET123\nregistry=https://proxy.example/\n@acme:registry=https://corp.example/\n' > "$Q/.npmrc2"; o="$(CQ --npmrc "$Q/.npmrc2")"
+ok "cve-private: token dan registry global .npmrc tidak pernah tampil" "$o|$(grep -c 'SECRET123\|proxy.example\|_authToken' <<<"$o")" 'npm:@acme/*|0'
+mkdir -p "$Q/nogo"; printf '#!/bin/sh\nexit 1\n' > "$Q/nogo/go"; chmod +x "$Q/nogo/go"
+ok "cve-private: GOPRIVATE env -> pola Go per koma" "$( (export GOPRIVATE='git.corp.com/*,x.io/y'; PATH="$Q/nogo:$PATH" bash "$CPV" --goprivate | tr '\t' ':' | paste -sd'|' -) )" 'Go:git.corp.com/*|Go:x.io/y'
+ok "cve-private: GOPRIVATE kosong dan go gagal -> kosong" "$(CQ --goprivate)" ''
+ok "cve-private: berkas tak ada -> kosong, exit 0" "$(CQ --workflow "$Q/tidak.md" --npmrc "$Q/tidak")|$(bash "$CPV" --workflow "$Q/tidak.md" >/dev/null 2>&1; echo $?)" '|0'
+ok "cve-private: dua sumber digabung tanpa duplikat" "$(CQ --workflow "$Q/wf.md" --workflow "$Q/wf.md" | tr '|' '\n' | grep -c .)" 3
+
+# 3l-3. pr-merge-check.sh: pola privat dari cabang tujuan (#25)
+rm -rf "$CF/main" "$CF/abc1234567"; mkdir -p "$CF/main/docs" "$CF/abc1234567/docs" "$CF/abc1234567/web" "$CF/main/web"
+printf 'module m\n\nrequire git.corp.com/team/x v1.0.0\n' > "$CF/abc1234567/go.mod"
+FX Go git.corp.com/team/x 1.0.0 "{\"vulns\":[$(jq -nc '{id:"GHSA-priv-0000-gate",aliases:["CVE-2099-7"],database_specific:{severity:"HIGH"},affected:[]}')]}"
+printf -- '- Paket privat: git.corp.com/team\n' > "$CF/main/docs/WORKFLOW.md"; : > "$CVE_FIX/calls"
+out="$(export DIFF="$DGO"; GE)"; rc=$?
+ok "gerbang privat: pola WORKFLOW cabang tujuan -> exit 0, curl tanpa nama, PERINGATAN jumlah tanpa nama" "$rc|$(grep -c 'git.corp.com' "$CVE_FIX/calls")|$(grep -c '^PERINGATAN: cve (go.mod) 1 paket privat tidak diperiksa$' <<<"$out")|$(grep -c 'git.corp.com' <<<"$out")" '0|0|1|0'
+rm -f "$CF/main/docs/WORKFLOW.md"; printf -- '- Paket privat: git.corp.com/team\n' > "$CF/abc1234567/docs/WORKFLOW.md"
+out="$(export DIFF="$DGO"; GE)"; rc=$?
+ok "gerbang privat: pola hanya di PR (bukan cabang tujuan) -> tetap BLOK dan PERINGATAN pola baru" "$rc|$(grep -c '^BLOK: cve (go.mod)' <<<"$out")|$(grep -c '^PERINGATAN: cve (go.mod) pola privat baru' <<<"$out")" '1|1|1'
+rm -f "$CF/abc1234567/docs/WORKFLOW.md"
+DNPM=$'diff --git a/web/package-lock.json b/web/package-lock.json\n+x'
+jq -n '{lockfileVersion:3,packages:{"":{},"node_modules/@acme/x":{version:"1.0.0"}}}' > "$CF/abc1234567/web/package-lock.json"; FX npm @acme/x 1.0.0 "{\"vulns\":[$(V GHSA-priv-0000-npm CVE-2099-8 HIGH)]}"
+printf '@acme:registry=https://corp.example/\n//corp.example/:_authToken=SECRET123\n' > "$CF/main/web/.npmrc"; : > "$CVE_FIX/calls"
+out="$(export DIFF="$DNPM"; GE)"; rc=$?; ok "gerbang privat: .npmrc di direktori lockfile (cabang tujuan) -> exit 0, tanpa token di keluaran, curl tanpa nama" "$rc|$(grep -c '@acme' "$CVE_FIX/calls")|$(grep -c 'SECRET123' <<<"$out")" '0|0|0'
+rm -f "$CF/main/web/.npmrc"; printf '@acme:registry=https://corp.example/\n' > "$CF/main/.npmrc"; : > "$CVE_FIX/calls"
+out="$(export DIFF="$DNPM"; GE)"; rc=$?; ok "gerbang privat: .npmrc di akar repo juga dibaca -> exit 0" "$rc|$(grep -c '@acme' "$CVE_FIX/calls")" '0|0'
+out="$(export DIFF="$DNPM" CF_ERR=1 CF_ERR_PATH=.npmrc; GE)"; rc=$?; ok "gerbang privat: .npmrc 500 di cabang tujuan -> GAGAL cve (fail-closed)" "$rc|$(grep -c '^GAGAL: cve: .*npmrc' <<<"$out")" '1|1'
+rm -f "$CF/main/.npmrc"; printf -- '- Paket privat: git.corp.com/team\n' > "$CF/main/docs/WORKFLOW.md"
+out="$(export DIFF="$DGO" CF_ERR=1 CF_ERR_PATH=docs/WORKFLOW.md; GE)"; rc=$?; ok "gerbang privat: WORKFLOW 500 di cabang tujuan -> GAGAL cve (fail-closed), nama tidak terkirim" "$rc|$(grep -c '^GAGAL: cve: .*WORKFLOW' <<<"$out")" '1|1'
+rm -f "$CF/main/docs/WORKFLOW.md"; : > "$CVE_FIX/calls"; out="$(export DIFF="$DNPM"; GE)"; rc=$?
+ok "gerbang privat: .npmrc dan WORKFLOW 404 = tanpa pola -> normal (BLOK, nama dikueri)" "$rc|$(grep -c '^BLOK: cve (web/package-lock.json)' <<<"$out")|$(grep -c '@acme/x' "$CVE_FIX/calls")" '1|1|1'
+printf -- '- Pemeriksaan CVE: tidak. uji\n- Paket privat: git.corp.com/team\n' > "$CF/main/docs/WORKFLOW.md"; out="$(export DIFF="$DGO"; GE)"; rc=$?
+ok "gerbang privat: opt-out WORKFLOW tetap menang bersama pola" "$rc|$(grep -c 'dimatikan' <<<"$out")" '0|1'
+rm -rf "$CF/main" "$CF/abc1234567"; mkdir -p "$CF/main" "$CF/abc1234567"
+
+# 3l-4. cve-audit.sh dan dokumen: paket privat (#25)
+AUD="$tmp/cve/au"; mkdir -p "$AUD/priv" "$AUD/allpriv" "$AUD/np" "$AUD/docs"; : > "$CFA/calls"; echo '[]' > "$CFA/open.json"
+jq -n '{lockfileVersion:3,packages:{"":{},"node_modules/@acme/x":{version:"1.0.0"},"node_modules/zz":{version:"1.0.0"}}}' > "$AUD/priv/package-lock.json"
+jq -n '{lockfileVersion:3,packages:{"":{},"node_modules/@acme/x":{version:"1.0.0"},"node_modules/@acme/y":{version:"1.0.0"}}}' > "$AUD/allpriv/package-lock.json"
+FX npm @acme/x 1.0.0 "{\"vulns\":[$(VF GHSA-pa00-0001-aaaa CVE-PA1 HIGH @acme/x 1.0.1)]}"
+printf -- '- Paket privat: @acme/*\n' > "$AUD/docs/WORKFLOW.md"; : > "$CVE_FIX/calls"
+out="$(AU priv/package-lock.json)"; rc=$?
+ok "audit privat: pola WORKFLOW -> kalimat dengan jumlah, tanpa nama, curl tanpa nama, tanpa POST" "$rc|$(grep -c "tidak ada kerentanan diketahui di OSV per $(date -u +%F) untuk priv/package-lock.json (1 paket privat tidak diperiksa)" <<<"$out")|$(grep -c '@acme' <<<"$out")|$(grep -c '@acme' "$CVE_FIX/calls")|$(grep -c '^api -X POST' "$CFA/calls")" '0|1|0|0|0'
+out="$(AU allpriv/package-lock.json)"; ok "audit privat: semua dilewati -> kalimat khusus, bukan 'tidak ada kerentanan'" "$(grep -c 'semua dependensi dilewati (privat); tidak ada yang diperiksa untuk allpriv/package-lock.json' <<<"$out")|$(grep -c 'tidak ada kerentanan' <<<"$out")" '1|0'
+rm -f "$AUD/docs/WORKFLOW.md"; cp "$AUD/allpriv/package-lock.json" "$AUD/np/package-lock.json"; printf '@acme:registry=https://corp.example/\n//corp.example/:_authToken=SECRET123\n' > "$AUD/np/.npmrc"
+out="$(AU np/package-lock.json)"; ok "audit privat: .npmrc di direktori lockfile dibaca; token tidak tampil" "$(grep -c 'semua dependensi dilewati (privat)' <<<"$out")|$(grep -c 'SECRET123' <<<"$out")" '1|0'
+rm -f "$AUD/np/.npmrc"; printf '@acme:registry=https://corp.example/\n' > "$AUD/.npmrc"; out="$(AU np/package-lock.json)"; ok "audit privat: .npmrc di akar repo juga dibaca" "$(grep -c 'semua dependensi dilewati (privat)' <<<"$out")" 1
+rm -f "$AUD/.npmrc"
+jq -n '{lockfileVersion:3,packages:{"":{},"node_modules/@acme/x":{version:"1.0.0"},"node_modules/aa":{version:"1.0.0"}}}' > "$AUD/priv/package-lock.json"; printf -- '- Paket privat: @acme/*\n' > "$AUD/docs/WORKFLOW.md"; : > "$CFA/calls"; : > "$CFA/last-body"
+out="$(AU priv/package-lock.json)"; ok "audit privat: issue untuk paket publik tidak memuat nama privat (judul, badan, keluaran)" "$(grep -c '^api -X POST' "$CFA/calls")|$(grep -c '@acme' "$CFA/calls")|$(grep -c '@acme' "$CFA/last-body")|$(grep -c '@acme' <<<"$out")" '1|0|0|0'
+rm -f "$AUD/docs/WORKFLOW.md"
+grep -q 'Paket privat:' templates/WORKFLOW.md; ok "templat WORKFLOW memuat 'Paket privat:'" $? 0
+grep -q 'Paket privat:' PRIVACY.md && grep -q '~/.npmrc' PRIVACY.md; ok "PRIVACY: sumber pola dan ~/.npmrc tidak dibaca" $? 0
+grep -q 'Paket privat:' README.md; ok "README menyebut 'Paket privat:'" $? 0
+grep -q 'Paket privat' skills/cve-audit/SKILL.md; ok "skill cve-audit menyebut paket privat" $? 0
+grep -q '"version": "0.9.0"' .claude-plugin/plugin.json; ok "plugin.json versi 0.9.0" $? 0
+
+# 3l-5. perbaikan hasil review akhir #25
+printf -- '- Paket privat: @acme/*, git.corp.com/tim. Penjelasan, panjang.\n' > "$Q/wfa.md"
+ok "final: kalimat penjelas sesudah '. ' tidak jadi pola" "$(CQ --workflow "$Q/wfa.md")" '*:@acme/*|*:git.corp.com/tim'
+sed -n 's/^\(- Paket privat: \).*/\1@a\/*, git.x.com\/t. x/p' templates/WORKFLOW.md > "$Q/wft.md"; ok "final: templat WORKFLOW terisi contoh tetap terurai bersih" "$(CQ --workflow "$Q/wft.md")" '*:@a/*|*:git.x.com/t'
+printf '@acme:registry=https://npm.corp.com/' > "$Q/nonl.npmrc"; ok "final: baris .npmrc terakhir tanpa newline tetap dibaca" "$(CQ --npmrc "$Q/nonl.npmrc")" 'npm:@acme/*'
+printf '@acme:registry=//npm.corp.com/\n' > "$Q/pr.npmrc"; ok "final: URL protokol-relatif (//host/) dianggap privat" "$(CQ --npmrc "$Q/pr.npmrc")" 'npm:@acme/*'
+printf -- '- Paket privat: a-lib\n- Paket privat: b-lib\n' > "$Q/wf2.md"; ok "final: beberapa baris Paket privat semuanya berlaku" "$(CQ --workflow "$Q/wf2.md")" '*:a-lib|*:b-lib'
+cp "$P/h.json" "$P/package-lock.json"
+for pat in '***' '?*' '?'; do PL '%s\n' "$pat"; : > "$CVE_FIX/calls"; out="$(CP "$P/package-lock.json" --private "$P/pat")"
+  ok "final: pola '$pat' (cocok semua) diabaikan dengan PERINGATAN" "$(grep -c '^npm lodash' "$CVE_FIX/calls")|$(grep -c "^PERINGATAN: pola '\*' mematikan pemeriksaan" "$P/err")" '1|1'; done
+printf 'Foo__Bar==1.0\nrequests==2.0.0\n' > "$P/py/requirements.txt"; ok "final: --list PyPI melipat deretan pemisah (PEP 503)" "$($CV --list "$P/py/requirements.txt" 2>/dev/null | cut -f2 | paste -sd, -)" 'foo-bar,requests'
+PL 'foo-bar\n'; : > "$CVE_FIX/calls"; out="$(CP "$P/py/requirements.txt" --private "$P/pat")"; ok "final: pola PyPI cocok nama dengan deretan pemisah" "$(grep -c 'foo-' "$CVE_FIX/calls")|$(grep -c '^PyPI requests' "$CVE_FIX/calls")" '0|1'
 
 # 3k-1. cleanup.sh: laporan kandidat cabang/worktree ter-merge (repo git nyata + remote bare lokal; gh palsu untuk REST)
 CL="$tmp/cl"; mkdir -p "$CL/bin"; export CL
