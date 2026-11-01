@@ -7,7 +7,8 @@
 # Keluaran TSV: jenis  nama  sha  bukti  aksi   (jenis worktree|cabang-lokal|cabang-remote; bukti leluhur|pr-merged|-; aksi hapus|dihapus|lewati:<alasan>).
 # --apply menghapus berurutan: worktree (tanpa --force), cabang lokal (git branch -d, cadangan update-ref -d <ref> <sha> yang hanya berhasil bila ujung belum berubah), remote
 # (git push --delete; "remote ref does not exist" = sudah terhapus). Setiap baris memuat SHA ujung supaya bisa dipulihkan: git branch <nama> <sha>. Kode keluar 1 bila ada yang gagal.
-# Bukti ter-merge: (a) ujung cabang leluhur origin/<bawaan> atau origin/<integrasi>; (b) PR merged dengan head.sha sama dengan ujung (squash/rebase).
+# Bukti ter-merge: (a) ujung cabang leluhur origin/<bawaan> atau origin/<integrasi>; (b) PR merged dengan head.sha sama dengan ujung (squash/rebase)
+# DAN base PR itu = cabang bawaan atau integrasi (PR bertumpuk yang di-merge ke cabang induk BUKAN bukti: isinya belum masuk ke integrasi).
 # Tidak pernah kandidat: cabang bawaan dan integrasi, cabang yang head atau base PR terbuka, cabang ter-checkout di worktree yang tidak ikut dihapus,
 # worktree kotor/terkunci/terlepas/di ~/orca/workspaces/. Hanya git dan REST (gh api), tanpa GraphQL. GitHub saja (backend lain: keluar 0).
 set -u
@@ -65,7 +66,7 @@ evidence() { # <nama> <ujung> -> leluhur | pr-merged | -
   for b in $bases; do git merge-base --is-ancestor "$2" "origin/$b" 2>/dev/null && { echo leluhur; return; }; done
   if [ "$havegh" = 1 ]; then
     q="$(jq -rn --arg h "$owner:$1" '$h|@uri')"
-    gh api "repos/$repo/pulls?head=$q&state=all&per_page=100" 2>/dev/null | jq -e --arg s "$2" 'any(.[]; .merged_at != null and .head.sha == $s)' >/dev/null 2>&1 && { echo pr-merged; return; }
+    gh api "repos/$repo/pulls?head=$q&state=all&per_page=100" 2>/dev/null | jq -e --arg s "$2" --arg bs "$bases" 'any(.[]; .merged_at != null and .head.sha == $s and ((.base.ref // "") as $b | ($bs|split(" ")|index($b)) != null))' >/dev/null 2>&1 && { echo pr-merged; return; }
   fi
   echo -
 }

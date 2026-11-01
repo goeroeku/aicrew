@@ -719,6 +719,7 @@ echo '[{"id":285528753,"node_id":"PVTI_x","content_type":"Issue","content":{"num
 : > "$FAKE/calls"; ok "ghx_items: tanpa batas = panggilan identik" "$(RL ghx_items o 3 2>/dev/null)|$(grep -c '^project item-list 3 --owner o --limit 200 --format json$' "$FAKE/calls")" '{"items":[]}|1'
 ok "ghx_items: REST user (nama kolom string)" "$(export GHX_SIM=1; RL ghx_items o 3 2>/dev/null | jq -c '[.items[]|[.content.number,.content.type,.status]]')" '[[5,"Issue","In review"],[6,"Issue",null]]'
 echo "$FO" > "$FAKE/fields.json"
+: > "$FAKE/calls"; (export GHX_SIM=1 OWNER_TYPE=Organization; RL ghx_items o 3 >/dev/null 2>&1); ok "ghx_items: REST meminta Status dengan fields[]=<id> (bentuk dokumentasi, teruji di org)" "$(grep -c 'items?per_page=100&fields\[\]=434173140&page=1' "$FAKE/calls")" 1
 ok "ghx_items: REST org (nama kolom {raw})" "$(export GHX_SIM=1 OWNER_TYPE=Organization; RL ghx_items o 3 2>/dev/null | jq -c '[.items[]|[.content.number,.status]]')" '[[5,"In review"],[6,null]]'
 ok "ghx_status_field: REST org, opsi dinormalkan" "$(export GHX_SIM=1 OWNER_TYPE=Organization; RL ghx_status_field o 3 2>/dev/null | jq -c '[.id,(.options|map(.name))]')" '[434173140,["Backlog","In review","Done"]]'
 echo "$FU" > "$FAKE/fields.json"
@@ -1088,5 +1089,16 @@ ok "hitung: cabang bawaan tak diketahui -> 0 (preflight diam)" "$(REPO_FAIL=1 CL
 MK; G branch issue-9 main; G push -q origin issue-9; G worktree add -q "$CL/w-wt-9" issue-9; OUT="$(CLN --no-fetch --apply)"
 ok "apply: issue-9 baru (ujung = basis) -> worktree, cabang lokal, dan remote tetap ada" "$([ -d "$CL/w-wt-9" ] && echo ada)|$(LB | tr ' ' '\n' | grep -cx issue-9)|$(RB | tr ' ' '\n' | grep -cx issue-9)|$(grep -c 'lewati:baru-tanpa-commit' <<<"$OUT")" 'ada|1|1|3'
 grep -q 'di-.gitignore' README.md; ok "README: menyebut berkas yang di-.gitignore ikut terhapus bersama worktree" $? 0
+
+# 3k-7. PR bertumpuk: bukti pr-merged hanya sah bila base PR = cabang bawaan/integrasi (kasus nyata Nexora: PR di-merge ke cabang induk, bukan ke integrasi)
+MK
+for n in 11 12; do G checkout -q -b "issue-$n" main; echo "$n" > "$CL/w/issue-$n.txt"; G add -A; G commit -q -m "issue-$n"; G push -q origin "issue-$n"; G checkout -q main; done
+T11="$(G rev-parse issue-11)"; T12="$(G rev-parse issue-12)"
+printf '[{"number":31,"merged_at":"2026-11-01T01:32:00Z","head":{"ref":"issue-11","sha":"%s"},"base":{"ref":"issue-10"}}]' "$T11" > "$CL/pr-issue-11.json"   # di-merge ke cabang induk issue-10
+printf '[{"number":32,"merged_at":"2026-11-01T01:32:00Z","head":{"ref":"issue-12","sha":"%s"},"base":{"ref":"integ"}}]' "$T12" > "$CL/pr-issue-12.json"      # di-merge ke cabang integrasi
+OUT="$(CLN --no-fetch --apply)"
+ok "PR merged ke cabang induk (bukan bawaan/integrasi) -> bukan bukti ter-merge, issue-11 tetap ada (lokal dan remote)" "$(LB | tr ' ' '\n' | grep -cx issue-11)|$(RB | tr ' ' '\n' | grep -cx issue-11)|$(grep -c $'^cabang-lokal\tissue-11\t.*\t-\tlewati:belum-ter-merge' <<<"$OUT")" '1|1|1'
+ok "PR merged ke cabang integrasi -> tetap bukti sah, issue-12 dihapus" "$(LB | tr ' ' '\n' | grep -cx issue-12)|$(RB | tr ' ' '\n' | grep -cx issue-12)" '0|0'
+MK; DBM=false out="$(cd "$CL/w" && GH_REPO=o/r PATH="$CL/bin:$PATH" bash "$root/scripts/preflight.sh" github 2>&1)"; ok "preflight: AWAS menyebut dampak PR bertumpuk salah-base" "$(grep -c 'PR bertumpuk' <<<"$out")" 1
 
 [ "$fails" = 0 ] && echo "SEMUA LULUS" || { echo "$fails GAGAL"; exit 1; }

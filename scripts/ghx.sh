@@ -141,8 +141,8 @@ ghx_items() {   # <owner> <num> -> {"items":[{"id","status","content":{"number",
   ghx_gql gh project item-list "$2" --owner "$1" --limit 200 --format json || rc=$?; [ "$rc" = 75 ] || return "$rc"
   b="$(_ghx_pbase "$1" "$2")" || return 1
   fld="$(_ghx_status_field_rest "$1" "$2")" || return $?; fid="$(jq -r '.id // empty' <<<"$fld")"
-  while :; do   # semua halaman; Status hanya ikut bila diminta lewat ?fields=<id kolom>
-    pg="$(_ghx_papi gh api "$b/items?per_page=100&fields=$fid&page=$page")" || return $?
+  while :; do   # semua halaman; Status hanya ikut bila diminta lewat ?fields[]=<id kolom>
+    pg="$(_ghx_papi gh api "$b/items?per_page=100&fields[]=$fid&page=$page")" || return $?
     acc="$({ printf '%s\n' "$acc"; printf '%s\n' "$pg"; } | jq -c -s '.[0] + .[1]')"
     [ "$(jq length <<<"$pg")" -ge 100 ] || break; page=$((page+1))
   done
