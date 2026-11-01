@@ -55,6 +55,18 @@ tanpa-induk→no-parent. (`discovery phase:discovery`, `needs-*`, `risk:*`, `epi
 - `bash tests/run.sh` hijau; CI hijau. WORKFLOW.md lama (semua kunci Indonesia) lolos tanpa perubahan di `workflow.sh` dan skrip pembaca.
 - README: Configuration table memakai kunci Inggris; bagian Stability menyatakan kebijakan alias.
 
+## Putusan setelah builder-check (terverifikasi di kode)
+
+- Empat skrip membaca WORKFLOW.md tanpa `workflow.sh`: `install-permissions.sh:16`, `cve-private.sh:14`, `pr-merge-check.sh:87-137` (berkas via REST), `release-report.sh:14`; `workflow.sh:6` membaca kunci dari berkas lokal mentah. Maka keputusan 2 diganti:
+  pemeta alias satu-satunya adalah fungsi `scripts/lib/workflow-normalize.sh` (di-source, atau `workflow.sh --normalize` membaca stdin); `workflow.sh` memakainya, dan keempat skrip itu memanggilnya sebelum `sed`/`grep`.
+- Pemeta nilai hanya menyentuh token pertama setelah kunci (bukan prosa); `ya`/`tidak` dipetakan hanya untuk kunci yang bernilai ya/tidak.
+- Bentuk kanonik nilai mode huruf kecil: `agent-after-qa`, `agent-after-merge`; JSON izin (`autopilot-permissions.json:87`) memakai kunci itu, dan nilai dinormalkan sebelum `jq`.
+- Tabel kunci ditambah `Merge PR ke cabang integrasi` → `Merge PR to integration branch`.
+- Label: `label.sh <nama> --all` mencetak kanonik dan alias; resume/board/autopilot/cleanup mencocokkan salah satunya.
+- Pesan skrip yang mengutip kunci/opsi (`cve-check.sh:68`, `pr-merge-check.sh:139`, `board.sh:66`) menyebut bentuk Inggris (perintah teknis di dalam pesan = Inggris).
+- Tes lama yang mengunci nama Indonesia (≈69 baris skrip/opsi, ≈55 baris label) dibiarkan sebagai tes alias; tes baru untuk nama Inggris; tes penjaga di commit terakhir.
+- `Cabang integrasi: tidak ada` → `none` dicatat, tanpa konflik fungsional dengan `Release notes: none`.
+
 ## Diserahkan ke pembangun
 
 Struktur pemetaan di `workflow.sh`, cara berbagi daftar alias antar skrip, urutan commit, dan isi pembungkus skrip lama.
