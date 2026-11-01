@@ -898,4 +898,38 @@ ok "gerbang cve: opt-out di WORKFLOW.md -> exit 0, PERINGATAN dimatikan, curl 0"
 rm -f "$tmp/cve/gw/docs/WORKFLOW.md"; mkdir -p "$CF/abc1234567/sub dir"; printf 'module m\n\nrequire golang.org/x/net v0.7.0\n' > "$CF/abc1234567/sub dir/go.mod"; rm -f "$CF/abc1234567/go.mod"
 out="$(export DIFF=$'diff --git a/sub dir/go.mod b/sub dir/go.mod\n+x'; GE)"; rc=$?; ok "gerbang cve: path bersepasi (sub dir/go.mod) dibaca dan diperiksa -> exit 1" "$rc|$(grep -c 'BLOK: cve (sub dir/go.mod)' <<<"$out")" '1|1'
 
+# 3j-5. cve-audit.sh: audit seluruh repo -> satu issue per paket rentan (REST), tanpa duplikat; skill dan dokumen
+mkdir -p "$tmp/cve/abin" "$tmp/cve/au"; export CFA="$tmp/cveaudit"; mkdir -p "$CFA"
+cat > "$tmp/cve/abin/gh" <<'EOF'
+#!/usr/bin/env bash
+echo "$*" | tr '\n' '~' >> "$CFA/calls"; echo >> "$CFA/calls"
+case "$*" in
+  "issue list"*) cat "$CFA/open.json" 2>/dev/null || echo '[]' ;;
+  "api -X POST"*) for a in "$@"; do case "$a" in body=*) printf '%s' "${a#body=}" > "$CFA/last-body" ;; esac; done; echo '{"number":99}' ;;
+esac
+EOF
+chmod +x "$tmp/cve/abin/gh"
+AU() { (cd "$tmp/cve/au" && GH_REPO=o/r PATH="$tmp/cve/abin:$tmp/cve/bin:$PATH" bash "$root/scripts/cve-audit.sh" "$@" 2>&1); }
+jq -n '{lockfileVersion:3,packages:{"":{},"node_modules/aa":{version:"1.0.0"},"node_modules/bb":{version:"1.0.0"},"node_modules/cc":{version:"1.0.0"},"node_modules/dd":{version:"1.0.0"}}}' > "$tmp/cve/au/package-lock.json"
+git init -q "$tmp/cve/au" 2>/dev/null; git -C "$tmp/cve/au" add package-lock.json 2>/dev/null
+FX npm aa 1.0.0 "{\"vulns\":[$(VF GHSA-aaaa-0001-aaaa CVE-A1 HIGH aa 1.0.1),$(VF GHSA-aaaa-0002-aaaa CVE-A2 MODERATE aa 1.0.2)]}"
+FX npm bb 1.0.0 "{\"vulns\":[$(VF GHSA-bbbb-0001-aaaa CVE-B1 CRITICAL bb 2.0.0)]}"
+FX npm cc 1.0.0 "{\"vulns\":[$(VF GHSA-cccc-0001-aaaa CVE-C1 HIGH cc "")]}"
+FX npm dd 1.0.0 "{\"vulns\":[$(VF GHSA-dddd-0001-aaaa CVE-D1 HIGH dd 1.0.1)]}"
+echo '[{"number":7,"title":"CVE: dd 1.0.0 -> 1.0.1 (patch)"}]' > "$CFA/open.json"; : > "$CFA/calls"
+out="$(AU)"; rc=$?   # tanpa argumen: berkas dikenali dari git ls-files
+ok "audit: tiga issue dibuat (aa, bb, cc); dd dilewati karena issue terbuka berawalan sama" "$rc|$(grep -c '^api -X POST' "$CFA/calls")|$(grep -c 'title=CVE: dd' "$CFA/calls")" '0|3|0'
+ok "audit: dua temuan satu paket -> satu issue, target tunggal, hanya needs-security" "$(grep -c 'title=CVE: aa 1.0.0 -> 1.0.2 (patch)' "$CFA/calls")|$(grep 'title=CVE: aa ' "$CFA/calls" | grep -c 'labels\[\]=needs-principal')|$(grep 'title=CVE: aa ' "$CFA/calls" | grep -c 'labels\[\]=needs-security')" '1|0|1'
+ok "audit: saran major -> needs-security dan needs-principal" "$(grep 'title=CVE: bb 1.0.0 -> 2.0.0 (major)' "$CFA/calls" | grep -c 'labels\[\]=needs-security.*labels\[\]=needs-principal\|labels\[\]=needs-principal.*labels\[\]=needs-security')" 1
+ok "audit: tanpa perbaikan -> judul tanpa target dan needs-principal" "$(grep 'title=CVE: cc 1.0.0 (tanpa-perbaikan)' "$CFA/calls" | grep -c 'labels\[\]=needs-principal')" 1
+ok "audit: badan memuat tanggal, sumber OSV, dan batas klaim" "$(grep -c "per $(date -u +%F)" "$CFA/last-body")|$(grep -c 'osv.dev' "$CFA/last-body")|$(grep -ci 'bebas CVE' "$CFA/last-body")" '1|1|1'
+: > "$CFA/calls"; out="$(AU --dry-run)"; ok "audit: --dry-run tidak memanggil POST, mencetak tiga rencana" "$(grep -c '^api -X POST' "$CFA/calls")|$(grep -c '^\[dry-run\]' <<<"$out")" '0|3'
+jq -n '{lockfileVersion:3,packages:{"":{},"node_modules/zz":{version:"1.0.0"}}}' > "$tmp/cve/au/clean-lock/package-lock.json" 2>/dev/null || { mkdir -p "$tmp/cve/au/clean-lock"; jq -n '{lockfileVersion:3,packages:{"":{},"node_modules/zz":{version:"1.0.0"}}}' > "$tmp/cve/au/clean-lock/package-lock.json"; }
+: > "$CFA/calls"; out="$(AU clean-lock/package-lock.json)"; rc=$?
+ok "audit: bersih -> kalimat per tanggal, tanpa POST, exit 0" "$rc|$(grep -c "tidak ada kerentanan diketahui di OSV per $(date -u +%F) untuk clean-lock/package-lock.json" <<<"$out")|$(grep -c '^api -X POST' "$CFA/calls")" '0|1|0'
+: > "$CFA/calls"; out="$(export CVE_DOWN=1; AU)"; rc=$?; ok "audit: OSV mati -> exit 2, tanpa POST" "$rc|$(grep -c '^api -X POST' "$CFA/calls")" '2|0'
+grep -q 'cve-audit.sh' skills/cve-audit/SKILL.md && grep -q 'dry-run' skills/cve-audit/SKILL.md && grep -q '^name: cve-audit' skills/cve-audit/SKILL.md; ok "skill cve-audit: ada, memanggil cve-audit.sh dan dry-run" $? 0
+grep -q 'Pemeriksaan CVE:' templates/WORKFLOW.md; ok "templat WORKFLOW memuat 'Pemeriksaan CVE:'" $? 0
+grep -q 'cve-check.sh' agents/security.md; ok "agen security menyebut cve-check.sh" $? 0
+
 [ "$fails" = 0 ] && echo "SEMUA LULUS" || { echo "$fails GAGAL"; exit 1; }
