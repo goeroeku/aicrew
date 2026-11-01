@@ -3,31 +3,31 @@
 Dibuat oleh `aicrew:kickoff`. Keputusan project ini; menimpa bawaan aicrew.
 
 ## Keputusan owner
-- Profil: {{ringan | standar | penuh}}
+- Profile: {{light | standard | full}}
 - Backend: {{github | gitlab}} — repo: {{owner/nama}}
-- Role aktif: {{daftar}}
+- Active roles: {{daftar}}
 - PRD: {{docs/PRD.md}} — Status PRD: {{disetujui | belum}}
-- Kode ada: {{ya | tidak}} (ya → breakdown menjalankan audit status)
+- Existing code: {{yes | no}} (ya → breakdown menjalankan audit status)
 - Worktree: {{dibuat orkestrator di samping repo (../<repo>-wt-N) | disiapkan manual / Orca}}
-- Basis worktree: {{path absolut, mis. di dalam workspace Orca | kosong = di samping repo}}. `install-permissions.sh` mengisi izin baca worktree dari sini.
-- Board kanban: {{tidak ada | GitHub Project <owner>/<nomor>, status bawaan: Backlog, Ready, In progress, In review, Done}}
-- Kartu Done: {{owner | agen-setelah-merge}}. Bawaan: owner. `agen-setelah-merge` (autopilot): orkestrator memindahkan kartu ke Done
-  setelah merge terverifikasi (`pr-merge-check.sh --after`) pada mode merge `agen-setelah-QA`; berlaku hanya bila Board kanban aktif.
+- Worktree base: {{path absolut, mis. di dalam workspace Orca | kosong = di samping repo}}. `install-permissions.sh` mengisi izin baca worktree dari sini.
+- Kanban board: {{none | GitHub Project <owner>/<nomor>, status bawaan: Backlog, Ready, In progress, In review, Done}}
+- Done card: {{owner | agent-after-merge}}. Bawaan: owner. `agent-after-merge` (autopilot): orkestrator memindahkan kartu ke Done
+  setelah merge terverifikasi (`pr-merge-check.sh --after`) pada mode merge `agent-after-qa`; berlaku hanya bila Kanban board aktif.
 - needs-principal: {{owner | principal-auto}}. Bawaan: owner (semua tingkat dieskalasi ke owner). `principal-auto`: hanya TINGKAT 1 diputuskan
-  agen `aicrew-principal` (butuh role principal aktif); tingkat 2 tetap owner. Keputusan otomatis diberi label `keputusan-otomatis` dan dimuat di laporan rilis.
+  agen `aicrew-principal` (butuh role principal aktif); tingkat 2 tetap owner. Keputusan otomatis diberi label `auto-decision` dan dimuat di laporan rilis.
 - Risiko (`risk:*`, diberi breakdown): L0 = dokumen/tes/refactor tanpa efek perilaku; L1 = perilaku biasa; L2 = auth, uang, data pribadi, migrasi, infra, atau sulit dibalik.
 - `epic` = satu issue per journey (daftar centang issue anak). Bukan pekerjaan: agen dan skrip melewatinya; owner menutupnya saat semua anak selesai.
-- Label integrasi: {{di-integrasi (bawaan) | nama lain}}. Label keputusan otomatis: {{keputusan-otomatis (bawaan) | nama lain}}. Dibaca oleh `scripts/label.sh`.
-- Label discovery: {{discovery phase:discovery (bawaan) | nama lain}}. Label epic belum dipecah: {{belum-dipecah (bawaan) | nama lain}}. Dibaca oleh `scripts/label.sh`; epic hanya mencapai In review bila ada anak bukan-discovery.
-- Label menunggu rilis: {{menunggu-rilis (bawaan) | nama lain}}. Dipasang pada issue yang PR-nya menambah workflow terjadwal (`schedule`/`workflow_dispatch`) atau `dependabot.yml` ke cabang non-bawaan: GitHub baru mengaktifkannya dari cabang bawaan. Issue tetap terbuka sampai berkasnya ada di cabang bawaan. Dibaca oleh `scripts/label.sh`.
-- Label tanpa induk: {{tanpa-induk (bawaan) | nama lain}}. Issue terbuka berlabel ini sengaja di luar epic (mis. payung tindak lanjut) dan dilewati `epic-link.sh --check`.
-- Tutup issue setelah merge integrasi: {{tidak (bawaan) | ya}}. GitHub hanya menutup issue lewat merge ke cabang bawaan, sehingga progres sub-issue epic tertahan 0% selama integrasi belum ke `main`; `ya` = `board.sh --sync` menutup issue berlabel di-integrasi (kecuali `epic`).
-- Bersihkan setelah merge: {{ya (bawaan) | laporkan | tidak}}. Setelah merge terverifikasi, `scripts/cleanup.sh --setelah-merge` menghapus worktree `<repo>-wt-<n>` dan cabang `issue-<n>` (lokal dan remote) yang TERBUKTI ter-merge (leluhur cabang bawaan/integrasi, atau PR merged dengan ujung yang sama), tanpa `--force`, dan mencetak SHA ujung supaya dapat dipulihkan. `laporkan` hanya mencetak; `tidak` melewati. Cabang bernama lain tidak pernah dihapus otomatis: jalankan `scripts/cleanup.sh` (laporan) lalu `--apply`. Baris yang hilang di pemasangan lama = `ya`. Perhatian: worktree `<repo>-wt-<n>` dihapus beserta file yang di-ignore di dalamnya (mis. `.env` lokal, `node_modules`); `git worktree remove` tanpa paksa hanya menolak perubahan yang belum ter-commit atau file untracked. Pilih `laporkan` bila ada file semacam itu yang masih dibutuhkan.
+- Integrated label: {{integrated (default) | nama lain}}. Auto-decision label: {{auto-decision (default) | nama lain}}. Dibaca oleh `scripts/label.sh`.
+- Discovery label: {{discovery phase:discovery (default) | nama lain}}. Unsplit epic label: {{unsplit (default) | nama lain}}. Dibaca oleh `scripts/label.sh`; epic hanya mencapai In review bila ada anak bukan-discovery.
+- Awaiting-release label: {{awaiting-release (default) | nama lain}}. Dipasang pada issue yang PR-nya menambah workflow terjadwal (`schedule`/`workflow_dispatch`) atau `dependabot.yml` ke cabang non-bawaan: GitHub baru mengaktifkannya dari cabang bawaan. Issue tetap terbuka sampai berkasnya ada di cabang bawaan. Dibaca oleh `scripts/label.sh`.
+- No-parent label: {{no-parent (default) | nama lain}}. Issue terbuka berlabel ini sengaja di luar epic (mis. payung tindak lanjut) dan dilewati `epic-link.sh --check`.
+- Close issues after integration merge: {{no (default) | yes}}. GitHub hanya menutup issue lewat merge ke cabang bawaan, sehingga progres sub-issue epic tertahan 0% selama integrasi belum ke `main`; `yes` = `board.sh --sync` menutup issue berlabel integrated (kecuali `epic`).
+- Clean up after merge: {{yes (default) | report | no}}. Setelah merge terverifikasi, `scripts/cleanup.sh --after-merge` menghapus worktree `<repo>-wt-<n>` dan cabang `issue-<n>` (lokal dan remote) yang TERBUKTI ter-merge (leluhur cabang bawaan/integrasi, atau PR merged dengan ujung yang sama), tanpa `--force`, dan mencetak SHA ujung supaya dapat dipulihkan. `report` hanya mencetak; `no` melewati. Cabang bernama lain tidak pernah dihapus otomatis: jalankan `scripts/cleanup.sh` (laporan) lalu `--apply`. Baris yang hilang di pemasangan lama = `yes`. Perhatian: worktree `<repo>-wt-<n>` dihapus beserta file yang di-ignore di dalamnya (mis. `.env` lokal, `node_modules`); `git worktree remove` tanpa paksa hanya menolak perubahan yang belum ter-commit atau file untracked. Pilih `report` bila ada file semacam itu yang masih dibutuhkan.
 - Release notes: {{CHANGELOG.md | external | none (bawaan)}}. `CHANGELOG.md` = `scripts/release-notes.sh` menyusun bagian per versi (Keep a Changelog) dari baris `Release note:` di badan PR, saat rilis; hanya baris bertanda yang masuk, dan Security hanya dari baris `Release note: Security - ...`. `external` (release-please, changesets, dll.) = aicrew tidak menyentuh berkasnya. `none` = tidak membuat apa pun. Disarankan `CHANGELOG.md` untuk proyek baru.
-- Pemeriksaan CVE: {{ya (bawaan) | tidak}}. `ya`: PR yang menyentuh `package-lock.json`, `go.mod`, atau `requirements*.txt` diperiksa ke OSV oleh `scripts/pr-merge-check.sh` (hanya paket baru/berubah; HIGH, CRITICAL, atau tanpa peringkat memblokir kecuali waiver owner `(cve)`; OSV mati = tolak). `tidak` melewati pemeriksaan dengan satu peringatan. Audit seluruh repo: skill `cve-audit`. Yang dikirim ke OSV hanya ekosistem, nama paket, dan versi.
-- Paket privat: {{pola dipisah koma, mis. @perusahaan/*, git.perusahaan.com/tim | kosong}}. Paket yang cocok tidak pernah dikirim ke OSV dan dilaporkan "tidak diperiksa" (bukan aman). Sumber lain yang dibaca otomatis: `GOPRIVATE` (Go) dan scope `.npmrc` proyek yang dipetakan ke registry non-publik (npm). Pola dibaca dari cabang tujuan, jadi merge dulu PR yang hanya berisi baris ini.
-- Bahasa artefak (kode, komentar, commit, label, nama cabang/database): {{Inggris (bawaan) | bahasa lain, hanya atas permintaan owner}}
-- Berkas `docs/` dilacak git: {{ya | tidak (di-ignore, disengaja)}}
+- CVE check: {{yes (default) | no}}. `yes`: PR yang menyentuh `package-lock.json`, `go.mod`, atau `requirements*.txt` diperiksa ke OSV oleh `scripts/pr-merge-check.sh` (hanya paket baru/berubah; HIGH, CRITICAL, atau tanpa peringkat memblokir kecuali waiver owner `(cve)`; OSV mati = tolak). `no` melewati pemeriksaan dengan satu peringatan. Audit seluruh repo: skill `cve-audit`. Yang dikirim ke OSV hanya ekosistem, nama paket, dan versi.
+- Private packages: {{pola dipisah koma, mis. @perusahaan/*, git.perusahaan.com/tim | kosong}}. Paket yang cocok tidak pernah dikirim ke OSV dan dilaporkan "tidak diperiksa" (bukan aman). Sumber lain yang dibaca otomatis: `GOPRIVATE` (Go) dan scope `.npmrc` proyek yang dipetakan ke registry non-publik (npm). Pola dibaca dari cabang tujuan, jadi merge dulu PR yang hanya berisi baris ini.
+- Artifact language (kode, komentar, commit, label, nama cabang/database): {{English (default) | other language, only at the owner's request}}
+- Track `docs/` in git: {{yes | no (ignored, intentional)}}
 
 ## Perintah backend (satu tempat, mudah diganti)
 | Aksi | Perintah |
@@ -43,15 +43,15 @@ Dibuat oleh `aicrew:kickoff`. Keputusan project ini; menimpa bawaan aicrew.
 - Tulis apa dan kenapa, bukan bagaimana (kecuali task berisiko).
 
 ## Label
-`role:*`, `stack:*`, `phase:*`, `needs-principal`, `needs-security`, `needs-perf`, `keputusan-otomatis`, `risk:L0`, `risk:L1`, `risk:L2`, `epic`, `bug`, `enhancement`, `in-progress`, `in-review`, `di-integrasi`
+`role:*`, `stack:*`, `phase:*`, `needs-principal`, `needs-security`, `needs-perf`, `auto-decision`, `risk:L0`, `risk:L1`, `risk:L2`, `epic`, `bug`, `enhancement`, `in-progress`, `in-review`, `integrated`
 (GitLab: pakai scoped label `role::qa`, dst.)
 
 ## Gerbang persetujuan owner
 1. PRD disetujui sebelum breakdown.
 2. PR/MR pertama diperiksa owner (dilonggarkan setelah percaya).
-3. Cabang integrasi: {{nama, mis. fitur-x-integrasi | tidak ada}}. Issue yang saling bergantung menumpuk di sini,
-   bukan di `main`. Merge PR ke cabang integrasi: {{owner | agen-setelah-QA}}. Bawaan: owner (persetujuan manual).
-   `agen-setelah-QA`: agen merge sendiri hanya bila suite penuh hijau, `aicrew-qa` lulus (dan `aicrew-security`
+3. Integration branch: {{name, e.g. feature-x-integration | none}}. Issue yang saling bergantung menumpuk di sini,
+   bukan di `main`. Merge PR to integration branch: {{owner | agent-after-qa}}. Bawaan: owner (persetujuan manual).
+   `agent-after-qa`: agen merge sendiri hanya bila suite penuh hijau, `aicrew-qa` lulus (dan `aicrew-security`
    untuk perubahan sensitif, yaitu berlabel `needs-security`; `aicrew-perf` untuk `needs-perf`), tanpa `needs-principal` dan tanpa `risk:L2` (L2 selalu owner; `pr-merge-check.sh --auto` menolaknya). Izin Bash terpasang di
    {{berkas settings, mis. `.claude/settings.local.json`: `Bash(gh pr merge:*)`}} (izin lewat chat tidak berlaku).
 4. Merge cabang integrasi / PR ke `main` dan pindah ke Done: {{owner | aturan otomatis}}. Bawaan: owner.
