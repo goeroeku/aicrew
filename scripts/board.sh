@@ -5,7 +5,10 @@
 # Gagal tidak fatal bagi alur: label tetap sumber status; skrip ini hanya cermin kanban (exit != 0 = laporkan, lanjut).
 set -euo pipefail
 source "$(dirname "$0")/ghx.sh"  # cadangan REST saat GraphQL kena batas
-owner="${1:?owner}"; num="${2:?nomor project}"
+if [ "$#" -lt 3 ] || { [ "$3" != "--sync" ] && [ "$#" -lt 4 ]; }; then
+  echo "Pemakaian: board.sh <owner> <proj> <issue> <status> | board.sh <owner> <proj> --sync" >&2; exit 64
+fi
+owner="$1"; num="$2"
 if [ "${3:-}" = "--sync" ]; then
   # status epic dari anaknya: sub-issue native bila ada, selain itu daftar centang "- [ ] #n" (kotak centang tidak pernah dicentang otomatis,
   # jadi status anak dibaca dari issue/board, bukan dari kotaknya). Ada anak berjalan atau sebagian sudah Done -> In progress; semua anak
