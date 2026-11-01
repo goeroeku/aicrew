@@ -987,6 +987,33 @@ ok "audit: paket sama di dua versi -> satu issue dalam satu putaran" "$(grep -c 
 grep -q 'privat' PRIVACY.md; ok "PRIVACY: menyebut nama paket privat/internal ikut terkirim" $? 0
 grep -q 'yarn.lock' README.md && grep -q 'pnpm-lock.yaml' README.md; ok "README: jujur soal lockfile yang belum tercakup (yarn.lock, pnpm-lock.yaml)" $? 0
 
+# 3l-1. cve-check.sh: paket privat tidak pernah dikirim ke OSV (#25)
+P="$tmp/cve/w/priv"; mkdir -p "$P"
+PL() { printf "$@" > "$P/pat"; }   # tulis berkas pola (printf: \t = tab)
+LK2() { jq -n --arg n1 "$2" --arg v1 "$3" --arg n2 "$4" --arg v2 "$5" '{lockfileVersion:3,packages:{"":{},("node_modules/"+$n1):{version:$v1},("node_modules/"+$n2):{version:$v2}}}' > "$1"; }   # berkas n1 v1 n2 v2
+CP() { (PATH="$tmp/cve/bin:$PATH" $CV "$@" 2>"$P/err"); }
+LK2 "$P/package-lock.json" @acme/x 1.0.0 lodash 4.17.15; FX npm @acme/x 1.0.0 "{\"vulns\":[$(V GHSA-priv-0000-aaaa CVE-P1 HIGH)]}"
+rm -f "$CVE_FIX/npm_lodash_4.17.15.json"; PL 'npm\t@acme/*\n'; : > "$CVE_FIX/calls"; out="$(CP "$P/package-lock.json" --private "$P/pat")"; rc=$?
+ok "cve privat: npm @acme/x tidak dikueri, publik tetap, 1 laporan dilewati" "$rc|$(grep -c '@acme' "$CVE_FIX/calls")|$(grep -c '^npm lodash 4.17.15' "$CVE_FIX/calls")|$(grep -c '^dilewati (privat): @acme/x@1.0.0$' "$P/err")" '0|0|1|1'
+LK2 "$P/h.json" @acme/x 2.0.0 lodash 4.17.15; LK2 "$P/b.json" @acme/x 1.0.0 lodash 4.17.15; cp "$P/h.json" "$P/package-lock.json"; : > "$CVE_FIX/calls"
+out="$(CP "$P/package-lock.json" --base "$P/b.json" --private "$P/pat")"; ok "cve privat: kueri basis tidak membocorkan nama" "$(grep -c '@acme' "$CVE_FIX/calls")|$(grep -c '^dilewati (privat): @acme/x@' "$P/err")" '0|1'
+mkdir -p "$P/go"; printf 'module m\n\nrequire (\n\tgit.corp.com/team/x v1.0.0\n\tgit.corp.com/teamx/y v1.0.0\n)\n' > "$P/go/go.mod"; PL 'Go\tgit.corp.com/team\n'; : > "$CVE_FIX/calls"
+out="$(CP "$P/go/go.mod" --private "$P/pat")"; ok "cve privat: Go awalan modul (team/x dilewati, teamx/y tidak)" "$(grep -c ' git.corp.com/team/x ' "$CVE_FIX/calls")|$(grep -c ' git.corp.com/teamx/y ' "$CVE_FIX/calls")" '0|1'
+PL 'Go\t@acme/*\n'; cp "$P/h.json" "$P/package-lock.json"; : > "$CVE_FIX/calls"; out="$(CP "$P/package-lock.json" --private "$P/pat")"
+ok "cve privat: pola ekosistem lain tidak berlaku" "$(grep -c '@acme/x' "$CVE_FIX/calls")" 1
+mkdir -p "$P/py"; printf 'Internal_Lib==1.0\nrequests==2.0.0\n' > "$P/py/requirements.txt"; PL 'Internal.Lib\n'; : > "$CVE_FIX/calls"; out="$(CP "$P/py/requirements.txt" --private "$P/pat")"
+ok "cve privat: PyPI dinormalisasi, pola tanpa tab berlaku untuk semua ekosistem" "$(grep -c 'internal-lib' "$CVE_FIX/calls")|$(grep -c '^PyPI requests' "$CVE_FIX/calls")" '0|1'
+cp "$P/h.json" "$P/package-lock.json"; : > "$CVE_FIX/calls"; out="$( (export CVE_PRIVATE='zzz,@acme/*'; CP "$P/package-lock.json") )"
+ok "cve privat: env CVE_PRIVATE dipisah koma" "$(grep -c '@acme/x' "$CVE_FIX/calls")" 0
+for pat in '*' '**'; do PL '%s\n' "$pat"; : > "$CVE_FIX/calls"; out="$(CP "$P/package-lock.json" --private "$P/pat")"
+  ok "cve privat: pola '$pat' diabaikan dengan PERINGATAN (lodash tetap dikueri)" "$(grep -c '^npm lodash' "$CVE_FIX/calls")|$(grep -c "^PERINGATAN: pola '\*' mematikan pemeriksaan" "$P/err")" '1|1'; done
+PL 'npm\t*\n'; : > "$CVE_FIX/calls"; out="$(CP "$P/package-lock.json" --private "$P/pat")"; ok "cve privat: pola 'npm<tab>*' juga diabaikan" "$(grep -c '^npm lodash' "$CVE_FIX/calls")" 1
+LK2 "$P/package-lock.json" @acme/x 1.0.0 @acme/y 1.0.0; PL 'npm\t@acme/*\n'; out="$(CP "$P/package-lock.json" --private "$P/pat")"; rc=$?
+ok "cve privat: semua entri dilewati -> exit 0 tanpa keluaran" "$rc|$out" '0|'
+LK2 "$P/package-lock.json" @acme/x 1.0.0 lodash 4.17.15; FX npm lodash 4.17.15 "{\"vulns\":[$(V GHSA-pub-0000-aaaa CVE-P2 HIGH)]}"; out="$(CP "$P/package-lock.json" --private "$P/pat")"; rc=$?
+ok "cve privat: publik HIGH di lockfile campuran -> exit 1 dan hanya lodash" "$rc|$(cut -f1 <<<"$out")" '1|lodash'
+$CV --list "$P/package-lock.json" 2>/dev/null | grep -q '@acme/x'; ok "cve --list tidak menyaring" $? 0
+
 # 3k-1. cleanup.sh: laporan kandidat cabang/worktree ter-merge (repo git nyata + remote bare lokal; gh palsu untuk REST)
 CL="$tmp/cl"; mkdir -p "$CL/bin"; export CL
 cat > "$CL/bin/gh" <<'EOF'
