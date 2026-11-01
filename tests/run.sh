@@ -622,4 +622,37 @@ grep -q 'Bila PRD belum punya Journeys' skills/breakdown/SKILL.md && grep -q 'Us
 ! grep -q 'bila PRD punya bagian Journeys' skills/breakdown/SKILL.md; ok "breakdown: epic tidak lagi dilewati diam-diam tanpa Journeys" $? 0
 cd "$root" || exit 1
 
+# 3i. scripts/ghx.sh: deteksi batas GraphQL dan cadangan REST (gh palsu, tanpa jaringan)
+mkdir -p "$tmp/rl/bin" "$tmp/rl/w"; git init -q "$tmp/rl/w"; cat > "$tmp/rl/bin/gh" <<'EOF'
+#!/usr/bin/env bash
+echo "$*" >> "$FAKE/calls"
+case "$1" in issue|project|repo|pr) [ "${GHX_SIM:-0}" = 1 ] && { echo "GraphQL: API rate limit already exceeded for user ID 1" >&2; exit 1; } ;; esac
+[ "${ERR404:-0}" = 1 ] && case "$1" in issue|project|repo|pr) echo "HTTP 404: Not Found" >&2; exit 1 ;; esac
+case "$*" in
+  "repo view"*) echo o/viewed ;;
+  "api users/o"*) echo "${OWNER_TYPE:-User}" ;;
+  "api graphql"*) printf 'HTTP/2.0 200 OK\nX-Ratelimit-Remaining: %s\nX-Ratelimit-Reset: 1793490517\n' "${REMAINING:-0}" ;;
+  "issue list"*) echo '[]' ;;
+esac
+EOF
+chmod +x "$tmp/rl/bin/gh"; export FAKE="$tmp/rl"; : > "$FAKE/calls"
+RL() { (cd "$tmp/rl/w" && PATH="$tmp/rl/bin:$PATH" bash -c 'source "$1/scripts/ghx.sh" || exit 99; shift; "$@"' _ "$root" "$@"); }
+r=""; for t in "GraphQL: API rate limit already exceeded" "RATE_LIMIT" "graphql_rate_limit" "Unknown owner type"; do RL ghx_is_limit "$t" 2>/dev/null; r="$r$?"; done
+ok "ghx_is_limit: 4 teks pemicu" "$r" 0000
+RL ghx_is_limit "HTTP 404: Not Found" 2>/dev/null; ok "ghx_is_limit: 404 bukan batas" $? 1
+ok "ghx_repo: GH_REPO menang" "$(export GH_REPO=x/y; RL ghx_repo 2>/dev/null)" x/y
+git -C "$tmp/rl/w" remote add origin git@github.com:a/b.git; ok "ghx_repo: remote ssh" "$(RL ghx_repo 2>/dev/null)" a/b
+git -C "$tmp/rl/w" remote set-url origin https://github.com/a/b; ok "ghx_repo: remote https" "$(RL ghx_repo 2>/dev/null)" a/b
+git -C "$tmp/rl/w" remote set-url origin https://github.com/a/b.git; ok "ghx_repo: remote https .git" "$(RL ghx_repo 2>/dev/null)" a/b
+git -C "$tmp/rl/w" remote remove origin; ok "ghx_repo: tanpa remote -> gh repo view" "$(RL ghx_repo 2>/dev/null)" o/viewed
+ok "ghx_gql: sukses meneruskan stdout" "$(RL ghx_gql gh issue list --json number 2>/dev/null)" '[]'
+ok "ghx_gql: batas -> exit 75 dan GHX_REST=1" "$(export GHX_SIM=1; RL eval 'ghx_gql gh issue list; echo "rc=$? rest=${GHX_REST:-0}"' 2>/dev/null)" "rc=75 rest=1"
+(export GHX_SIM=1; RL ghx_gql gh issue list >/dev/null 2>"$tmp/rl/err"); ok "ghx_gql: satu baris pengumuman" "$(grep -c 'mode cadangan REST' "$tmp/rl/err")" 1
+ok "ghx_gql: 404 -> exit asli, GHX_REST tidak diset" "$(export ERR404=1; RL eval 'ghx_gql gh issue list; echo "rc=$? rest=${GHX_REST:-0}"' 2>/dev/null)" "rc=1 rest=0"
+ok "ghx_reset_time: epoch 1793490517 -> 23:48:37" "$(RL ghx_reset_time 2>/dev/null)" 23:48:37
+ok "ghx_owner_base: User" "$(RL ghx_owner_base o 2>/dev/null)" users/o
+ok "ghx_owner_base: Organization" "$(export OWNER_TYPE=Organization; RL ghx_owner_base o 2>/dev/null)" orgs/o
+ok "ghx_explain_limit: Remaining 0 -> penyebab dan jam reset" "$(RL ghx_explain_limit 2>/dev/null | grep -c 'batas GraphQL GitHub habis; reset 23:48:37 UTC')" 1
+ok "ghx_explain_limit: Remaining > 0 -> diam" "$(export REMAINING=7; RL ghx_explain_limit 2>/dev/null)" ""
+
 [ "$fails" = 0 ] && echo "SEMUA LULUS" || { echo "$fails GAGAL"; exit 1; }
