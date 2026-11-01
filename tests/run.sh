@@ -1116,7 +1116,7 @@ grep -q 'Paket privat:' templates/WORKFLOW.md; ok "templat WORKFLOW memuat 'Pake
 grep -q 'Paket privat:' PRIVACY.md && grep -q '~/.npmrc' PRIVACY.md; ok "PRIVACY: sumber pola dan ~/.npmrc tidak dibaca" $? 0
 grep -q 'Paket privat:' README.md; ok "README menyebut 'Paket privat:'" $? 0
 grep -q 'Paket privat' skills/cve-audit/SKILL.md; ok "skill cve-audit menyebut paket privat" $? 0
-grep -q '"version": "0.10.1"' .claude-plugin/plugin.json; ok "plugin.json versi 0.10.1" $? 0
+grep -q '"version": "0.11.0"' .claude-plugin/plugin.json; ok "plugin.json versi 0.11.0" $? 0
 grep -q 'file yang di-ignore' templates/WORKFLOW.md; ok "templat WORKFLOW: Bersihkan setelah merge menyebut file yang di-ignore ikut terhapus (#44)" $? 0
 # 0.10.0: skill orchestrate, templat WORKFLOW, README memuat integrasi terverifikasi dan menunggu-rilis (#28, #32)
 for k in 'terintegrasi.sh' 'periksa-rilis' 'menunggu-rilis.sh --tandai' 'alur-terjadwal.sh'; do grep -qF -- "$k" skills/orchestrate/SKILL.md; ok "orchestrate memuat '$k'" $? 0; done
@@ -1436,5 +1436,25 @@ printf '# Changelog\n\n## [0.3.0] - 2026-11-02\n' > "$CV/CHANGELOG.md"; out="$(C
 printf '# Changelog\n\n## [0.2.0] - 2026-10-01\n' > "$CV/CHANGELOG.md"; out="$(CVR)"; ok "check-version: bagian versi hilang -> ::warning::" "$(grep -c '^::warning::' <<<"$out")" 1
 printf -- '- Catatan rilis: tidak ada\n' > "$CV/docs/WORKFLOW.md"; out="$(CVR)"; ok "check-version: opsi tidak ada -> tanpa peringatan" "$(grep -c '::warning::' <<<"$out")" 0
 for k in 'release-notes.sh' '--ekstrak' '--notes-file' '--generate-notes'; do grep -qF -- "$k" .github/workflows/release.yml; ok "release.yml memuat '$k'" $? 0; done
+
+# 3n-4. agen, templat, kickoff, README, dogfooding, laporan rilis (#30)
+cd "$root" || exit 1
+for k in 'Catatan rilis:' 'Perubahan perilaku:'; do grep -qF -- "$k" agents/senior-coder.md; ok "senior-coder memuat '$k'" $? 0; done
+grep -q 'Catatan rilis:' templates/WORKFLOW.md; ok "templat WORKFLOW memuat opsi Catatan rilis" $? 0
+grep -q 'Catatan rilis' skills/kickoff/SKILL.md; ok "kickoff menanyakan Catatan rilis" $? 0
+[ -f templates/pull_request_template.md ] && grep -q '<!--' templates/pull_request_template.md && grep -q 'Catatan rilis: Added' templates/pull_request_template.md; ok "templat badan PR ada, contoh baris di dalam komentar HTML" $? 0
+grep -q '^- Catatan rilis: CHANGELOG.md' docs/WORKFLOW.md; ok "docs/WORKFLOW.md aicrew memakai Catatan rilis: CHANGELOG.md (dogfooding)" $? 0
+grep -q 'Catatan rilis (0.11.0)' README.md; ok "README: Catatan rilis (0.11.0)" $? 0
+mkdir -p "$tmp/rrb"; cat > "$tmp/rrb/gh" <<'GHEOF'
+#!/bin/sh
+case "$*" in "issue list"*) echo '[{"number":1,"title":"a","state":"CLOSED","labels":[{"name":"di-integrasi"}]}]';; "pr list"*) echo '[{"number":5,"state":"MERGED","baseRefName":"integ","comments":[{"body":"**Bukti selesai** ok"}]}]';; *) echo '{}';; esac
+GHEOF
+chmod +x "$tmp/rrb/gh"
+RR2() { (cd "$tmp/rr" && PATH="$tmp/rrb:$PATH" bash "$root/scripts/release-report.sh" --out "$tmp/rr.md" --test-cmd true "$@" >/dev/null 2>&1); }
+printf '3. Cabang integrasi: integ.\n- Catatan rilis: CHANGELOG.md\n' > "$tmp/rr/docs/WORKFLOW.md"
+RR2 --versi 0.3.0; ok "release-report: opsi CHANGELOG.md + --versi -> bagian 'Catatan rilis (draf)'" "$(grep -c '^## Catatan rilis (draf)' "$tmp/rr.md")" 1
+RR2; ok "release-report: tanpa --versi -> tanpa bagian draf" "$(grep -c '^## Catatan rilis (draf)' "$tmp/rr.md")" 0
+echo "3. Cabang integrasi: integ." > "$tmp/rr/docs/WORKFLOW.md"; RR2 --versi 0.3.0; ok "release-report: tanpa opsi Catatan rilis -> tanpa bagian draf" "$(grep -c '^## Catatan rilis (draf)' "$tmp/rr.md")" 0
+cd "$root" || exit 1
 
 [ "$fails" = 0 ] && echo "SEMUA LULUS" || { echo "$fails GAGAL"; exit 1; }
