@@ -31,8 +31,13 @@ tab="$(printf '\t')"; T="$(mktemp -d)"; trap 'rm -rf "$T"' EXIT; reponame="${top
 
 wf="$(bash "$here/workflow.sh" 2>/dev/null)"
 if [ "$aftermerge" = 1 ]; then
-  only=orkestrator; opt="$(sed -n 's/^[- ]*Bersihkan setelah merge: *\([a-z]*\).*/\1/p' <<<"$wf" | head -1)"
-  case "${opt:-ya}" in ya) apply=1 ;; tidak) exit 0 ;; *) apply=0 ;; esac
+  only=orkestrator; ol="$(grep -m1 'Bersihkan setelah merge' <<<"$wf")"
+  if [ -z "$wf" ]; then apply=0                 # WORKFLOW.md tak terbaca: pilihan owner tak diketahui, jangan menghapus
+  elif [ -z "$ol" ]; then apply=1               # baris hilang (pemasangan lama) = bawaan ya
+  else                                          # baris ada: huruf kapital/markup (**..:**, `..`) ditoleransi; nilai tak terbaca = laporkan
+    opt="$(sed -E 's/.*Bersihkan setelah merge:?[*` ]*([A-Za-z]*).*/\1/' <<<"$ol" | tr 'A-Z' 'a-z')"
+    case "$opt" in ya) apply=1 ;; tidak) exit 0 ;; *) apply=0 ;; esac
+  fi
 fi
 bk="$(sed -n 's/^[- ]*Backend: *\([A-Za-z]*\).*/\1/p' <<<"$wf" | head -1)"
 [ -z "$bk" ] || [ "$bk" = github ] || { echo "cleanup: tidak didukung (bukan GitHub: $bk)" >&2; exit 0; }
@@ -42,6 +47,10 @@ if [ "$count" = 0 ]; then repo="$(ghx_repo)" || { echo "cleanup: repo tak dapat 
 
 def="$(git symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null)"; def="${def#origin/}"
 [ -n "$def" ] || [ "$count" = 1 ] || def="$(gh api "repos/$repo" 2>/dev/null | jq -r '.default_branch // empty' 2>/dev/null)"
+if [ -z "$def" ]; then   # tanpa cabang bawaan, main bisa terbaca "ter-merge" ke cabang lain dan jadi kandidat: fail-closed
+  [ "$count" = 0 ] || { echo 0; exit 0; }
+  echo "cleanup: cabang bawaan tak dapat ditentukan (origin/HEAD kosong dan REST gagal); perbaiki: git remote set-head origin -a" >&2; exit 1
+fi
 integ="$(sed -n 's/^[- ]*.*Cabang integrasi: *\([A-Za-z0-9._\/-]*\).*/\1/p' <<<"$wf" | head -1 | sed 's/[.,;:]*$//')"
 git show-ref --verify --quiet "refs/remotes/origin/${integ:-_}" || integ=""
 bases=""; for b in "$def" "$integ"; do [ -z "$b" ] || git show-ref --verify --quiet "refs/remotes/origin/$b" && bases="$bases $b"; done
@@ -60,10 +69,13 @@ evidence() { # <nama> <ujung> -> leluhur | pr-merged | -
   fi
   echo -
 }
-reason() { # <jenis> <nama> <bukti> -> alasan melewati sebelum pemeriksaan checkout, atau kosong
+reason() { # <jenis> <nama> <bukti> <ujung> -> alasan melewati sebelum pemeriksaan checkout, atau kosong
   if [ "$openok" = 1 ] && inlist "$2" "$open_heads"; then echo pr-terbuka; return; fi
   if [ "$openok" = 1 ] && inlist "$2" "$open_bases"; then echo base-pr-terbuka; return; fi
   [ "$3" != "-" ] || { echo belum-ter-merge; return; }
+  if [ "$3" = leluhur ]; then   # ujung sama dengan ujung basis = cabang baru tanpa commit (bukan hasil merge): jangan cabut worktree yang baru dibuat
+    for b in $bases; do [ "$(git rev-parse -q --verify "origin/$b" 2>/dev/null)" = "$4" ] && { echo baru-tanpa-commit; return; }; done
+  fi
   [ "$1" = cabang-remote ] && [ "$openok" = 0 ] && { echo pr-tak-terbaca; return; }
   echo ""
 }
@@ -78,11 +90,11 @@ want() { [ -z "$only$issue" ] || owned "$1" "$2"; }
 : > "$T/loc"; : > "$T/rem"
 while IFS="$tab" read -r n tip; do
   is_protected "$n" && continue; want cabang-lokal "$n" || continue
-  ev="$(evidence "$n" "$tip")"; printf '%s\t%s\t%s\t%s\n' "$n" "$tip" "$ev" "$(reason cabang-lokal "$n" "$ev")" >> "$T/loc"
+  ev="$(evidence "$n" "$tip")"; printf '%s\t%s\t%s\t%s\n' "$n" "$tip" "$ev" "$(reason cabang-lokal "$n" "$ev" "$tip")" >> "$T/loc"
 done < <(git for-each-ref --format='%(refname:short)%09%(objectname)' refs/heads)
 while IFS="$tab" read -r n tip; do
   n="${n#refs/remotes/origin/}"; [ "$n" != HEAD ] || continue; is_protected "$n" && continue; want cabang-remote "$n" || continue
-  ev="$(evidence "$n" "$tip")"; printf '%s\t%s\t%s\t%s\n' "$n" "$tip" "$ev" "$(reason cabang-remote "$n" "$ev")" >> "$T/rem"
+  ev="$(evidence "$n" "$tip")"; printf '%s\t%s\t%s\t%s\n' "$n" "$tip" "$ev" "$(reason cabang-remote "$n" "$ev" "$tip")" >> "$T/rem"
 done < <(git for-each-ref --format='%(refname)%09%(objectname)' refs/remotes/origin)   # nama lengkap: short dari origin/HEAD menjadi "origin"
 
 # 2. worktree: keputusan dulu (menentukan cabang mana yang tetap ter-checkout)
@@ -102,25 +114,28 @@ while IFS="$tab" read -r p b h l; do
        fi ;;
   esac
   [ "$act" = hapus ] || echo "$b" >> "$T/surv"
-  printf 'worktree\t%s\t%s\t%s\t%s\t%s\n' "$nm" "$h" "$ev" "$act" "$p" >> "$T/wt"
+  printf 'worktree\t%s\t%s\t%s\t%s\t%s\t%s\n' "$nm" "$h" "$ev" "$act" "$p" "$b" >> "$T/wt"
 done < <(git worktree list --porcelain | awk 'BEGIN{RS="";FS="\n"}{p="";b="-";h="";l=0;for(k=1;k<=NF;k++){if($k~/^worktree /)p=substr($k,10);else if($k~/^HEAD /)h=substr($k,6);else if($k~/^branch refs\/heads\//)b=substr($k,19);else if($k~/^locked/)l=1}printf "%s\t%s\t%s\t%d\n",p,b,h,l}')
 
 # 3. keluaran final dan, bila --apply, penghapusan berurutan: worktree -> cabang lokal -> remote
 fails=0
-emit() { # <jenis> <nama> <ujung> <bukti> <aksi> <path>
-  local act="$5" msg
+emit() { # <jenis> <nama> <ujung> <bukti> <aksi> <path> <cabang-worktree>
+  local act="$5" msg pr lr lrc
   if [ "$apply" = 1 ] && [ "$act" = hapus ]; then
     case "$1" in
-      worktree) if msg="$(git worktree remove "$6" 2>&1)"; then act=dihapus; else act="lewati:gagal:$(tr '\n' ' ' <<<"$msg")"; fi ;;
-      cabang-lokal) if git branch -d "$2" >/dev/null 2>&1 || git update-ref -d "refs/heads/$2" "$3" 2>/dev/null; then git config --remove-section "branch.$2" 2>/dev/null; act=dihapus; else act="lewati:gagal:ujung-berubah-atau-tak-terhapus"; fi ;;
-      cabang-remote) msg="$(git push -q origin --delete "$2" 2>&1)"; if [ $? = 0 ] || grep -q 'remote ref does not exist' <<<"$msg"; then git update-ref -d "refs/remotes/origin/$2" 2>/dev/null; act=dihapus; else act="lewati:gagal:$(tr '\n' ' ' <<<"$msg")"; fi ;;
+      worktree) if msg="$(git worktree remove "$6" 2>&1)"; then act=dihapus; else act="lewati:gagal:$(tr '\n' ' ' <<<"$msg")"; echo "$7" >> "$T/surv"; fi ;;   # gagal: cabangnya tetap ter-checkout
+      cabang-lokal) if git worktree list --porcelain | grep -qxF "branch refs/heads/$2"; then act="lewati:checkout"   # penjagaan akhir: jangan pernah menghapus cabang yang masih ter-checkout
+        elif git branch -d "$2" >/dev/null 2>&1 || git update-ref -d "refs/heads/$2" "$3" 2>/dev/null; then git config --remove-section "branch.$2" 2>/dev/null; act=dihapus; else act="lewati:gagal:ujung-berubah-atau-tak-terhapus"; fi ;;
+      cabang-remote) msg="$(git push -q origin --force-with-lease="refs/heads/$2:$3" --delete "refs/heads/$2" 2>&1)"; pr=$?
+        lr="$(git ls-remote --heads origin "refs/heads/$2" 2>/dev/null)"; lrc=$?
+        if [ "$pr" = 0 ] || { [ "$lrc" = 0 ] && [ -z "$lr" ]; }; then git update-ref -d "refs/remotes/origin/$2" 2>/dev/null; act=dihapus; else act="lewati:gagal:$(tr '\n' ' ' <<<"$msg")"; fi ;;
     esac
     case "$act" in lewati:gagal*) fails=1 ;; esac
   fi
   printf '%s\t%s\t%s\t%s\t%s\n' "$1" "$2" "$3" "$4" "$act" >> "$T/out"
 }
 : > "$T/out"
-while IFS="$tab" read -r k nm h ev act p; do emit "$k" "$nm" "$h" "$ev" "$act" "$p"; done < "$T/wt"
+while IFS="$tab" read -r k nm h ev act p br; do emit "$k" "$nm" "$h" "$ev" "$act" "$p" "$br"; done < "$T/wt"
 while IFS="$tab" read -r n tip ev r; do
   if [ -n "$r" ]; then act="lewati:$r"; elif inlist "$n" "$(cat "$T/surv")"; then act="lewati:checkout"; else act="hapus"; fi
   emit cabang-lokal "$n" "$tip" "$ev" "$act" ""

@@ -980,7 +980,7 @@ cat > "$CL/bin/gh" <<'EOF'
 #!/usr/bin/env bash
 a="$*"; [ -n "${GHLOG:-}" ] && echo "$a" >> "$GHLOG"
 case "$a" in
-  "api repos/o/r") echo "{\"default_branch\":\"main\",\"delete_branch_on_merge\":${DBM:-false}}" ;;
+  "api repos/o/r") [ -n "${REPO_FAIL:-}" ] && { echo "HTTP 500" >&2; exit 1; }; echo "{\"default_branch\":\"main\",\"delete_branch_on_merge\":${DBM:-false}}" ;;
   "api repos/o/r/pulls?state=open"*) [ -n "${OPEN_FAIL:-}" ] && { echo "HTTP 500" >&2; exit 1; }; cat "$CL/open.json" ;;
   "api repos/o/r/pulls?head="*) b="${a##*head=}"; b="${b%%&*}"; b="$(printf '%b' "${b//%/\\x}")"; b="${b#o:}"; f="$CL/pr-$(printf '%s' "$b" | tr / _).json"; if [ -f "$f" ]; then cat "$f"; else echo '[]'; fi ;;
 esac
@@ -1064,5 +1064,29 @@ G remote remove origin; ok "preflight: tanpa remote -> tanpa baris info jumlah" 
 
 # 3k-5. README menjelaskan pembersihan cabang/worktree dan perubahan perilaku bawaan
 grep -q 'cleanup.sh' README.md && grep -q 'Bersihkan setelah merge' README.md && grep -q 'bawaan `ya`' README.md && grep -q 'delete_branch_on_merge' README.md; ok "README: cleanup.sh, Bersihkan setelah merge, bawaan ya, delete_branch_on_merge" $? 0
+
+# 3k-6. perbaikan hasil review akhir (keselamatan data)
+RG="$(command -v git)"; mkdir -p "$CL/gbin"; printf '#!/usr/bin/env bash\nif [ "$1" = worktree ] && [ "$2" = remove ]; then echo "fatal: simulasi gagal" >&2; exit 1; fi\nexec "$REAL_GIT" "$@"\n' > "$CL/gbin/git"; chmod +x "$CL/gbin/git"
+# opsi WORKFLOW: huruf kapital, markup, baris ada tapi tak terbaca, dan WORKFLOW.md tak terbaca -> tidak menghapus
+for wv in '- Bersihkan setelah merge: Tidak' '- **Bersihkan setelah merge:** tidak' '- Bersihkan setelah merge: `Laporkan`' '- Bersihkan setelah merge: {{ya (bawaan) | laporkan | tidak}}'; do
+  MK; WFO "$wv"$'\n'; CLN --no-fetch --setelah-merge --issue 1 >/dev/null; ok "setelah-merge: '$wv' -> tidak menghapus" "$(LB | tr ' ' '\n' | grep -cx issue-1)" 1
+done
+MK; WFO '- Bersihkan setelah merge: YA\n'; CLN --no-fetch --setelah-merge --issue 1 >/dev/null; ok "setelah-merge: 'YA' (kapital) dibaca sebagai ya -> menghapus" "$(LB | tr ' ' '\n' | grep -cx issue-1)" 0
+MK; rm -f "$CL/w/docs/WORKFLOW.md"; CLN --no-fetch --setelah-merge --issue 1 >/dev/null; ok "setelah-merge: WORKFLOW.md tak terbaca -> tidak menghapus" "$(LB | tr ' ' '\n' | grep -cx issue-1)" 1
+# hapus remote dengan CAS: teman mendorong commit setelah fetch -> tidak boleh hilang
+MK; rm -rf "$CL/mate"; git clone -q "$CL/remote.git" "$CL/mate" 2>/dev/null; git -C "$CL/mate" checkout -q issue-1; echo more > "$CL/mate/more.txt"; git -C "$CL/mate" add -A; git -C "$CL/mate" commit -q -m more; git -C "$CL/mate" push -q origin issue-1
+OUT="$(CLN --no-fetch --apply)"; rc=$?; ok "apply: remote didorong orang lain setelah fetch -> tidak dihapus (CAS), exit 1" "$rc|$(RB | tr ' ' '\n' | grep -cx issue-1)|$(grep -c $'^cabang-remote\tissue-1\t.*lewati:gagal' <<<"$OUT")" '1|1|1'
+rm -rf "$CL/mate"
+# worktree gagal dihapus -> cabangnya tidak boleh ikut terhapus
+MK; OUT="$( (cd "$CL/w" && REAL_GIT="$RG" GH_REPO=o/r PATH="$CL/gbin:$CL/bin:$PATH" bash "$root/scripts/cleanup.sh" --no-fetch --apply 2>/dev/null) )"; rc=$?
+ok "apply: git worktree remove gagal -> worktree dan cabang issue-5 tetap ada, exit 1" "$rc|$([ -d "$CL/w-wt-5" ] && echo ada)|$(LB | tr ' ' '\n' | grep -cx issue-5)|$(grep -c $'^worktree\tw-wt-5\t.*lewati:gagal' <<<"$OUT")" '1|ada|1|1'
+# cabang bawaan tak dapat ditentukan -> fail-closed
+MK; G remote set-head origin -d >/dev/null; out="$(REPO_FAIL=1 CLN --no-fetch --apply)"; rc=$?
+ok "apply: cabang bawaan tak diketahui -> exit 1, main tetap ada, pesan jelas" "$rc|$(LB | tr ' ' '\n' | grep -cx main)|$(grep -c 'cabang bawaan' "$CL/err")" '1|1|1'
+ok "hitung: cabang bawaan tak diketahui -> 0 (preflight diam)" "$(REPO_FAIL=1 CLN --hitung)" 0
+# cabang dan worktree baru tanpa commit (ujung sama dengan basis) tidak boleh dihapus
+MK; G branch issue-9 main; G push -q origin issue-9; G worktree add -q "$CL/w-wt-9" issue-9; OUT="$(CLN --no-fetch --apply)"
+ok "apply: issue-9 baru (ujung = basis) -> worktree, cabang lokal, dan remote tetap ada" "$([ -d "$CL/w-wt-9" ] && echo ada)|$(LB | tr ' ' '\n' | grep -cx issue-9)|$(RB | tr ' ' '\n' | grep -cx issue-9)|$(grep -c 'lewati:baru-tanpa-commit' <<<"$OUT")" 'ada|1|1|3'
+grep -q 'di-.gitignore' README.md; ok "README: menyebut berkas yang di-.gitignore ikut terhapus bersama worktree" $? 0
 
 [ "$fails" = 0 ] && echo "SEMUA LULUS" || { echo "$fails GAGAL"; exit 1; }
