@@ -70,3 +70,10 @@ tanpa-induk→no-parent. (`discovery phase:discovery`, `needs-*`, `risk:*`, `epi
 ## Diserahkan ke pembangun
 
 Struktur pemetaan di `workflow.sh`, cara berbagi daftar alias antar skrip, urutan commit, dan isi pembungkus skrip lama.
+
+## Arah jangka panjang (arahan owner, 2026-11-02)
+
+Plugin untuk pengguna seluruh dunia (mayoritas Inggris) dan ramah untuk pengguna Indonesia. Permukaan teknis selalu Inggris;
+tidak ada kata Indonesia sebagai perintah (mis. "segarkan issue", "setelah QA"). Bahasa bawaan pesan, skill, agen, dan templat = Inggris;
+Indonesia = pilihan (`Language: id`). Input pengguna dalam bahasa apa pun tetap diterima (pemahaman oleh model; skill tidak mencocokkan kata).
+Tahap 1.1.0 (dokumen ini) hanya nama teknis. Bahasa pesan/skill/agen/templat dilacak di issue terpisah.
