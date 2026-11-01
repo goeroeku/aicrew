@@ -7,8 +7,8 @@
     {
       "name": "aicrew",
       "source": "./",
-      "description": "Brainstorm, PRD, breakdown ke issue, dan eksekusi paralel dengan role."
+      "description": "Brainstorm, PRD, break down into issues, and run parallel execution by role."
     }
   ],
-  "description": "Marketplace untuk plugin aicrew: alur kerja project dari ide sampai calon rilis, dengan role, autopilot, dan gerbang manual atau otomatis."
+  "description": "Marketplace for the aicrew plugin: a project workflow from idea to release candidate, with roles, autopilot, and manual or automatic gates."
 }

@@ -1,22 +1,22 @@
-# Kebijakan privasi aiCrew
+# aiCrew privacy policy
 
-Berlaku untuk plugin aiCrew (`goeroeku/aicrew`). Terakhir diperbarui: 2026-11-01.
+Applies to the aiCrew plugin (`goeroeku/aicrew`). Last updated: 2026-11-01.
 
-**Data yang dikumpulkan: tidak ada.** aiCrew tidak memiliki server, akun, analitik, maupun telemetri. Semua berkas kerja (`docs/`, `.aicrew/`, worktree) tetap di mesin dan repositori Anda sendiri.
+**Data collected: none.** aiCrew has no server, accounts, analytics or telemetry. All working files (`docs/`, `.aicrew/`, worktrees) stay on your own machine and in your own repository.
 
-**Jaringan keluar dari plugin ini ada dua: notifikasi Telegram (hanya bila Anda mengaktifkannya) dan pemeriksaan kerentanan dependensi ke OSV (aktif secara bawaan).** (Driver Orca, `AICREW_NOTIFY=orca`, hanya memanggil biner `orca` lokal; tidak ada jaringan.)
+**This plugin has two outbound network paths: Telegram notifications (only if you enable them) and the dependency vulnerability check against OSV (on by default).** (The Orca driver, `AICREW_NOTIFY=orca`, only calls the local `orca` binary; no network.)
 
 **1. Telegram.**
-- Aktif hanya bila Anda mengisi token bot dan chat ID Telegram milik Anda (lewat pengaturan plugin `tg_token` dan `tg_chat`, atau variabel lingkungan `AICREW_TG_TOKEN` dan `AICREW_TG_CHAT`). Kosong berarti tidak ada yang dikirim.
-- Yang dikirim ke `api.telegram.org`: satu teks notifikasi pendek (mis. "issue #N butuh keputusan") dan nama folder project. Tidak ada isi kode, isi issue, atau percakapan.
-- Telegram memproses pesan itu menurut kebijakan Telegram sendiri. Token tersimpan di penyimpanan aman Claude Code (pengaturan plugin) atau di lingkungan shell Anda, bukan di repositori.
+- Active only when you fill in your own Telegram bot token and chat ID (through the plugin settings `tg_token` and `tg_chat`, or the environment variables `AICREW_TG_TOKEN` and `AICREW_TG_CHAT`). Empty means nothing is sent.
+- What is sent to `api.telegram.org`: one short notification text (e.g. "issue #N needs a decision") and the project folder name. No code, issue content or conversation.
+- Telegram processes that message under Telegram's own policy. The token is kept in Claude Code's secure storage (plugin settings) or in your shell environment, not in the repository.
 
-**2. Pemeriksaan CVE (OSV), sejak 0.7.0.** `scripts/cve-check.sh` dan `scripts/cve-audit.sh` bertanya ke layanan OSV (`api.osv.dev`) apakah versi dependensi Anda punya kerentanan yang diketahui. Aktif saat PR menyentuh `package-lock.json`, `go.mod`, atau `requirements*.txt` (gerbang `pr-merge-check.sh`) dan saat Anda menjalankan skill `cve-audit`.
-- Yang dikirim ke `api.osv.dev`: ekosistem (npm, Go, PyPI), nama paket, dan versi. Tidak ada isi kode, nama repositori, isi issue, atau token.
-- Nama paket privat atau internal (mis. `@perusahaan/x`, `git.perusahaan.com/...`) ikut terkirim **kecuali Anda mendaftarkannya** (sejak 0.9.0). Alamat IP mesin yang menjalankan tetap terkirim. Plugin tidak menebak mana yang privat; hanya tiga sumber eksplisit: baris `Paket privat: <pola>, <pola>` di `docs/WORKFLOW.md` (semua ekosistem; utamakan ini, ikut repo dan tidak bergantung mesin), `GOPRIVATE` (hanya Go; dari mesin yang menjalankan), dan scope `.npmrc` proyek yang dipetakan ke registry selain `registry.npmjs.org`/`registry.yarnpkg.com` (hanya npm). `~/.npmrc` tidak pernah dibaca, dan dari `.npmrc` proyek hanya baris `@scope:registry=` yang dibaca (token tidak). Paket yang dilewati **tidak diperiksa** (dilaporkan sebagai jumlah, tanpa nama), bukan dianggap aman. Gerbang membaca pola dari cabang tujuan, jadi pola baru berlaku setelah di-merge: merge dulu PR yang hanya berisi pola. Scope publik yang sengaja dipetakan ke proxy (mis. `@types`) ikut dilewati. Matikan seluruh pemeriksaan dengan `Pemeriksaan CVE: tidak` bila perlu.
-- OSV memproses permintaan itu menurut kebijakan layanan OSV sendiri. Tidak ada token atau akun.
-- Mematikan: baris `Pemeriksaan CVE: tidak` di `docs/WORKFLOW.md`. Memakai cermin sendiri: variabel lingkungan `OSV_API`.
+**2. CVE check (OSV), since 0.7.0.** `scripts/cve-check.sh` and `scripts/cve-audit.sh` ask the OSV service (`api.osv.dev`) whether your dependency versions have known vulnerabilities. It runs when a PR touches `package-lock.json`, `go.mod` or `requirements*.txt` (the `pr-merge-check.sh` gate) and when you run the `cve-audit` skill.
+- What is sent to `api.osv.dev`: the ecosystem (npm, Go, PyPI), package name and version. No code, repository name, issue content or token.
+- The names of private or internal packages (e.g. `@company/x`, `git.company.com/...`) are sent **unless you register them** (since 0.9.0). The IP address of the machine running the check is still sent. The plugin does not guess which packages are private; there are only three explicit sources: a `Paket privat: <pattern>, <pattern>` line in `docs/WORKFLOW.md` (all ecosystems; prefer this one, it travels with the repository and does not depend on the machine), `GOPRIVATE` (Go only; from the machine running the check), and project `.npmrc` scopes mapped to a registry other than `registry.npmjs.org`/`registry.yarnpkg.com` (npm only). `~/.npmrc` is never read, and from the project `.npmrc` only `@scope:registry=` lines are read (never tokens). Skipped packages are **not checked** (reported as a count, never by name), not treated as safe. The gate reads patterns from the target branch, so a new pattern takes effect after it is merged: merge a PR that contains only the pattern first. Public scopes deliberately mapped to a proxy (e.g. `@types`) are skipped too. Turn the whole check off with `Pemeriksaan CVE: tidak` if needed.
+- OSV processes those requests under OSV's own policy. There is no token or account.
+- To turn it off: the line `Pemeriksaan CVE: tidak` in `docs/WORKFLOW.md`. To use your own mirror: the environment variable `OSV_API`.
 
-**Perintah atas nama Anda.** Skrip memanggil `git` dan `gh` terhadap repositori project Anda sendiri, memakai akun yang sudah Anda login. Tidak ada data yang dikirim ke pihak lain oleh skrip itu selain ke GitHub atau GitLab yang Anda pakai (pengecualian: pemeriksaan CVE ke OSV di atas).
+**Commands on your behalf.** Scripts call `git` and `gh` against your own project repository, using the account you are already logged in with. Those scripts send no data to anyone other than the GitHub or GitLab you use (exception: the CVE check to OSV above).
 
-Pertanyaan atau masukan: https://github.com/goeroeku/aicrew/issues
+Questions or feedback: https://github.com/goeroeku/aicrew/issues

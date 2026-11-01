@@ -1,35 +1,35 @@
 # aiCrew
 
-<p align="center"><img src="assets/banner.png" alt="aiCrew, bagian dari AICosystem: alur kerja project dari ide sampai calon rilis" width="100%"></p>
+<p align="center"><img src="assets/banner.png" alt="aiCrew, part of AICosystem: a project workflow from idea to release candidate" width="100%"></p>
 
 <p align="center">
-  <a href="LICENSE"><img alt="Lisensi: MIT" src="https://img.shields.io/badge/lisensi-MIT-38bdf8?style=flat-square"></a>
-  <a href="https://github.com/goeroeku/aicrew/actions/workflows/tests.yml"><img alt="Tes" src="https://github.com/goeroeku/aicrew/actions/workflows/tests.yml/badge.svg?branch=main"></a>
+  <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-38bdf8?style=flat-square"></a>
+  <a href="https://github.com/goeroeku/aicrew/actions/workflows/tests.yml"><img alt="Tests" src="https://github.com/goeroeku/aicrew/actions/workflows/tests.yml/badge.svg?branch=main"></a>
   <img alt="Claude Code plugin" src="https://img.shields.io/badge/Claude%20Code-plugin-a78bfa?style=flat-square">
   <img alt="AICosystem" src="https://img.shields.io/badge/AIC-osystem-0ea5e9?style=flat-square">
-  <img alt="Gerbang default manual" src="https://img.shields.io/badge/gerbang-default%20manual-34d399?style=flat-square">
+  <img alt="Gates manual by default" src="https://img.shields.io/badge/gates-manual%20by%20default-34d399?style=flat-square">
 </p>
 
 > [!NOTE]
-> **aiCrew** adalah bagian dari **AICosystem**.
+> **aiCrew** is part of **AICosystem**.
 
-Plugin Claude Code untuk alur kerja project dari ide sampai calon rilis: **kickoff → PRD → breakdown ke issue → eksekusi paralel oleh role**
-(principal, senior-coder, qa, security, perf, devops, ui-ux), masing-masing dengan model yang sesuai bobot tugasnya. Dokumen dan skill berbahasa Indonesia.
+A Claude Code plugin that runs a project workflow from idea to release candidate: **kickoff → PRD → breakdown into issues → parallel execution by roles**
+(principal, senior-coder, qa, security, perf, devops, ui-ux), each on a model sized to the weight of the task. Skills, agents and scripts speak Indonesian (their working language); the public documentation is English. See [`CHANGELOG.md`](CHANGELOG.md) for history.
 
-Prinsip: **setiap gerbang bawaannya manual (owner memutuskan)**, dengan opsi yang bisa diset ke otomatis di `docs/WORKFLOW.md` project Anda.
+Principle: **every gate is manual by default (the owner decides)**; each can be switched to automatic in your project's `docs/WORKFLOW.md`.
 
-## 🧭 Alur
+## 🧭 Flow
 
 ```mermaid
 flowchart TD
   A["kickoff<br/>docs/WORKFLOW.md"] --> B["prd"]
-  B --> C["breakdown<br/>issue, label, gelombang"]
-  C --> D["orchestrate<br/>worktree per issue"]
-  D --> E{"QA lulus?"}
-  E -- tidak --> D
-  E -- ya --> F["merge ke cabang integrasi<br/>kartu Done"]
-  F --> G["calon rilis<br/>release-report"]
-  G --> H["PR integrasi ke main<br/>owner yang merge"]
+  B --> C["breakdown<br/>issues, labels, waves"]
+  C --> D["orchestrate<br/>one worktree per issue"]
+  D --> E{"QA passes?"}
+  E -- no --> D
+  E -- yes --> F["merge into integration branch<br/>card Done"]
+  F --> G["release candidate<br/>release-report"]
+  G --> H["integration PR into main<br/>the owner merges"]
   classDef biru fill:#0c4a6e,stroke:#38bdf8,color:#e0f2fe
   classDef cerah fill:#0369a1,stroke:#7dd3fc,color:#f0f9ff
   classDef ungu fill:#6d28d9,stroke:#c4b5fd,color:#f5f3ff
@@ -41,12 +41,12 @@ flowchart TD
   class H cerah
 ```
 
-Contoh keluaran nyata (dipotong) dari project uji `aicrew-uji`. Log autopilot untuk satu issue yang selesai sendiri:
+Real (trimmed) output from the test project `aicrew-uji`; script output is in Indonesian. Autopilot log for an issue that finished on its own:
 ```
 2026-10-28 11:50:55 putaran 1: 1 issue terbuka (0 needs-principal)
 2026-10-28 11:53:22 autopilot: semua issue selesai (putaran 1)
 ```
-Laporan calon rilis (`release-report.sh`):
+Release-candidate report (`release-report.sh`):
 ```
 # Laporan calon rilis: uji-integrasi -> main
 **Vonis fakta: SIAP**
@@ -57,124 +57,145 @@ Laporan calon rilis (`release-report.sh`):
 - #15 README: bagian Batasan
 ```
 
-## 📦 Prasyarat
-- Claude Code, `git`, `jq`, dan `gh` (sudah login; backend GitHub). GitLab (`glab`) hanya sebagian didukung.
-- Opsional: `codex` (senior-coder mengerjakan kode lewat Codex; tanpanya dipakai subagen Claude), scope `gh` `project` (kanban), `caffeinate` (macOS, menahan Mac tetap bangun saat autopilot).
+## 📦 Requirements
+- Claude Code, `git`, `jq`, and `gh` (logged in; GitHub backend). GitLab (`glab`) is only partly supported.
+- Optional: `codex` (the senior-coder writes code through Codex; otherwise Claude subagents are used), the `gh` `project` scope (kanban), `caffeinate` (macOS, keeps the Mac awake during autopilot).
 
-## 🚀 Pasang dan coba
-Tanpa clone atau fork (Claude Code mengunduh repo ini sendiri sebagai marketplace):
+## 🚀 Install and try
+No clone or fork needed (Claude Code downloads this repository itself as a marketplace):
 ```
 claude plugin marketplace add goeroeku/aicrew
 claude plugin install aicrew@aicrew
 ```
-Di dalam sesi Claude Code bentuknya `/plugin marketplace add goeroeku/aicrew` lalu `/plugin install aicrew@aicrew`. Bila SSH ke GitHub belum diatur,
-pakai URL penuh: `claude plugin marketplace add https://github.com/goeroeku/aicrew.git`. Terpasang: 4 skill, 7 agen, 1 hook; beban tetap sekitar 380 token per sesi.
-Mencoba dari salinan lokal tanpa memasang: `claude --plugin-dir /path/ke/aicrew`.
+Inside a Claude Code session the forms are `/plugin marketplace add goeroeku/aicrew` and `/plugin install aicrew@aicrew`. If SSH to GitHub is not set up,
+use the full URL: `claude plugin marketplace add https://github.com/goeroeku/aicrew.git`. Installed: 5 skills, 8 agents, 2 hooks.
+To try a local copy without installing: `claude --plugin-dir /path/to/aicrew`.
 
-**Unduh tanpa marketplace:** setiap rilis (tag `vX.Y.Z`) di halaman Releases berisi `aicrew-X.Y.Z.zip`, `.tar.gz`, dan `SHA256SUMS`. Verifikasi lalu pakai:
+**Download without the marketplace:** every release (tag `vX.Y.Z`) on the Releases page contains `aicrew-X.Y.Z.zip`, `.tar.gz` and `SHA256SUMS`. Verify, then use:
 ```
 shasum -a 256 -c SHA256SUMS
 unzip aicrew-X.Y.Z.zip
 claude --plugin-dir ./aicrew-X.Y.Z
 ```
 
-Lalu di project Anda: `/aicrew:kickoff` (tulis `docs/WORKFLOW.md`), `/aicrew:prd`, `/aicrew:breakdown`, `/aicrew:orchestrate`.
+Then, in your project: `/aicrew:kickoff` (writes `docs/WORKFLOW.md`), `/aicrew:prd`, `/aicrew:breakdown`, `/aicrew:orchestrate`.
 
-## 🎛️ Opsi otomatis (semuanya bawaan manual)
-| Gerbang | Bawaan | Opsi |
+## ⚙️ Configuration (`docs/WORKFLOW.md`)
+`kickoff` writes `docs/WORKFLOW.md` from `templates/WORKFLOW.md`; scripts read it (from the integration branch when one exists, via `scripts/workflow.sh`). Most keys are in Indonesian (stable throughout 1.x; English aliases may be added); `Release notes:` is already English. The most used:
+
+| Key (as written in the file) | Meaning |
+|---|---|
+| `Cabang integrasi: <name>` | Integration branch where dependent issues pile up instead of `main` |
+| `Worktree:` / `Basis worktree:` | Who creates worktrees; absolute base path (e.g. Orca workspaces) |
+| `Kartu Done: owner \| agen-setelah-merge` | Who moves a card to Done |
+| `Tutup issue setelah merge integrasi: ya \| tidak` | `board.sh --sync` closes issues proven to be on the integration branch |
+| `Bersihkan setelah merge: ya \| laporkan \| tidak` | Cleanup of orchestrator-owned branches and worktrees after a verified merge (default `ya`) |
+| `Pemeriksaan CVE: tidak` | Turns the dependency CVE gate off |
+| `Paket privat: <patterns>` | Packages that are never sent to OSV |
+| `Release notes: CHANGELOG.md \| external \| none` | Opt-in release notes built from PR bodies (default `none`) |
+| `Label integrasi:` and other `Label …:` lines | Rename the default labels (`di-integrasi`, `keputusan-otomatis`, `belum-dipecah`, `tanpa-induk`, `menunggu-rilis`) |
+| `Bahasa artefak` | Language of code, comments, commits and labels (default English) |
+
+## 🎛️ Automatic options (all manual by default)
+| Gate | Default | Option |
 |---|---|---|
-| Merge PR ke cabang integrasi | owner | `agen-setelah-QA` (suite hijau + QA lulus + tanpa `needs-principal`) |
-| Kartu Done di board | owner | `agen-setelah-merge` |
-| `needs-principal` tingkat 1 (keputusan desain dalam batas PRD) | owner | `principal-auto` (dicatat sebagai `keputusan-otomatis`) |
-| `needs-principal` tingkat 2 (bertentangan PRD, auth/uang/data pribadi, sulit dibalik) | owner | tidak ada opsi otomatis |
-| Merge ke `main` | owner | belum ada opsi otomatis |
+| Merge PR into the integration branch | owner | `agen-setelah-QA` (green suite + QA passes + no `needs-principal`) |
+| Card Done on the board | owner | `agen-setelah-merge` |
+| `needs-principal` level 1 (design decision within the PRD) | owner | `principal-auto` (recorded as `keputusan-otomatis`) |
+| `needs-principal` level 2 (contradicts the PRD, auth/money/personal data, hard to reverse) | owner | no automatic option |
+| Merge into `main` | owner | none yet |
 
-## 🤖 Autopilot (berhari-hari, tahan limit)
-`bash scripts/autopilot.sh [--sleep 1800] [--max-total N]` dari akar repo project: menjalankan `claude -p` dengan skill orchestrate secara berulang
-(sesi baru tiap putaran; state ada di GitHub dan `.aicrew/`), tidur lalu mencoba lagi saat kena limit, dan berhenti saat selesai (exit 0),
-error beruntun (1), buntu (2), hanya menunggu owner (3), atau batas total (4). Log: `.aicrew/autopilot.log`.
+## 🤖 Autopilot (days-long, limit-tolerant)
+`bash scripts/autopilot.sh [--sleep 1800] [--max-total N]` from the project's repository root: runs `claude -p` with the orchestrate skill repeatedly
+(a fresh session each round; state lives on GitHub and in `.aicrew/`), sleeps and retries when a usage limit is hit, and stops when done (exit 0),
+after consecutive errors (1), when stuck (2), when only waiting for the owner (3), or at the total limit (4). Log: `.aicrew/autopilot.log`.
+`--max-total` counts across runs; `--reset-total` starts from zero.
 
-**Menunggu owner.** Bila satu putaran tidak mengubah apa pun dan semua issue tersisa hanya menunggu manusia (`needs-principal`, atau PR terbuka menunggu merge),
-autopilot tidak lagi menjalankan `claude`: ia memantau lewat `gh` tiap `--wait` detik (bawaan 600) tanpa memakai token. Begitu ada perubahan (mis. Anda merge PR),
-putaran berikutnya jalan dan Resume menyelesaikan sisanya; Anda tidak perlu mengabari lewat chat. Batas tunggu `--wait-max` (bawaan 7 hari), lalu berhenti dengan exit 3
-dan satu notifikasi. Sidik jari akhir putaran disimpan di `.aicrew/`, jadi setelah laptop mati lalu hidup lagi, autopilot langsung menunggu tanpa membakar putaran.
+**Waiting for the owner.** When a round changes nothing and every remaining issue only waits for a human (`needs-principal`, an open PR waiting for merge, or a `## Blocked by` chain ending in one of those),
+autopilot stops running `claude` and polls through `gh` every `--wait` seconds (default 600) without spending tokens. As soon as something changes (e.g. you merge a PR),
+the next round runs and Resume finishes the rest; you do not need to tell it through chat. The wait limit `--wait-max` (default 7 days) ends with exit 3 and one notification. The last round's fingerprint is kept in `.aicrew/`, so after a laptop restart autopilot waits right away instead of burning a round.
 
-### Lanjut otomatis setelah laptop mati/tidur (macOS)
-**Watchdog idle (0.12.0).** Putaran `claude -p` yang menganggur (tidak ada berkas transkrip berubah dan tidak ada proses turunan sah, selain pembantu MCP/LSP) selama `--idle-limit` detik (bawaan 1800; 0 mematikan, juga `AICREW_IDLE_LIMIT`) diakhiri `autopilot.sh` dengan SIGINT; sesi yang bertahan dikirimi SIGTERM setelah masa tenggang (tidak pernah SIGKILL), lalu putaran berikutnya memuat daftar issue segar. `--round-timeout` (bawaan 0) menambah batas waktu putaran, dan tiga putaran idle tanpa perubahan berhenti lewat `--stuck` (kode 2). Ctrl-C pemilik tetap menghentikan autopilot. `.aicrew/autopilot.json` memuat fase (`putaran`, `menunggu-owner`, `tidur-limit`, `idle-diinterupsi`, `selesai`), nomor putaran, dan detak waktu. Issue dengan `## Blocked by` yang bergantung pada issue `needs-principal` atau PR terbuka kini dihitung menunggu owner (#17). Wrapper `AICREW_CLAUDE` wajib `exec claude ...`.
+**Idle watchdog.** A `claude -p` round that sits idle (no transcript file changed and no non-helper child process, apart from MCP/LSP helpers) for `--idle-limit` seconds (default 1800; 0 disables; also `AICREW_IDLE_LIMIT`) is ended by `autopilot.sh` with SIGINT; a session that holds on gets SIGTERM after a grace period (never SIGKILL), then the next round starts with a fresh issue list. `--round-timeout` (default 0) adds a wall-clock limit per round, and three idle rounds in a row without change stop through `--stuck` (exit 2). Your own Ctrl-C still stops autopilot. `.aicrew/autopilot.json` holds the phase (`putaran`, `menunggu-owner`, `tidur-limit`, `idle-diinterupsi`, `selesai`), round number and a heartbeat. A wrapper in `AICREW_CLAUDE` must `exec claude ...`.
 
-`bash scripts/autostart.sh install <repo> --max-total N` memasang LaunchAgent per project (login dan tiap 15 menit) yang menjalankan `autopilot.sh` bila belum berjalan.
-`--max-total` wajib (batas biaya); izin dari `install-permissions.sh` harus sudah terpasang. Pengaman: `.aicrew/PAUSE` melewati tick; `.aicrew/halted` (autopilot berhenti
-dengan exit selain 0/3/4) menghentikan tick berikutnya sampai `autostart.sh resume <repo>`; kunci PID mencegah autopilot ganda; tanpa `gh`/jaringan tick dilewati.
-Token Telegram dibaca dari `~/.config/aicrew/env` (`export AICREW_TG_TOKEN=... AICREW_TG_CHAT=...`, izin 600), bukan dari plist. Lihat `autostart.sh status|uninstall <repo>`.
+### Resume after a laptop sleeps or restarts (macOS)
+`bash scripts/autostart.sh install <repo> --max-total N` installs a per-project LaunchAgent (at login and every 15 minutes) that runs `autopilot.sh` when it is not already running.
+`--max-total` is required (cost cap); the permissions from `scripts/install-permissions.sh` must be installed first. Safeguards: `.aicrew/PAUSE` skips ticks; `.aicrew/halted` (autopilot stopped
+with an exit other than 0/3/4) blocks later ticks until `autostart.sh resume <repo>`; a PID lock prevents duplicate autopilots; without `gh`/network the tick is skipped.
+The Telegram token is read from `~/.config/aicrew/env` (`export AICREW_TG_TOKEN=... AICREW_TG_CHAT=...`, mode 600), not from the plist. See `autostart.sh status|uninstall <repo>`.
 
 > [!IMPORTANT]
-> Sesi `-p` tidak bisa meminta persetujuan, jadi izin tool harus dipasang lebih dulu. Daftar minimal: `templates/autopilot-permissions.json`;
-> pasang ke `.claude/settings.local.json` project dengan `bash scripts/install-permissions.sh` (menggabungkan, tidak menimpa; mengisi path milik Anda).
-> Jangan memakai `--dangerously-skip-permissions`. Argumen tambahan lewat `AICREW_CLAUDE_ARGS` (mis. `--max-budget-usd 3`).
-> Pola pesan limit adalah dugaan yang belum diuji dengan limit sungguhan; bila meleset, putaran dihitung sebagai error dan autopilot berhenti dengan aman setelah 3 kali.
+> `-p` sessions cannot ask for approval, so tool permissions must be installed first. Minimal list: `templates/autopilot-permissions.json`;
+> install it into the project's `.claude/settings.local.json` with `bash scripts/install-permissions.sh` (merges, never overwrites; fills in your paths).
+> Do not use `--dangerously-skip-permissions`. Extra arguments go through `AICREW_CLAUDE_ARGS` (e.g. `--max-budget-usd 3`).
 >
-> **Deteksi limit (0.8.2).** Limit dikenali bila teksnya ada di 20 baris terakhir **dan** (kode keluar `claude -p` bukan 0, atau keluarannya pendek, ≤3 baris). Laporan orkestrator yang normal dan panjang boleh memuat kalimat seperti "No agent hit a usage limit" tanpa memicu tidur 30 menit (kejadian nyata, #24). Kode keluar tiap putaran dicatat di `.aicrew/autopilot.log` (`putaran N: rc=...`), dan keluaran putaran yang menyebut limit atau berkode keluar bukan-0 diarsipkan di `.aicrew/archive/round-<jalan>-<putaran>-rc<kode>.log` (20 terakhir), supaya limit sungguhan berikutnya terekam utuh. Belum terbukti dengan limit sungguhan apakah kode keluarnya bukan 0 (ada laporan galat API berakhir kode 0); karena itu keluaran pendek tetap dianggap limit.
+> **Limit detection.** A limit is recognized when its text is in the last 20 lines **and** (the `claude -p` exit code is not 0, or the output is short, at most 3 lines). A normal, long orchestrator report may contain a sentence such as "No agent hit a usage limit" without triggering a 30-minute sleep. Each round's exit code is logged in `.aicrew/autopilot.log` (`putaran N: rc=...`), and output that mentions a limit or has a non-zero exit code is archived in `.aicrew/archive/round-<run>-<round>-rc<code>.log` (the last 20), so the next real limit is captured in full. The limit message pattern is a guess not yet proven with a real limit: whether the exit code is non-zero is unverified (an API error has been reported to end with code 0), so short output is still treated as a limit; if the pattern misses, the round counts as an error and autopilot stops safely after 3.
 
-## 📋 Calon rilis
-`bash scripts/release-report.sh --test-cmd "<perintah tes penuh>" --dry-run` menulis `.aicrew/release-report.md`: vonis fakta SIAP/BELUM SIAP
-(suite di salinan segar, PR tanpa bukti, issue belum di-integrasi, `needs-principal`). `--buka-pr` (tanpa `--dry-run`) membuka PR integrasi → main bila SIAP. Tidak pernah merge.
+## 📋 Release candidate and release notes
+`bash scripts/release-report.sh --test-cmd "<full test command>" --dry-run` writes `.aicrew/release-report.md`: a factual verdict READY/NOT READY
+(suite in a fresh copy, PRs without evidence, issues not yet integrated, `needs-principal`). `--buka-pr` (without `--dry-run`) opens the integration PR into main when READY. It never merges.
 
-## 🧭 Journey dan epic (untuk lead)
-Lead biasanya bertanya per journey ("kapan pengguna bisa masuk dengan SSO?"), bukan per task. Hierarkinya:
+**Release notes (opt-in).** With `Release notes: CHANGELOG.md` in `docs/WORKFLOW.md`, PR authors put one line per entry in the PR body (`Release note: Fixed - …`, `Behavior change: …`, or `Release note: -` for an internal PR; example in `templates/pull_request_template.md`). `scripts/release-notes.sh --versi X.Y.Z [--tulis]` builds the `CHANGELOG.md` section (Keep a Changelog) from those lines of the PRs merged since the previous tag, deterministically (no model). `release.yml` uses that section as the release description; the PR gate and `check-version.sh` only warn when a line or section is missing. Only marked lines are used, so a public release never leaks the rest of a PR body.
+
+## 🧭 Journeys and epics (for the lead)
+A lead usually asks per journey ("when can users sign in with SSO?"), not per task. The hierarchy:
 ```
-Journey / epic   J1: pengguna dapat masuk dengan SSO       <- dibaca lead (issue berlabel epic, "4/7 selesai")
-  └ FR / NFR     R3, R4, N1 (bagian Kebutuhan di PRD)      <- kriteria yang bisa dicek
-       └ Issue   #12, #13, #14                             <- task kecil yang dikerjakan agen
+Journey / epic   J1: users can sign in with SSO            <- read by the lead (issue labeled epic, "4/7 done")
+  └ FR / NFR     R3, R4, N1 (Requirements section of PRD)  <- verifiable criteria
+       └ Issue   #12, #13, #14                             <- small tasks done by agents
 ```
-PRD memuat bagian *Journeys* dan *Kebutuhan non-fungsional*; breakdown membuat satu epic per journey (`templates/EPIC.md`) dengan daftar centang issue anak.
-Pada proyek yang sudah berjalan, membuat epic tidak mengedit issue lama (hanya dirujuk); yang tidak cocok masuk epic `[J0] Unassigned`.
-**Di kanban:** epic ikut di board dengan status yang dihitung dari anaknya oleh `board.sh <owner> <nomor> --sync`: Backlog (belum ada anak berjalan), In progress (ada anak berjalan), In review (semua anak selesai, siap ditutup owner), Done (ditutup owner). Satu langkah manual sekali di UI: buat view tersimpan bernama "Journeys" dengan filter `label:epic` (API belum bisa membuat view berfilter), supaya lead melihat satu baris per journey.
-Epic bukan pekerjaan: agen dan skrip melewatinya. Progres epic mengikuti penutupan issue anak, yaitu saat merge ke `main`.
+The PRD has *Journeys* and *Non-functional requirements* sections; breakdown creates one epic per journey (`templates/EPIC.md`) with a checklist of child issues.
+In a running project, creating epics does not edit old issues (they are only referenced); anything that does not fit goes into the epic `[J0] Unassigned`.
+Journey = epic = parent; work issues are native sub-issues of the epic (`scripts/epic-link.sh <epic> <children...>` links them through the checklist and native sub-issues, idempotently; `--inherit <source> <child>` makes a follow-up issue inherit its source epic; `--check` lists open non-epic issues without a parent, exit 3 if any).
+**On the kanban:** epics sit on the board with a status computed from their children by `board.sh <owner> <number> --sync`: Backlog (no child running), In progress (a child running or some children Done), In review (all children done, at least one non-discovery child, epic not labeled `belum-dipecah`; ready for the owner to close), Done (closed by the owner). Progress ("6/9 Done, 1 In progress") is written to a single marked epic comment. Epics are not work: agents and scripts skip them.
+With `Tutup issue setelah merge integrasi: ya`, an issue counts as *on the integration branch, not yet released*; the release marker is the integration PR into `main` and the `di-integrasi` label, not the closed state. **Integration is verified:** the label, closing and card Done are only given when `scripts/terintegrasi.sh <pr>` proves the PR reached the integration branch (a stacked PR merged into a parent branch does not qualify).
+**One-time manual UI steps** (no API for project views): on the kanban view, add the *Parent issue* column and set *Group by → Parent issue*; create a saved view "Journeys" with the filter `label:epic`.
 
-**Sub-issue native dan progres epic (0.6.0).** `scripts/epic-link.sh <epic> <anak...>` memasang anak ke epic lewat daftar centang dan sub-issue native GitHub (id numerik, idempoten); `epic-link.sh --inherit <sumber> <anak>` membuat issue lanjutan mewarisi epic sumbernya. `board.sh --sync` membaca anak dari sub-issue native (cadangan: daftar centang), menulis progres ("6/9 Done, 1 In progress") ke satu komentar epic, menandai epic **In progress** begitu sebagian anak Done, dan baru **In review** bila semua anak selesai, ada minimal satu anak bukan-discovery (label `discovery`/`phase:discovery`), dan epic tak berlabel `belum-dipecah`. `Tutup issue setelah merge integrasi: ya` di WORKFLOW.md membuat `--sync` menutup issue `di-integrasi` agar progres sub-issue ikut bergerak. WORKFLOW.md dibaca dari cabang integrasi bila ada (`scripts/workflow.sh`), bukan hanya checkout aktif.
+**Scheduled workflows and Dependabot.** GitHub only runs `schedule`, `workflow_dispatch` and `dependabot.yml` from the default branch. `pr-merge-check.sh` warns (never blocks) when a PR adds such files to a non-default branch; the issue gets the `menunggu-rilis` label (`scripts/menunggu-rilis.sh`) and is closed only once the files exist on the default branch. `cve-audit.sh` reports scheduled workflows that exist only on the integration branch; the `cve-audit` skill documents a bridge pattern for repositories released from a non-default branch, and `templates/dependabot.yml` groups action updates.
 
-**Konsep (0.6.1).** Journey = epic = induk; issue kerja = sub-issue native dari epic. Status "closed" pada issue kerja, dengan opsi `Tutup issue setelah merge integrasi: ya`, berarti *sudah di cabang integrasi, belum dirilis*. Pembeda rilis adalah PR integrasi → `main` dan label `di-integrasi`, bukan status closed. `epic-link.sh --check` mendaftar issue terbuka non-epic yang tidak punya induk (exit 3 bila ada) untuk audit yatim oleh orkestrator atau owner.
+## 🛡️ Dependency CVE check
+`scripts/cve-check.sh <lockfile> [--base <base>]` checks `package-lock.json` (npm), `go.mod` (Go) and `requirements*.txt` (PyPI, `name==version` only) against OSV: package, version, ID, CVE, severity, scope (`prod|dev`), target, advice (`patch|minor|major|tanpa-perbaikan`) and exposure (`baru|lama`). The target is the lowest version that closes every vulnerability of that package; an empty severity on Go/PyPI records is borrowed from the GHSA twin, and anything still unranked (`UNKNOWN`) is treated like HIGH.
+**PR gate:** when the diff touches a manifest or lockfile, `pr-merge-check.sh` checks only packages that are new or changed compared with the merge-base, and blocks new HIGH/CRITICAL/UNKNOWN exposure on `prod` dependencies unless there is an owner waiver `(cve)` (`Pengecualian disetujui owner (cve): <reason> (Commit: <sha>)`); old vulnerabilities, `dev`, MODERATE and LOW only warn. OSV unreachable means reject (fail-closed), which a `(cve)` waiver also closes. An incomplete lockfile only warns (the gate does not reject because of it). The opt-out `Pemeriksaan CVE: tidak` is read from the target branch, not from the PR.
+**Repository audit:** the `cve-audit` skill (`scripts/cve-audit.sh [--dry-run]`) creates one issue per vulnerable package over REST (`needs-security`; `major` or no-fix advice also `needs-principal`), without duplicates; schedule it with `/schedule`. There are no automatic updates, and the report never says "CVE-free": only "no known vulnerabilities in OSV as of `<date>`".
+**Private packages:** list them in `WORKFLOW.md` with `Paket privat: @company/*, git.company.com/team` (other sources: `GOPRIVATE`, project `.npmrc` scopes mapped to non-public registries). They are never sent to OSV and are reported as "not checked", by count and never by name. Patterns are read from the target branch and the gate fails closed when they cannot be read.
+Only the ecosystem, package name and version go to OSV (see [`PRIVACY.md`](PRIVACY.md)). Not covered yet: Docker/OS base images, transitive dependencies without a lockfile, `yarn.lock`, `pnpm-lock.yaml`, `Cargo.lock`, `Pipfile.lock`, `poetry.lock`, and `package.json` without a lockfile; npm lockfile v1 and requirements lines using `>=` or `-r` are skipped and reported as `PERINGATAN: cve (<file>) tidak lengkap`.
 
-**Mode cadangan REST (0.6.4).** Batas GraphQL GitHub (5.000 poin/jam) dipakai bersama semua alat di satu akun. Bila `board.sh` atau `epic-link.sh` terkena batas itu, keduanya mengulang sekali lewat REST (issue, sub-issue, komentar, dan kartu Project v2) dan mengumumkan `mode cadangan REST` di stderr; tanpa loop ulang. Langkah yang butuh data khusus GraphQL dilewati, bukan ditebak: `board.sh --sync` tetap keluar 0 dan mencetak `PERINGATAN: N langkah dilewati (batas GraphQL), jalankan --sync lagi setelah reset`. Kartu memerlukan scope `project`; bila REST menjawab 403/404, operasi kartu dilewati dengan peringatan yang sama dan operasi issue tetap jalan. `pr-merge-check.sh` sengaja tetap menolak saat tidak bisa membaca PR (issue yang ditutup lewat sidebar hanya ada di GraphQL); bedanya, penolakan kini menyebut batas GraphQL dan jam reset (UTC), jadi cukup tunggu lalu ulangi. Jam reset dibaca dari header respons GraphQL, bukan dari `gh api rate_limit` yang bisa menyesatkan.
+## 🧹 Branch and worktree cleanup
+`scripts/cleanup.sh` reports local and `origin` branches and worktrees that are **proven** merged: the tip is an ancestor of the default or integration branch, or a merged PR has the same `head.sha` (detects squash/rebase merges). By default it only reports (TSV: kind, name, SHA, evidence, action); `--apply` removes in order: worktree (never `--force`), local branch, then remote with `--force-with-lease`, and prints the tip SHA so everything can be restored (`git branch <name> <sha>`). It never touches the default or integration branch, branches that are the `head` or `base` of an open PR, branches still checked out, dirty/locked/detached worktrees, or `~/orca/workspaces/`. Evidence from a merged PR only counts when its base is the default or integration branch. A new branch with no commits (tip equal to its base) is never deleted, and an unreadable `WORKFLOW.md` or option means report-only.
+**Automatic for orchestrator-owned artifacts:** after a verified merge, `orchestrate` calls `cleanup.sh --setelah-merge --issue <n>`, which removes the worktree `<repo>-wt-<n>` and branch `issue-<n>` according to `Bersihkan setelah merge: ya|laporkan|tidak` (a missing line means `ya`). Branches with other names are never removed automatically. `preflight.sh` warns when the GitHub setting `delete_branch_on_merge` is false (fix: `gh api -X PATCH repos/<r> -F delete_branch_on_merge=true`; the plugin never changes that setting itself) and shows the number of merged branches from offline evidence.
+**Note:** `git worktree remove` (without `--force`) refuses worktrees with uncommitted changes, but still removes git-ignored files inside the worktree (e.g. `.env.local`, a local database); save them first if needed. GitHub only (other backends exit 0 with a message); no `git gc`.
 
-**Pemeriksaan CVE dependensi (0.7.0).** `scripts/cve-check.sh <lockfile> [--base <basis>]` memeriksa `package-lock.json` (npm), `go.mod` (Go), dan `requirements*.txt` (PyPI, hanya `nama==versi`) ke OSV: kolom paket, versi, ID, CVE, severity, lingkup (`prod|dev`), target, saran (`patch|minor|major|tanpa-perbaikan`), dan paparan (`baru|lama`). Target = versi terendah yang menutup semua kerentanan paket itu; severity kosong pada rekaman Go/PyPI dipinjam dari kembaran GHSA, dan yang tetap tanpa peringkat (`UNKNOWN`) diperlakukan seperti HIGH. **Gerbang PR:** bila diff menyentuh manifest/lockfile, `pr-merge-check.sh` memeriksa hanya paket yang baru atau berubah dibanding cabang tujuan, dan memblokir paparan baru bersifat HIGH/CRITICAL/UNKNOWN pada dependensi `prod` kecuali ada waiver owner `(cve)` (`Pengecualian disetujui owner (cve): <alasan> (Commit: <sha>)`); kerentanan lama, `dev`, MODERATE, dan LOW hanya peringatan. OSV tak terjangkau = tolak (fail-closed), juga ditutup waiver `(cve)`. Mematikan: `Pemeriksaan CVE: tidak` di `WORKFLOW.md`. **Audit repo:** skill `cve-audit` (`scripts/cve-audit.sh [--dry-run]`) membuat satu issue per paket rentan lewat REST (`needs-security`; saran `major` atau `tanpa-perbaikan` juga `needs-principal`), tanpa duplikat; jadwalkan lewat `/schedule`. Tidak ada update otomatis, dan laporan tidak pernah berkata "bebas CVE": hanya "tidak ada kerentanan diketahui di OSV per `<tanggal>`". Yang dikirim ke OSV hanya ekosistem, nama paket, dan versi (lihat `PRIVACY.md`); image Docker/OS dasar dan dependensi transitif tanpa lockfile belum tercakup. **Belum tercakup juga:** `yarn.lock`, `pnpm-lock.yaml`, `Cargo.lock`, `Pipfile.lock`, `poetry.lock`, dan `package.json` tanpa lockfile; lockfile npm versi 1 dan baris requirements berbentuk `>=` atau `-r` dilewati dan dilaporkan sebagai `PERINGATAN: cve (<berkas>) tidak lengkap` (gerbang tidak menolak karenanya). Gerbang membandingkan dengan merge-base PR, dan opt-out dibaca dari cabang tujuan, bukan dari PR. **Paket privat (0.9.0):** daftarkan di `WORKFLOW.md` dengan baris `Paket privat: @perusahaan/*, git.perusahaan.com/tim`; paket itu tidak pernah dikirim ke OSV dan dilaporkan "tidak diperiksa" (sumber lain: `GOPRIVATE`, scope `.npmrc` ke registry non-publik; lihat `PRIVACY.md`).
+## 🔁 REST fallback
+GitHub's GraphQL limit (5,000 points/hour) is shared by every tool on one account. When `board.sh` or `epic-link.sh` hits it (`scripts/ghx.sh` detects it), they retry once through REST (issues, sub-issues, comments and Project v2 cards) and announce `mode cadangan REST` on stderr, with no retry loop; the reset time is read from the GraphQL response headers, not from `gh api rate_limit`, which can mislead. `board.sh --sync` reads children from native sub-issues (fallback: the checklist). Steps that need GraphQL-only data are skipped, not guessed: `board.sh --sync` still exits 0 and prints `PERINGATAN: N langkah dilewati (batas GraphQL), jalankan --sync lagi setelah reset`. Cards need the `project` scope; on REST 403/404 the card operations are skipped with the same warning. `pr-merge-check.sh` deliberately keeps refusing when it cannot read a PR (an issue closed through the sidebar only exists in GraphQL); the refusal now names the GraphQL limit and the reset time (UTC). `scripts/lock.sh <name> [--wait seconds] -- command...` runs a command under a named lock (atomic `mkdir`, a dead holder is taken over, timeout = exit 75) for tests that share a Docker/Keycloak stack. Issues that intentionally have no parent get the label `tanpa-induk` and are skipped by `epic-link.sh --check`.
 
-**Integrasi terverifikasi (0.10.0).** Label `di-integrasi`, penutupan issue, dan kartu Done kini hanya diberikan bila `scripts/terintegrasi.sh <pr>` membuktikan PR masuk cabang integrasi (PR bertumpuk yang ter-merge ke cabang induk tidak lolos). `pr-merge-check.sh` memperingatkan (tidak memblokir) PR yang menambah workflow terjadwal/`workflow_dispatch` atau `dependabot.yml` ke cabang non-bawaan, karena GitHub baru mengaktifkannya dari cabang bawaan; issue-nya diberi label `menunggu-rilis` (`scripts/menunggu-rilis.sh`) dan baru ditutup setelah berkasnya ada di cabang bawaan. `cve-audit.sh` melaporkan jumlah alur terjadwal yang hanya ada di integrasi.
-
-**Catatan rilis (0.11.0; kunci berbahasa Inggris sejak 0.11.1).** Opt-in lewat baris `Release notes: CHANGELOG.md` di `docs/WORKFLOW.md` (templat WORKFLOW menjelaskan opsi `external` dan `none`). Penulis PR menaruh satu baris per entri di badan PR (`Release note: Fixed - …`, `Behavior change: …`, atau `Release note: -` untuk PR internal; contoh di `templates/pull_request_template.md`). `scripts/release-notes.sh --versi X.Y.Z [--tulis]` menyusun bagian `CHANGELOG.md` (Keep a Changelog) dari baris itu pada PR yang ter-merge sejak tag sebelumnya, tanpa model dan tanpa menyentuh berkas proyek yang tidak ikut. `release.yml` memakai bagian itu sebagai deskripsi rilis; gerbang PR dan `check-version.sh` hanya memperingatkan bila baris atau bagian versi hilang. Kunci Indonesia 0.11.0 (`Catatan rilis:`, `Perubahan perilaku:`) tidak lagi dikenali.
-
-**Pembersihan cabang dan worktree (0.8.0).** `scripts/cleanup.sh` melaporkan cabang (lokal dan `origin`) dan worktree yang **terbukti** ter-merge: ujungnya leluhur cabang bawaan atau integrasi, atau ada PR merged dengan ujung (`head.sha`) yang sama (mendeteksi squash/rebase merge). Bawaannya hanya melaporkan (TSV: jenis, nama, SHA, bukti, aksi); `--apply` menghapus berurutan: worktree (tanpa `--force`), cabang lokal, lalu remote, dan mencetak SHA ujung supaya dapat dipulihkan (`git branch <nama> <sha>`). Tidak pernah menyentuh cabang bawaan dan integrasi, cabang yang `head` atau `base` PR terbuka, cabang yang masih ter-checkout, worktree kotor/terkunci/terlepas, atau `~/orca/workspaces/`. **Otomatis untuk milik orkestrator:** setelah merge terverifikasi, `orchestrate` memanggil `cleanup.sh --setelah-merge --issue <n>`, yang menghapus worktree `<repo>-wt-<n>` dan cabang `issue-<n>` sesuai baris `Bersihkan setelah merge: ya|laporkan|tidak` di `WORKFLOW.md`. **Perubahan perilaku bawaan:** baris yang hilang (pemasangan lama) = bawaan `ya`, jadi mulai 0.8.0 cabang `issue-<n>` yang terbukti ter-merge dihapus otomatis (lokal dan remote); setel `laporkan` atau `tidak` bila tidak diinginkan. Cabang bernama lain tidak pernah dihapus otomatis. `preflight.sh` memperingatkan bila setelan GitHub `delete_branch_on_merge` bernilai false (perbaikan: `gh api -X PATCH repos/<r> -F delete_branch_on_merge=true`; plugin tidak mengubah setelan itu sendiri) dan menampilkan jumlah cabang ter-merge dari bukti offline. **Perhatikan:** `git worktree remove` (tanpa `--force`) menolak worktree dengan perubahan yang belum ter-commit, tetapi tetap ikut menghapus berkas yang di-.gitignore (mis. `.env.local`, basis data lokal) di dalam worktree itu; simpan dulu bila perlu. Cabang baru tanpa commit (ujung sama dengan basis) tidak pernah dihapus. Bukti "PR merged" hanya sah bila base PR itu cabang bawaan atau integrasi: PR bertumpuk yang di-merge ke cabang induk (mis. saat `delete_branch_on_merge=false` membuat base tidak berpindah) bukan bukti, dan cabangnya tidak dihapus. Hapus remote memakai `--force-with-lease` (commit yang didorong orang lain setelah `fetch` tidak ikut hilang), dan `WORKFLOW.md` yang tak terbaca atau opsi yang tak terbaca berarti hanya melaporkan. Hanya GitHub (backend lain: keluar 0 dengan pesan); tidak menjalankan `git gc`.
-
-**Kunci stack bersama dan yatim disengaja (0.6.3).** `scripts/lock.sh <nama> [--wait detik] -- perintah...` menjalankan perintah dengan kunci bernama (mkdir atomik, pemegang mati diambil alih, habis waktu = exit 75), untuk tes yang memakai stack Docker/Keycloak bersama. Issue yang sengaja tanpa induk diberi label `tanpa-induk` (nama dapat diganti lewat `Label tanpa induk:` di WORKFLOW.md) dan dilewati `epic-link.sh --check`.
-
-**Langkah manual di UI (tidak ada API untuk tampilan project).** Di tampilan kanban, tambahkan kolom *Parent issue* dan atur *Group by → Parent issue*; juga view "Journeys" dengan filter `label:epic`. Hanya owner yang bisa mengatur ini.
-
-## 🗂️ Kanban (opsional)
-`scripts/board-init.sh` membuat GitHub Project, menautkannya ke repo, menyeragamkan status, dan membuat view papan (`createProjectV2View` dengan `BOARD_LAYOUT`; project baru hanya punya view tabel). `scripts/board.sh` menggeser kartu; `board.sh <owner> <nomor> --sync` memindahkan issue yang ditutup tanpa PR ke Done bila `Kartu Done: agen-setelah-merge`. Perlu scope `gh` `project`.
+## 🗂️ Kanban (optional)
+`scripts/board-init.sh` creates a GitHub Project, links it to the repository, normalizes the statuses and creates a board view (`createProjectV2View` with `BOARD_LAYOUT`; a new project only has a table view). `scripts/board.sh` moves cards; `board.sh <owner> <number> --sync` moves issues closed without a PR to Done when `Kartu Done: agen-setelah-merge`. Needs the `gh` `project` scope.
 > [!NOTE]
-> Workflow bawaan "Item closed" (kartu otomatis ke Done saat issue ditutup) **tidak bisa diaktifkan lewat API**: GraphQL hanya punya `deleteProjectV2Workflow`. Nyalakan sekali di UI: Project → Workflows → Item closed → Enable. Tanpa itu, pakai `--sync`.
+> The built-in "Item closed" workflow (card moves to Done automatically when an issue closes) **cannot be enabled through the API**: GraphQL only has `deleteProjectV2Workflow`. Enable it once in the UI: Project → Workflows → Item closed → Enable. Without it, use `--sync`.
 
-## 🧩 Orca dan label
-- **Orca**: `AICREW_NOTIFY=orca` (atau `both`, atau opsi plugin `notify`) menandai workspace belum dibaca lewat `orca worktree set --worktree path:<dir> --unread --comment ...`. Orca meluncurkan agen dengan `--dangerously-skip-permissions` secara bawaan (aturan deny tidak ditegakkan); `preflight.sh` memperingatkannya. Isi `Basis worktree:` (path absolut) di `docs/WORKFLOW.md` agar `install-permissions.sh` memberi izin baca yang benar.
-- **Risiko**: breakdown memberi `risk:L0|L1|L2`; auto-merge (`pr-merge-check.sh --auto`) menolak L2.
-- **Izin**: `gh pr merge` hanya terpasang untuk mode `agen-setelah-QA`; `gh repo delete`, `gh ssh-key`, `gh gist`, dan `gh auth` (kecuali `status`) ditolak.
-- **Nama label**: `di-integrasi` dan `keputusan-otomatis` dapat diganti lewat `Label integrasi:` / `Label keputusan otomatis:` di `WORKFLOW.md` atau `AICREW_LABEL_INTEGRATED` / `AICREW_LABEL_AUTO`.
-- `kickoff` menambahkan `.aicrew/` dan `.claude/settings.local.json` ke `.gitignore` (`scripts/ensure-gitignore.sh`).
+## 🧩 Orca and labels
+- **Orca**: `AICREW_NOTIFY=orca` (or `both`, or the plugin option `notify`) marks the workspace unread through `orca worktree set --worktree path:<dir> --unread --comment ...`. Orca launches agents with `--dangerously-skip-permissions` by default (deny rules are not enforced); `preflight.sh` warns about it. Set `Basis worktree:` (an absolute path) in `docs/WORKFLOW.md` so `install-permissions.sh` grants the right read permissions.
+- **Risk**: breakdown labels `risk:L0|L1|L2`; auto-merge (`pr-merge-check.sh --auto`) refuses L2.
+- **Permissions**: `gh pr merge` is only installed for the `agen-setelah-QA` mode; `gh repo delete`, `gh ssh-key`, `gh gist` and `gh auth` (except `status`) are denied.
+- **Label names**: `di-integrasi` and `keputusan-otomatis` can be renamed through `Label integrasi:` / `Label keputusan otomatis:` in `WORKFLOW.md` or `AICREW_LABEL_INTEGRATED` / `AICREW_LABEL_AUTO` (see `scripts/label.sh`).
+- `kickoff` adds `.aicrew/` and `.claude/settings.local.json` to `.gitignore` (`scripts/ensure-gitignore.sh`).
 
-## 🔔 Notifikasi dan data yang dikirim (opsional)
-Secara bawaan plugin ini **tidak mengirim data apa pun ke luar mesin Anda**. Satu-satunya jaringan keluar adalah hook `Notification` (`scripts/notify.sh`),
-dan hanya aktif bila **Anda sendiri** mengisi token bot dan chat ID Telegram milik Anda: lewat pengaturan plugin (`tg_token`, `tg_chat`; token disimpan di penyimpanan aman Claude Code) atau variabel lingkungan `AICREW_TG_TOKEN` dan `AICREW_TG_CHAT`. Jangan simpan token di berkas repo.
-Bila aktif, ia mengirim ke `api.telegram.org` satu pesan berisi teks notifikasi (mis. "issue #N butuh keputusan") dan nama folder project. Tidak ada isi kode, issue, atau percakapan.
-Selain itu, skrip memanggil `gh` dan `git` atas nama Anda ke repositori project Anda sendiri. Rincian: [`PRIVACY.md`](PRIVACY.md).
+## 🔔 Notifications and data sent (optional)
+By default this plugin **sends nothing off your machine**. The only outbound network is the `Notification` hook (`scripts/notify.sh`) and the CVE check (`api.osv.dev`, ecosystem, package name and version only).
+Telegram is only active when **you** fill in your own bot token and chat ID: through the plugin settings (`tg_token`, `tg_chat`; the token is kept in Claude Code's secure storage) or the environment variables `AICREW_TG_TOKEN` and `AICREW_TG_CHAT`. Do not keep the token in repository files.
+When active it sends one message to `api.telegram.org` containing the notification text (e.g. "issue #N needs a decision") and the project folder name. No code, issue or conversation content.
+Otherwise, scripts call `gh` and `git` on your behalf against your own project repository. Details: [`PRIVACY.md`](PRIVACY.md).
 
-## ⚠️ Peringatan
+## 🧱 Stability
+From 1.0 aiCrew follows [Semantic Versioning](https://semver.org/). The public interface is: the flags and exit codes of `scripts/*.sh` documented in this README, the keys of `docs/WORKFLOW.md` (Indonesian, stable throughout 1.x; English aliases may be added without breaking anything), the default label names, and the `.aicrew/autopilot.json` format. Skill and agent wording, log lines and messages are not part of that interface and may change in any minor release. Behavior changes to defaults are listed under *Behavior changes* in [`CHANGELOG.md`](CHANGELOG.md).
+
+## ⚠️ Warning
 
 > [!WARNING]
-> Plugin ini menjalankan kode, membuat worktree, `git push`, membuka dan (bila Anda mengizinkan) me-merge PR atas nama Anda, dan dapat berjalan tanpa pengawasan.
-> Tinjau daftar izin sebelum memasangnya, mulai dari project kecil, dan pasang batas biaya. Diberikan apa adanya, tanpa jaminan (lihat `LICENSE`).
+> This plugin runs code, creates worktrees, runs `git push`, opens and (if you allow it) merges PRs on your behalf, and can run unattended.
+> Review the permission list before installing, start with a small project, and set a cost cap. Provided as is, without warranty (see `LICENSE`).
 
-## 🧪 Tes
-`bash tests/run.sh` (offline; butuh bash dan jq). Dijalankan juga di GitHub Actions.
+## 🧪 Tests
+`bash tests/run.sh` (offline; needs bash and jq). Also run on GitHub Actions.
 
-## 📄 Lisensi dan kredit
-Berlisensi **MIT**: bebas dipakai, diubah, dan dibagikan. Hak cipta (c) 2026 goeroeku. aiCrew adalah bagian dari AICosystem. Salinan atau turunan wajib mempertahankan pernyataan hak cipta dan teks lisensi ([`LICENSE`](LICENSE)).
+## 📄 License and credits
+Licensed under **MIT**: free to use, modify and share. Copyright (c) 2026 goeroeku. aiCrew is part of AICosystem. Copies or derivatives must keep the copyright notice and license text ([`LICENSE`](LICENSE)).

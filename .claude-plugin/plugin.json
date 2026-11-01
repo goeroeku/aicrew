@@ -2,7 +2,7 @@
   "name": "aicrew",
   "displayName": "aiCrew",
   "version": "0.12.0",
-  "description": "Brainstorm, PRD, breakdown ke issue, dan eksekusi paralel dengan role (principal, senior-coder, qa, security, perf, devops, ui-ux).",
+  "description": "Brainstorm, PRD, break down into issues, and run parallel execution by role (principal, senior-coder, qa, security, perf, devops, ui-ux).",
   "author": {
     "name": "goeroeku"
   },
@@ -22,19 +22,19 @@
   "userConfig": {
     "tg_token": {
       "type": "string",
-      "title": "Token bot Telegram (opsional)",
-      "description": "Untuk notifikasi satu arah ke Telegram Anda. Kosongkan bila tidak dipakai.",
+      "title": "Telegram bot token (optional)",
+      "description": "For one-way notifications to your Telegram. Leave empty if unused.",
       "sensitive": true
     },
     "tg_chat": {
       "type": "string",
-      "title": "Chat ID Telegram (opsional)",
-      "description": "ID chat tujuan notifikasi. Kosongkan bila tidak dipakai."
+      "title": "Telegram chat ID (optional)",
+      "description": "Chat ID that receives notifications. Leave empty if unused."
     },
     "notify": {
       "type": "string",
-      "title": "Driver notifikasi (opsional)",
-      "description": "telegram (bawaan), orca, atau both. Orca menandai workspace belum dibaca; Telegram butuh token dan chat ID."
+      "title": "Notification driver (optional)",
+      "description": "telegram (default), orca, or both. Orca marks the workspace unread; Telegram needs a token and chat ID."
     }
   }
 }
