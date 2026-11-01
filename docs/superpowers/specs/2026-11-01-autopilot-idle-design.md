@@ -16,7 +16,7 @@ Antar putaran, `autopilot.sh` sehat: `waiting_on_owner`, `--wait`, `--wait-max`,
 - Skill `orchestrate`, mode tanpa pengawasan: akhiri giliran setelah laporan bila hanya menunggu owner; muat ulang daftar issue sebelum menyimpulkan "tidak ada pekerjaan". **[saya]**
 
 ## Non-tujuan
-- Eskalasi ke SIGKILL (bila sesi bertahan setelah SIGINT: dicatat saja, tidak dieskalasi). **[saya, ikut Nexora]**
+- Eskalasi ke SIGKILL. SIGTERM setelah SIGINT tidak bergeming 90 detik diizinkan (lihat Keputusan tambahan). **[owner]**
 - Menyentuh sesi lain selain anak `claude` langsung dari `autopilot.sh` ini; mengubah kode keluar; deteksi limit (0.8.2) tetap.
 - Mengubah perilaku saat tidur karena limit atau saat `waiting_on_owner` (bukan putaran claude).
 
@@ -38,8 +38,8 @@ Antar putaran, `autopilot.sh` sehat: `waiting_on_owner`, `--wait`, `--wait-max`,
 
 ## Keputusan tambahan (hasil pemeriksaan builder)
 Catatan: klaim builder tentang perilaku proses (SIGINT, kode keluar) berasal dari pengetahuan bash/ps dan wajib diverifikasi dengan percobaan kecil saat implementasi; data lapangan Nexora (dua kali Ctrl-C ke sesi `claude`) menunjukkan `rc=0` dan `autopilot.sh` melanjutkan.
-**Menunggu jawaban owner (1 butir).** Sampai dijawab, ini yang berlaku sebagai usulan:
-- **O1. Eskalasi bila sesi bertahan 30 detik setelah SIGINT.** Draf awal: hanya dicatat. Builder: `wait` di latar depan lalu menggantung selamanya, persis masalah #48. Usulan saya: setelah 60 detik lagi kirim **SIGTERM** (tidak pernah SIGKILL), dicatat; sesi yang mengabaikan SIGINT sudah macet dan telah idle 30 menit, jadi risikonya kecil. Alternatif: tidak ada eskalasi (ikut Nexora).
+**Dijawab owner ("saya ikut rekomendasi anda").**
+- **Eskalasi bila sesi bertahan 30 detik setelah SIGINT [owner].** Draf awal: hanya dicatat; builder menunjukkan `wait` di latar depan lalu menggantung selamanya, persis masalah #48. Diputuskan: setelah 60 detik lagi kirim **SIGTERM** (tidak pernah SIGKILL), dicatat; sesi yang mengabaikan SIGINT sudah macet dan telah idle 30 menit, jadi risikonya kecil. Ini menggantikan butir Non-tujuan "tanpa eskalasi" di atas untuk SIGTERM; SIGKILL tetap tidak dipakai.
 **Keputusan saya [saya].**
 - **Sinyal CPU dihapus** (lihat Tujuan). Sisa dua sinyal.
 - **Penanda interupsi.** Pemantau menulis berkas penanda (`.aicrew/idle-interrupt`) sebelum `kill -INT`, karena subshell tidak dapat mengubah variabel induk. Setelah `claude` kembali, bila penanda ada: putaran diperlakukan sebagai putaran normal, `rc` dinormalkan (130 atau 0), deteksi limit dan jalur gagal (`errs`, `AICREW_ERR_SLEEP`) dilewati, sidik jari dibandingkan seperti biasa, sehingga tiga putaran idle tanpa perubahan berhenti lewat `--stuck` (kode 2). Penanda dihapus tiap awal putaran.
