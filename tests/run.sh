@@ -932,4 +932,8 @@ grep -q 'cve-audit.sh' skills/cve-audit/SKILL.md && grep -q 'dry-run' skills/cve
 grep -q 'Pemeriksaan CVE:' templates/WORKFLOW.md; ok "templat WORKFLOW memuat 'Pemeriksaan CVE:'" $? 0
 grep -q 'cve-check.sh' agents/security.md; ok "agen security menyebut cve-check.sh" $? 0
 
+# 3j-6. PRIVACY.md dan README menjelaskan pemeriksaan CVE (jaringan keluar ke OSV)
+grep -q 'api.osv.dev' PRIVACY.md && ! grep -q 'Satu-satunya jaringan keluar' PRIVACY.md; ok "PRIVACY: menyebut api.osv.dev dan tidak lagi mengaku 'satu-satunya' jaringan keluar" $? 0
+grep -q 'cve-check.sh' README.md && grep -q 'waiver owner `(cve)`' README.md && grep -q 'Pemeriksaan CVE:' README.md && grep -q 'cve-audit' README.md; ok "README: cve-check.sh, waiver (cve), Pemeriksaan CVE, cve-audit" $? 0
+
 [ "$fails" = 0 ] && echo "SEMUA LULUS" || { echo "$fails GAGAL"; exit 1; }
