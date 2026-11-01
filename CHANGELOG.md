@@ -4,6 +4,16 @@ All notable changes to aiCrew are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Entries before 0.11.0 were reconstructed from tags, merged pull requests and commit history.
 
+## [1.0.0] - 2026-11-01
+
+### Added
+
+- CHANGELOG.md with the full history from 0.1.0, and a Stability section in the README that defines the public interface under SemVer. (#53)
+
+### Changed
+
+- Public documentation is now in English: README.md, PRIVACY.md, plugin and marketplace descriptions and the user-facing settings text. (#53)
+
 ## [0.12.0] - 2026-11-01
 
 ### Added
