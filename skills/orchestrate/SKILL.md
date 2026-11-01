@@ -73,7 +73,7 @@ issue terbuka → laporkan penyumbatnya dan berhenti.
    Badan PR: satu kata kunci per issue, satu per baris (`Closes #4` ⏎ `Closes #5`). `Closes #4, #5` hanya menutup #4.
    Gagal → `budget.sh fail <n>`, perbaiki satu kali dengan temuan yang spesifik; gagal lagi → aturan berhenti.
 7. Build/test satu jalur: jangan menjalankan suite tes penuh dari banyak agen bersamaan.
-8. Setelah merge terverifikasi (`--after` exit 0) dan kartu/label diperbarui, hapus worktree issue itu (`git worktree remove <path>`; tanpa `--force` bila ada perubahan yang belum ter-commit: laporkan saja) agar tidak menumpuk.
+8. Setelah merge terverifikasi (`--after` exit 0) dan kartu/label diperbarui, bersihkan: `bash ${CLAUDE_PLUGIN_ROOT}/scripts/cleanup.sh --setelah-merge --issue <n>`. Skrip membaca `Bersihkan setelah merge:` di `WORKFLOW.md`: `ya` (bawaan, juga bila baris hilang) menghapus worktree `<repo>-wt-<n>` dan cabang `issue-<n>` (lokal dan remote) yang terbukti ter-merge, tanpa `--force` dan tanpa menyentuh yang belum ter-commit; `laporkan` hanya mencetak; `tidak` melewati. Keluaran memuat SHA ujung tiap cabang yang dihapus. Kode keluar bukan-0 atau baris `lewati:...` hanya dilaporkan di ringkasan: pembersihan **tidak pernah menghentikan alur**.
 
 ## Aturan berhenti (tandai issue, beri label `needs-principal`, lanjut ke issue lain, kabari owner)
 Isi bagian "Aturan berhenti" di `WORKFLOW.md` berlaku. Ringkas: `needs-principal` (dua tingkat di bawah),
