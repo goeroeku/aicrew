@@ -634,9 +634,12 @@ case "$*" in
   "api graphql"*) printf 'HTTP/2.0 200 OK\nX-Ratelimit-Remaining: %s\nX-Ratelimit-Reset: 1793490517\n' "${REMAINING:-0}" ;;
   "issue list"*) echo '[]' ;;
   "api repos/o/r/issues?"*) [ "${RESTFAIL:-0}" = 1 ] && { echo "HTTP 500" >&2; exit 1; }
-    a="$*"; p="${a##*page=}"; p="${p%%&*}"; jq -c ".[$(((p-1)*100)):$((p*100))]" "$FAKE/issues.json" ;;
+    a="$*"; p="${a##*page=}"; p="${p%%&*}"; f="$FAKE/issues.json"; case "$a" in *labels=epic*) [ -f "$FAKE/issues-epic.json" ] && f="$FAKE/issues-epic.json" ;; esac
+    jq -c ".[$(((p-1)*100)):$((p*100))]" "$f" ;;
+  "api repos/o/r/issues/"*"/parent"*) echo "HTTP 404: Not Found" >&2; exit 1 ;;
   "api repos/o/r/issues/7") cat "$FAKE/issue7.json" ;;
-  "api -X "*) for a in "$@"; do case "$a" in body=*) printf '%s' "${a#body=}" > "$FAKE/body.out" ;; esac; done ;;
+  "api -X "*) for a in "$@"; do case "$a" in body=*) printf '%s' "${a#body=}" > "$FAKE/body.out"
+    case "$*" in "api -X PATCH repos/o/r/issues/7"*) jq -n --arg b "${a#body=}" '{body:$b}' > "$FAKE/issue7.json" ;; esac ;; esac; done ;;
 esac
 EOF
 chmod +x "$tmp/rl/bin/gh"; export FAKE="$tmp/rl"; : > "$FAKE/calls"
@@ -681,5 +684,13 @@ B='a "q" $HOME `x`'$'\n''- [ ] #5'
 (export GHX_SIM=1; RL ghx_issue_set_body 7 "$B" >/dev/null 2>&1); ok "ghx_issue_set_body: badan utuh via REST" "$(cat "$FAKE/body.out")" "$B"
 : > "$FAKE/calls"; (export GHX_SIM=1; RL ghx_issue_close 7 "Sudah masuk" >/dev/null 2>&1)
 ok "ghx_issue_close: REST = komentar lalu tutup" "$(grep -E '^api -X (POST|PATCH) repos/o/r/issues/7' "$FAKE/calls" | awk '{print $3}' | tr '\n' ' ')" "POST PATCH "
+
+# 3i-3. epic-link.sh memakai pustaka: GraphQL diblokir -> REST
+jq -n '[{number:1,title:"E",body:"- [ ] #3",state:"open",labels:[{name:"epic"}]},{number:2,title:"orfan",body:"",state:"open",labels:[]},{number:3,title:"anak",body:"",state:"open",labels:[]}]' > "$FAKE/issues.json"; jq -c '[.[0]]' "$FAKE/issues.json" > "$FAKE/issues-epic.json"
+out="$(cd "$tmp/rl/w" && GHX_SIM=1 PATH="$tmp/rl/bin:$PATH" bash "$root/scripts/epic-link.sh" --check 2>/dev/null)"; rc=$?
+ok "epic-link --check: GraphQL diblokir -> yatim lewat REST, exit 3" "$rc|$out" "3|yatim: #2 orfan"
+echo '{"body":"- [ ] #4"}' > "$FAKE/issue7.json"
+out="$(cd "$tmp/rl/w" && GHX_SIM=1 PATH="$tmp/rl/bin:$PATH" bash "$root/scripts/epic-link.sh" 7 9 2>/dev/null)"
+ok "epic-link <epic> <anak>: GraphQL diblokir -> daftar centang lewat REST" "$out|$(jq -r .body "$FAKE/issue7.json" | tail -1)" "epic-link: #9 -> epic #7|- [ ] #9"
 
 [ "$fails" = 0 ] && echo "SEMUA LULUS" || { echo "$fails GAGAL"; exit 1; }
