@@ -50,6 +50,17 @@ Issue tertutup tetap ditangani `board.sh --sync` yang ada (Done).
 - Autopilot dengan papan aktif memanggil sinkronisasi sekali per putaran; dengan `AICREW_BOARD_SYNC=0` tidak.
 - `bash tests/run.sh` hijau; CI hijau.
 
+## Putusan setelah builder-check (terverifikasi di kode)
+
+- Pakai ulang, jangan duplikasi: `ghx_items` (baca papan), `board.sh <o> <n> <issue> <status>` (pindah kartu, nama status tak peka huruf), `ghx_issues`, `label.sh <nama> --all`. Kartu ditolak REST (403/404) = dilewati dan dihitung, seperti `--sync`.
+- `unsat_blockers` (kini di `autopilot.sh:37`, memakai `$nums`) dipindah ke `scripts/lib/blockers.sh` dan menghitung himpunan terbuka sendiri dari JSON masukan; `waiting_on_owner` tetap lulus tesnya.
+- Baris `Kanban board:` (format templat: `GitHub Project <owner>/<nomor>` atau `none`) diurai oleh fungsi bersama `board_ref` di `scripts/lib/board-ref.sh` (keluaran `<owner> <nomor>`, kosong = nonaktif).
+- Batas GraphQL: dibaca dari header respons (`_ghx_probe`/`_ghx_hdr x-ratelimit-remaining`), bukan `gh api rate_limit` (menyesatkan, `ghx.sh:17`). Header tak terbaca = jalan terus.
+- Titik panggil di autopilot: awal iterasi loop, setelah `open` dihitung dan sebelum pemeriksaan keluar/menunggu owner; tidak fatal; tidak di jalur exit 5; tidak di `watch_round`. Skrip dapat ditimpa lewat `AICREW_BOARD_SH` (untuk tes).
+- Kartu tidak ada di papan: `skip:no-card` (tidak menambahkan). PR non-draft menang atas label `in-progress`. Label menang atas penempatan manual (keputusan produk, bisa diubah owner).
+- Nama teknis, variabel, dan `skip:<alasan>` Inggris; pesan log tetap Indonesia (bahasa kerja, #64).
+- README: tabel pemetaan ditulis Inggris; tes penjaga bahasa (`IDTOK`) tetap hijau.
+
 ## Diserahkan ke pembangun
 
 Struktur fungsi, format keluaran dry-run yang tepat, cara membaca "Blocked by" (acuan Nexora: bagian `## Blocked by` di badan issue, nomor `#n`), dan penamaan variabel lingkungan.
