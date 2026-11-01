@@ -654,8 +654,8 @@ V="$tmp/ec/wf2"; mkdir -p "$V/o" "$V/c"; git init -q --bare "$V/o/r.git"; git cl
   && git checkout -qb int.v2 && printf -- '3. Cabang integrasi: int.v2. Issue yang saling bergantung\nBaru\n' > docs/WORKFLOW.md && git commit -qam b && git push -q origin int.v2 && git checkout -q main )
 ok "workflow.sh: titik penutup kalimat tidak ikut nama cabang (titik di tengah tetap)" "$(cd "$V/c/r" && bash "$root/scripts/workflow.sh" | grep -c Baru)" 1
 ok "workflow.sh: tanpa cabang integrasi -> berkas lokal" "$(cd "$tmp/ec/w" && printf 'Halo\n' > docs/WORKFLOW.md && bash "$root/scripts/workflow.sh")" Halo
-grep -q 'epic-link.sh' skills/breakdown/SKILL.md && grep -q 'epic-link.sh --inherit' skills/orchestrate/SKILL.md && grep -q 'Tutup issue setelah merge integrasi' templates/WORKFLOW.md && grep -q 'sub-issue native' README.md; ok "0.6.0: skill, templat WORKFLOW dan README menyebut epic-link/inherit/tutup issue" $? 0
-grep -q 'Konsep (0.6.1)' README.md && grep -q 'Parent issue' README.md && grep -q 'Parent issue' scripts/board-init.sh && grep -q 'epic-link.sh --check' skills/orchestrate/SKILL.md; ok "0.6.1: README konsep, langkah UI manual, skill menyebut --check" $? 0
+grep -q 'epic-link.sh' skills/breakdown/SKILL.md && grep -q 'epic-link.sh --inherit' skills/orchestrate/SKILL.md && grep -q 'Tutup issue setelah merge integrasi' templates/WORKFLOW.md && grep -q 'native sub-issues' README.md; ok "0.6.0: skill, templat WORKFLOW dan README menyebut epic-link/inherit/tutup issue" $? 0
+grep -q 'Journey = epic = parent' README.md && grep -q 'Parent issue' README.md && grep -q 'Parent issue' scripts/board-init.sh && grep -q 'epic-link.sh --check' skills/orchestrate/SKILL.md; ok "0.6.1: README konsep, langkah UI manual, skill menyebut --check" $? 0
 grep -q 'lock.sh' skills/orchestrate/SKILL.md && grep -q 'Label tanpa induk' templates/WORKFLOW.md && grep -q 'lock.sh' README.md; ok "0.6.3: skill, templat WORKFLOW dan README menyebut lock.sh dan tanpa-induk" $? 0
 # 4d. journey otomatis: skill prd menggali journey saat diskusi; breakdown mengusulkan journey bila PRD belum punya
 cd "$root" || exit 1
@@ -992,7 +992,7 @@ grep -q 'cve-check.sh' agents/security.md; ok "agen security menyebut cve-check.
 
 # 3j-6. PRIVACY.md dan README menjelaskan pemeriksaan CVE (jaringan keluar ke OSV)
 grep -q 'api.osv.dev' PRIVACY.md && ! grep -q 'Satu-satunya jaringan keluar' PRIVACY.md; ok "PRIVACY: menyebut api.osv.dev dan tidak lagi mengaku 'satu-satunya' jaringan keluar" $? 0
-grep -q 'cve-check.sh' README.md && grep -q 'waiver owner `(cve)`' README.md && grep -q 'Pemeriksaan CVE:' README.md && grep -q 'cve-audit' README.md; ok "README: cve-check.sh, waiver (cve), Pemeriksaan CVE, cve-audit" $? 0
+grep -q 'cve-check.sh' README.md && grep -q 'owner waiver `(cve)`' README.md && grep -q 'Pemeriksaan CVE:' README.md && grep -q 'cve-audit' README.md; ok "README: cve-check.sh, waiver (cve), Pemeriksaan CVE, cve-audit" $? 0
 
 # 3j-7. perbaikan hasil review akhir
 mkdir -p "$CF/abc1234567/x b/y" "$CF/abc1234567/é" "$CF/mb1234"; printf 'module m\n\nrequire golang.org/x/net v0.7.0\n' > "$CF/abc1234567/x b/y/go.mod"; cp "$CF/abc1234567/x b/y/go.mod" "$CF/abc1234567/é/go.mod"
@@ -1119,13 +1119,13 @@ grep -q 'Paket privat' skills/cve-audit/SKILL.md; ok "skill cve-audit menyebut p
 grep -q '"version": "0.12.0"' .claude-plugin/plugin.json; ok "plugin.json versi 0.12.0" $? 0
 # 0.12.0: watchdog idle autopilot terdokumentasi (#48, #17)
 grep -q 'Mode tanpa pengawasan (autopilot)' skills/orchestrate/SKILL.md && grep -q 'exec claude' skills/orchestrate/SKILL.md; ok "orchestrate: subbagian Mode tanpa pengawasan (autopilot) memuat aturan exec claude" $? 0
-grep -q 'Watchdog idle (0.12.0)' README.md && grep -q -- '--idle-limit' README.md; ok "README: Watchdog idle (0.12.0) menyebut --idle-limit" $? 0
+grep -q 'Idle watchdog' README.md && grep -q -- '--idle-limit' README.md; ok "README: Idle watchdog menyebut --idle-limit" $? 0
 grep -q 'AICREW_IDLE_LIMIT' scripts/autopilot.sh && grep -q 'AICREW_TERM_GRACE' scripts/autopilot.sh && grep -q 'AICREW_TRANSCRIPT_DIR' scripts/autopilot.sh; ok "autopilot.sh: komentar kepala mendokumentasikan variabel watchdog" $? 0
 grep -q 'file yang di-ignore' templates/WORKFLOW.md; ok "templat WORKFLOW: Bersihkan setelah merge menyebut file yang di-ignore ikut terhapus (#44)" $? 0
 # 0.10.0: skill orchestrate, templat WORKFLOW, README memuat integrasi terverifikasi dan menunggu-rilis (#28, #32)
 for k in 'terintegrasi.sh' 'periksa-rilis' 'menunggu-rilis.sh --tandai' 'alur-terjadwal.sh'; do grep -qF -- "$k" skills/orchestrate/SKILL.md; ok "orchestrate memuat '$k'" $? 0; done
 grep -q 'Label menunggu rilis' templates/WORKFLOW.md; ok "templat WORKFLOW: Label menunggu rilis" $? 0
-grep -q 'Integrasi terverifikasi (0.10.0)' README.md; ok "README: Integrasi terverifikasi (0.10.0)" $? 0
+grep -q 'Integration is verified' README.md; ok "README: integrasi terverifikasi (terintegrasi.sh)" $? 0
 
 # 3l-5. perbaikan hasil review akhir #25
 printf -- '- Paket privat: @acme/*, git.corp.com/tim. Penjelasan, panjang.\n' > "$Q/wfa.md"
@@ -1229,7 +1229,7 @@ rm -f "$CL/ghlog"; DBM=true GHLOG="$CL/ghlog" PF >/dev/null; ok "preflight: tida
 G remote remove origin; ok "preflight: tanpa remote -> tanpa baris info jumlah" "$(DBM=true PF | grep -c 'cabang ter-merge')" 0
 
 # 3k-5. README menjelaskan pembersihan cabang/worktree dan perubahan perilaku bawaan
-grep -q 'cleanup.sh' README.md && grep -q 'Bersihkan setelah merge' README.md && grep -q 'bawaan `ya`' README.md && grep -q 'delete_branch_on_merge' README.md; ok "README: cleanup.sh, Bersihkan setelah merge, bawaan ya, delete_branch_on_merge" $? 0
+grep -q 'cleanup.sh' README.md && grep -q 'Bersihkan setelah merge' README.md && grep -q 'default `ya`' README.md && grep -q 'delete_branch_on_merge' README.md; ok "README: cleanup.sh, Bersihkan setelah merge, bawaan ya, delete_branch_on_merge" $? 0
 
 # 3k-6. perbaikan hasil review akhir (keselamatan data)
 RG="$(command -v git)"; mkdir -p "$CL/gbin"; printf '#!/usr/bin/env bash\nif [ "$1" = worktree ] && [ "$2" = remove ]; then echo "fatal: simulasi gagal" >&2; exit 1; fi\nexec "$REAL_GIT" "$@"\n' > "$CL/gbin/git"; chmod +x "$CL/gbin/git"
@@ -1253,7 +1253,7 @@ ok "hitung: cabang bawaan tak diketahui -> 0 (preflight diam)" "$(REPO_FAIL=1 CL
 # cabang dan worktree baru tanpa commit (ujung sama dengan basis) tidak boleh dihapus
 MK; G branch issue-9 main; G push -q origin issue-9; G worktree add -q "$CL/w-wt-9" issue-9; OUT="$(CLN --no-fetch --apply)"
 ok "apply: issue-9 baru (ujung = basis) -> worktree, cabang lokal, dan remote tetap ada" "$([ -d "$CL/w-wt-9" ] && echo ada)|$(LB | tr ' ' '\n' | grep -cx issue-9)|$(RB | tr ' ' '\n' | grep -cx issue-9)|$(grep -c 'lewati:baru-tanpa-commit' <<<"$OUT")" 'ada|1|1|3'
-grep -q 'di-.gitignore' README.md; ok "README: menyebut berkas yang di-.gitignore ikut terhapus bersama worktree" $? 0
+grep -q 'git-ignored files' README.md; ok "README: menyebut berkas yang di-.gitignore ikut terhapus bersama worktree" $? 0
 
 # 3k-7. PR bertumpuk: bukti pr-merged hanya sah bila base PR = cabang bawaan/integrasi (kasus nyata Nexora: PR di-merge ke cabang induk, bukan ke integrasi)
 MK
@@ -1448,7 +1448,7 @@ grep -q 'Release notes:' templates/WORKFLOW.md; ok "templat WORKFLOW memuat opsi
 grep -q 'Release notes' skills/kickoff/SKILL.md; ok "kickoff menanyakan Release notes" $? 0
 [ -f templates/pull_request_template.md ] && grep -q '<!--' templates/pull_request_template.md && grep -q 'Release note: Added' templates/pull_request_template.md; ok "templat badan PR ada, contoh baris di dalam komentar HTML" $? 0
 grep -q '^- Release notes: CHANGELOG.md' docs/WORKFLOW.md; ok "docs/WORKFLOW.md aicrew memakai Release notes: CHANGELOG.md (dogfooding)" $? 0
-grep -q 'Catatan rilis (0.11.0; kunci berbahasa Inggris sejak 0.11.1)' README.md; ok "README: Catatan rilis (0.11.0; kunci Inggris sejak 0.11.1)" $? 0
+grep -q 'Release notes (opt-in)' README.md; ok "README: Release notes (opt-in) memuat kunci Inggris" $? 0
 mkdir -p "$tmp/rrb"; cat > "$tmp/rrb/gh" <<'GHEOF'
 #!/bin/sh
 case "$*" in "issue list"*) echo '[{"number":1,"title":"a","state":"CLOSED","labels":[{"name":"di-integrasi"}]}]';; "pr list"*) echo '[{"number":5,"state":"MERGED","baseRefName":"integ","comments":[{"body":"**Bukti selesai** ok"}]}]';; *) echo '{}';; esac
@@ -1665,6 +1665,6 @@ for f in README.md PRIVACY.md CHANGELOG.md; do ok "bahasa publik: $f tanpa kata 
 txt="$(jq -r '[.description, (.userConfig[]? | .title, .description)] | .[] | select(. != null)' .claude-plugin/plugin.json | tr '\n' ' ')"; ok "bahasa publik: plugin.json (description, userConfig) Inggris" "$(printf ' %s ' "$txt" | grep -ciE "$IDN" || true)" 0
 txt="$(jq -r '.description, (.plugins[]?.description)' .claude-plugin/marketplace.json | tr '\n' ' ')"; ok "bahasa publik: marketplace.json Inggris" "$(printf ' %s ' "$txt" | grep -ciE "$IDN" || true)" 0
 for sc in autopilot autostart board-init board cleanup cve-audit cve-check ensure-gitignore epic-link install-permissions lock menunggu-rilis notify release-notes release-report terintegrasi workflow; do grep -qF "scripts/$sc.sh" README.md; ok "README tetap menyebut scripts/$sc.sh" $? 0; done
-grep -qE '^#+ +Stability' README.md; ok "README: bagian Stability" $? 0
+grep -qE '^#+ +[^A-Za-z]*Stability' README.md; ok "README: bagian Stability" $? 0
 
 [ "$fails" = 0 ] && echo "SEMUA LULUS" || { echo "$fails GAGAL"; exit 1; }
