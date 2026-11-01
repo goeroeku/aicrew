@@ -1238,4 +1238,35 @@ ok "PR merged ke cabang induk (bukan bawaan/integrasi) -> bukan bukti ter-merge,
 ok "PR merged ke cabang integrasi -> tetap bukti sah, issue-12 dihapus" "$(LB | tr ' ' '\n' | grep -cx issue-12)|$(RB | tr ' ' '\n' | grep -cx issue-12)" '0|0'
 MK; DBM=false out="$(cd "$CL/w" && GH_REPO=o/r PATH="$CL/bin:$PATH" bash "$root/scripts/preflight.sh" github 2>&1)"; ok "preflight: AWAS menyebut dampak PR bertumpuk salah-base" "$(grep -c 'PR bertumpuk' <<<"$out")" 1
 
+# 3m. integrasi terverifikasi (#28, #32): gh palsu REST (berkas $MI_FX/<path dgn / ? = & jadi _>), repo git sementara + remote bare
+MI="$tmp/mi"; mkdir -p "$MI/bin" "$MI/fx"
+cat > "$MI/bin/gh" <<'GHEOF'
+#!/usr/bin/env bash
+# gh palsu: hanya `gh api [-X M] [-H x] [--paginate] [-f k=v] <path>`; GET membaca $MI_FX/<path>, selain GET dicatat di $MI_FX/calls
+[ "$1" = api ] || exit 1; shift; m=GET; path=""
+while [ $# -gt 0 ]; do case "$1" in -X) m="$2"; shift 2 ;; -H|-f|-F|--jq|-q|--input) shift 2 ;; --paginate) shift ;; -*) shift ;; *) path="$1"; shift ;; esac; done
+[ "${MI_FAIL:-}" != 1 ] || { echo "HTTP 500" >&2; exit 1; }
+[ "$m" = GET ] || { echo "$m $path" >> "$MI_FX/calls"; echo '{}'; exit 0; }
+f="$MI_FX/$(printf '%s' "$path" | sed 's#[/?=&]#_#g')"; [ -f "$f" ] && cat "$f" || { echo "HTTP 404 Not Found" >&2; exit 1; }
+GHEOF
+chmod +x "$MI/bin/gh"
+git init -q --bare "$MI/o.git"; git init -q "$MI/w" && cd "$MI/w" || exit 1
+git remote add origin "$MI/o.git"; git checkout -q -b main; echo a > a; git add a; git commit -q -m A; git push -q origin main
+git checkout -q -b integrasi; echo i > i; git add i; git commit -q -m I1; I1="$(git rev-parse HEAD)"; git push -q origin integrasi
+git checkout -q -b induk main; echo x > x; git add x; git commit -q -m X; X1="$(git rev-parse HEAD)"; git push -q origin induk; git checkout -q main
+mkdir -p docs; printf -- '- Cabang integrasi: integrasi\n' > docs/WORKFLOW.md
+MIPR() { printf '{"merged_at":%s,"merge_commit_sha":"%s","head":{"sha":"%s"},"base":{"ref":"%s"}}' "$2" "$3" "$4" "$5" > "$MI/fx/repos_o_r_pulls_$1"; } # n merged_at merge_sha head_sha base
+echo '{"default_branch":"main"}' > "$MI/fx/repos_o_r"
+TI() { (cd "$MI/w" && GH_REPO=o/r MI_FX="$MI/fx" PATH="$MI/bin:$PATH" bash "$root/scripts/terintegrasi.sh" "$@" 2>&1); }
+MIPR 1 '"2026-11-01T00:00:00Z"' "$X1" "$X1" integrasi; out="$(TI 1)"; ok "terintegrasi: base = integrasi dan merged -> 0" "$?" 0
+MIPR 2 '"2026-11-01T00:00:00Z"' "$I1" "$X1" induk; out="$(TI 2)"; ok "terintegrasi: base induk, merge_commit_sha leluhur integrasi -> 0" "$?" 0
+MIPR 3 '"2026-11-01T00:00:00Z"' "$X1" "$I1" induk; out="$(TI 3)"; ok "terintegrasi: base induk, head.sha leluhur integrasi -> 0" "$?" 0
+MIPR 4 '"2026-11-01T00:00:00Z"' "$X1" "$X1" induk; out="$(TI 4)"; rc=$?; ok "terintegrasi: base induk, tak ada SHA leluhur -> 1, pesan menyebut induk dan integrasi" "$rc|$(grep -c 'ter-merge ke induk, belum ke integrasi' <<<"$out")" '1|1'
+MIPR 5 null "$X1" "$X1" integrasi; out="$(TI 5)"; rc=$?; ok "terintegrasi: merged_at kosong walau base = integrasi -> 1" "$rc|$(grep -c 'belum merged' <<<"$out")" '1|1'
+mv "$MI/w/docs/WORKFLOW.md" "$MI/w/docs/WF.bak"; out="$(TI 4)"; ok "terintegrasi: WORKFLOW tak terbaca dan base bukan bawaan -> 2 (bukan 'tanpa integrasi')" "$?" 2
+MIPR 6 '"2026-11-01T00:00:00Z"' "$X1" "$X1" main; out="$(TI 6)"; ok "terintegrasi: WORKFLOW tak terbaca tetapi base = bawaan -> 0" "$?" 0
+mv "$MI/w/docs/WF.bak" "$MI/w/docs/WORKFLOW.md"; printf -- '- Pemeriksaan CVE: ya\n' > "$MI/w/docs/WORKFLOW.md"; out="$(TI 4)"; ok "terintegrasi: WORKFLOW terbaca tanpa baris Cabang integrasi -> 0 (perilaku lama)" "$?" 0
+printf -- '- Cabang integrasi: integrasi\n' > "$MI/w/docs/WORKFLOW.md"; out="$(MI_FAIL=1 TI 4)"; ok "terintegrasi: REST gagal -> 2" "$?" 2
+cd "$root" || exit 1
+
 [ "$fails" = 0 ] && echo "SEMUA LULUS" || { echo "$fails GAGAL"; exit 1; }
