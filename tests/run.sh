@@ -1062,4 +1062,7 @@ ok "preflight: ada cabang ter-merge -> info jumlah (bukti offline)" "$(DBM=true 
 rm -f "$CL/ghlog"; DBM=true GHLOG="$CL/ghlog" PF >/dev/null; ok "preflight: tidak memanggil REST pulls (bukti offline saja)" "$(grep -c 'pulls' "$CL/ghlog" 2>/dev/null; true)" 0
 G remote remove origin; ok "preflight: tanpa remote -> tanpa baris info jumlah" "$(DBM=true PF | grep -c 'cabang ter-merge')" 0
 
+# 3k-5. README menjelaskan pembersihan cabang/worktree dan perubahan perilaku bawaan
+grep -q 'cleanup.sh' README.md && grep -q 'Bersihkan setelah merge' README.md && grep -q 'bawaan `ya`' README.md && grep -q 'delete_branch_on_merge' README.md; ok "README: cleanup.sh, Bersihkan setelah merge, bawaan ya, delete_branch_on_merge" $? 0
+
 [ "$fails" = 0 ] && echo "SEMUA LULUS" || { echo "$fails GAGAL"; exit 1; }
