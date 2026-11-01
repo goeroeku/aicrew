@@ -1625,4 +1625,46 @@ AP6='[{"number":1,"state":"OPEN","labels":[{"name":"role:qa"}]},{"number":2,"sta
 ap3 "$AP6" $'noop'; rc=$?
 ok "waiting_on_owner: 6 issue Ready tanpa PR -> satu panggilan gh pr list per evaluasi (bukan 6)" "$rc|$([ "$(grep -c '^pr list --head' "$AP3FX/calls")" -le 3 ] && echo hemat || echo boros)" '2|hemat'
 
+# 3q. v1.0 (#34): permukaan publik Inggris, CHANGELOG isi mundur, Stability
+cd "$root" || exit 1
+TAGDATES="0.1.0 2026-10-28
+0.1.1 2026-10-28
+0.1.2 2026-10-31
+0.2.0 2026-10-31
+0.3.0 2026-10-31
+0.4.0 2026-10-31
+0.4.1 2026-10-31
+0.5.0 2026-10-31
+0.5.1 2026-10-31
+0.6.0 2026-10-31
+0.6.1 2026-10-31
+0.6.2 2026-10-31
+0.6.3 2026-10-31
+0.6.4 2026-11-01
+0.7.0 2026-11-01
+0.8.0 2026-11-01
+0.8.1 2026-11-01
+0.8.2 2026-11-01
+0.9.0 2026-11-01
+0.9.1 2026-11-01
+0.10.0 2026-11-01
+0.10.1 2026-11-01
+0.11.0 2026-11-01
+0.11.1 2026-11-01
+0.12.0 2026-11-01"
+strip_code() { awk 'BEGIN{f=0} /^```/{f=!f; next} !f' "$1" 2>/dev/null | sed 's/`[^`]*`//g'; }
+IDN=' yang | dan | untuk | dengan | tidak | atau | bila | dari | ini | adalah |^#+ .*(Kebijakan|Peringatan|Prasyarat|Pasang|Alur|Lisensi|Opsi)'
+idn_hits() { if [ -f "$1" ]; then strip_code "$1" | grep -ciE "$IDN" || true; else echo 99; fi; }
+miss=0; wrong=0
+while read -r v d; do [ -n "$v" ] || continue; grep -qE "^## \\[$v\\] - $d$" CHANGELOG.md 2>/dev/null || miss=$((miss+1)); done <<<"$TAGDATES"
+ok "CHANGELOG.md: satu bagian '## [X.Y.Z] - tanggal-tag' untuk tiap tag 0.1.0-0.12.0 (25), tanggal dari commit tag" "$miss" 0
+n="$(grep -cE '^## \[' CHANGELOG.md 2>/dev/null || true)"; ok "CHANGELOG.md: tidak ada bagian di luar tag yang ada (tanpa [Unreleased])" "$([ "${n:-0}" -le 25 ] && ! grep -q 'Unreleased' CHANGELOG.md 2>/dev/null && echo ok || echo salah)" ok
+ok "CHANGELOG.md: tanpa blok tautan perbandingan di dasar berkas" "$(grep -cE '^\[[0-9][^]]*\]: http' CHANGELOG.md 2>/dev/null || true)" 0
+ok "README: tanpa judul atau paragraf bertanda versi (0.x.y)" "$(grep -cE '\(0\.[0-9]+\.[0-9]+[;)]' README.md)" 0
+for f in README.md PRIVACY.md CHANGELOG.md; do ok "bahasa publik: $f tanpa kata fungsi/judul Indonesia di luar kode" "$(idn_hits "$f")" 0; done
+txt="$(jq -r '[.description, (.userConfig[]? | .title, .description)] | .[] | select(. != null)' .claude-plugin/plugin.json | tr '\n' ' ')"; ok "bahasa publik: plugin.json (description, userConfig) Inggris" "$(printf ' %s ' "$txt" | grep -ciE "$IDN" || true)" 0
+txt="$(jq -r '.description, (.plugins[]?.description)' .claude-plugin/marketplace.json | tr '\n' ' ')"; ok "bahasa publik: marketplace.json Inggris" "$(printf ' %s ' "$txt" | grep -ciE "$IDN" || true)" 0
+for sc in autopilot autostart board-init board cleanup cve-audit cve-check ensure-gitignore epic-link install-permissions lock menunggu-rilis notify release-notes release-report terintegrasi workflow; do grep -qF "scripts/$sc.sh" README.md; ok "README tetap menyebut scripts/$sc.sh" $? 0; done
+grep -qE '^#+ +Stability' README.md; ok "README: bagian Stability" $? 0
+
 [ "$fails" = 0 ] && echo "SEMUA LULUS" || { echo "$fails GAGAL"; exit 1; }
