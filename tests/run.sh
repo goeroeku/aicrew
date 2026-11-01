@@ -630,7 +630,7 @@ case "$1" in issue|project|repo|pr) [ "${GHX_SIM:-0}" = 1 ] && { echo "GraphQL: 
 [ "${ERR404:-0}" = 1 ] && case "$1" in issue|project|repo|pr) echo "HTTP 404: Not Found" >&2; exit 1 ;; esac
 case "$*" in
   "repo view"*) echo o/viewed ;;
-  "api users/o"*) echo "${OWNER_TYPE:-User}" ;;
+  "api users/o -q"*) echo "${OWNER_TYPE:-User}" ;;
   "api graphql"*) printf 'HTTP/2.0 200 OK\nX-Ratelimit-Remaining: %s\nX-Ratelimit-Reset: 1793490517\n' "${REMAINING:-0}" ;;
   "issue list"*) echo '[]' ;;
   "api repos/o/r/issues?"*) [ "${RESTFAIL:-0}" = 1 ] && { echo "HTTP 500" >&2; exit 1; }
@@ -638,6 +638,21 @@ case "$*" in
     jq -c ".[$(((p-1)*100)):$((p*100))]" "$f" ;;
   "api repos/o/r/issues/"*"/parent"*) echo "HTTP 404: Not Found" >&2; exit 1 ;;
   "api repos/o/r/issues/7") cat "$FAKE/issue7.json" ;;
+  "api repos/o/r/issues/"[59]) a="$*"; n="${a##*/}"; echo "{\"id\":${n}000,\"body\":\"\"}" ;;
+  "project item-list"*) echo '{"items":[]}' ;;
+  "project view"*) echo PID ;;
+  "project field-list"*) echo '{"fields":[{"name":"Status","id":"F1","options":[{"name":"Done","id":"OD"}]}]}' ;;
+  "project item-add"*) echo '{"id":"PVTI_new"}' ;;
+  "api "*"/projectsV2/3/"*) [ -n "${PROJ_ERR:-}" ] && { echo "gh: Not Found (HTTP $PROJ_ERR)" >&2; echo '{"message":"Not Found"}'; exit 1; }
+    case "$*" in
+      *"/fields"*) cat "$FAKE/fields.json" ;;
+      *"/items?"*) a="$*"; p="${a##*page=}"; p="${p%%&*}"; jq -c ".[$(((p-1)*100)):$((p*100))]" "$FAKE/pitems.json" ;;
+      "api -X POST "*) case "$(cat "$FAKE/postmode" 2>/dev/null)" in
+        exists) echo "gh: Content already exists in this project (HTTP 422)" >&2; echo '{"message":"Content already exists in this project"}'; exit 1 ;;
+        other) echo "gh: Validation Failed (HTTP 422)" >&2; echo '{"message":"Validation Failed"}'; exit 1 ;;
+        *) echo '{"id":555}' ;; esac ;;
+      "api -X PATCH "*) cat > "$FAKE/patch.json"; echo '{}' ;;
+    esac ;;
   "api -X "*) for a in "$@"; do case "$a" in body=*) printf '%s' "${a#body=}" > "$FAKE/body.out"
     case "$*" in "api -X PATCH repos/o/r/issues/7"*) jq -n --arg b "${a#body=}" '{body:$b}' > "$FAKE/issue7.json" ;; esac ;; esac; done ;;
 esac
@@ -692,5 +707,35 @@ ok "epic-link --check: GraphQL diblokir -> yatim lewat REST, exit 3" "$rc|$out" 
 echo '{"body":"- [ ] #4"}' > "$FAKE/issue7.json"
 out="$(cd "$tmp/rl/w" && GHX_SIM=1 PATH="$tmp/rl/bin:$PATH" bash "$root/scripts/epic-link.sh" 7 9 2>/dev/null)"
 ok "epic-link <epic> <anak>: GraphQL diblokir -> daftar centang lewat REST" "$out|$(jq -r .body "$FAKE/issue7.json" | tail -1)" "epic-link: #9 -> epic #7|- [ ] #9"
+
+# 3i-4. ghx: operasi kartu project (GraphQL identik; batas -> REST; id GraphQL string vs REST angka)
+FU='[{"id":434173138,"name":"Title","data_type":"title"},{"id":434173140,"name":"Status","data_type":"single_select","options":[{"id":"f75ad846","name":"Backlog"},{"id":"df73e18b","name":"In review"},{"id":"98236657","name":"Done"}]}]'
+FO='[{"id":434173138,"name":{"html":"Title","raw":"Title"}},{"id":434173140,"name":{"html":"Status","raw":"Status"},"options":[{"id":"f75ad846","name":{"html":"Backlog","raw":"Backlog"}},{"id":"df73e18b","name":{"html":"In review","raw":"In review"}},{"id":"98236657","name":{"html":"Done","raw":"Done"}}]}]'
+echo "$FU" > "$FAKE/fields.json"
+echo '[{"id":285528753,"node_id":"PVTI_x","content_type":"Issue","content":{"number":5},"fields":[{"id":434173140,"value":{"id":"df73e18b","name":{"html":"In review","raw":"In review"}}}]},{"id":285528754,"node_id":"PVTI_y","content_type":"Issue","content":{"number":6},"fields":[]}]' > "$FAKE/pitems.json"
+: > "$FAKE/calls"; ok "ghx_items: tanpa batas = panggilan identik" "$(RL ghx_items o 3 2>/dev/null)|$(grep -c '^project item-list 3 --owner o --limit 200 --format json$' "$FAKE/calls")" '{"items":[]}|1'
+ok "ghx_items: REST user (nama kolom string)" "$(export GHX_SIM=1; RL ghx_items o 3 2>/dev/null | jq -c '[.items[]|[.content.number,.content.type,.status]]')" '[[5,"Issue","In review"],[6,"Issue",null]]'
+echo "$FO" > "$FAKE/fields.json"
+ok "ghx_items: REST org (nama kolom {raw})" "$(export GHX_SIM=1 OWNER_TYPE=Organization; RL ghx_items o 3 2>/dev/null | jq -c '[.items[]|[.content.number,.status]]')" '[[5,"In review"],[6,null]]'
+ok "ghx_status_field: REST org, opsi dinormalkan" "$(export GHX_SIM=1 OWNER_TYPE=Organization; RL ghx_status_field o 3 2>/dev/null | jq -c '[.id,(.options|map(.name))]')" '[434173140,["Backlog","In review","Done"]]'
+echo "$FU" > "$FAKE/fields.json"
+ok "ghx_status_field: REST user, opsi dinormalkan" "$(export GHX_SIM=1; RL ghx_status_field o 3 2>/dev/null | jq -c '[.id,(.options|map(.name))]')" '[434173140,["Backlog","In review","Done"]]'
+ok "ghx_status_field: GraphQL = panggilan identik" "$(RL ghx_status_field o 3 2>/dev/null | jq -r .id)" F1
+: > "$FAKE/calls"; ok "ghx_card_add: GraphQL = item-add identik" "$(RL ghx_card_add o 3 5 2>/dev/null)|$(grep -c '^project item-add 3 --owner o --url https://github.com/o/r/issues/5 --format json$' "$FAKE/calls")" 'PVTI_new|1'
+: > "$FAKE/calls"; rm -f "$FAKE/postmode"
+ok "ghx_card_add: REST sukses, id kartu dari respons" "$(export GHX_SIM=1; RL ghx_card_add o 3 9 2>/dev/null)" 555
+ok "ghx_card_add: REST memakai id NUMERIK issue" "$(grep -c -- '-X POST users/o/projectsV2/3/items -f type=Issue -F id=9000' "$FAKE/calls")" 1
+echo exists > "$FAKE/postmode"
+ok "ghx_card_add: 422 already exists = sukses, id dari daftar" "$(export GHX_SIM=1; RL ghx_card_add o 3 5 2>/dev/null)" 285528753
+echo other > "$FAKE/postmode"; (export GHX_SIM=1; RL ghx_card_add o 3 5 >/dev/null 2>&1); rc=$?
+ok "ghx_card_add: 422 selain already exists -> exit non-0" "$([ $rc != 0 ] && [ $rc != 78 ] && echo gagal)" gagal
+rm -f "$FAKE/postmode"
+(export GHX_SIM=1; RL ghx_card_set o 3 285528753 434173140 df73e18b >/dev/null 2>&1)
+ok "ghx_card_set: REST body PATCH persis" "$(jq -c . "$FAKE/patch.json")" '{"fields":[{"id":434173140,"value":"df73e18b"}]}'
+: > "$FAKE/calls"; rm -f "$FAKE/patch.json"; (export GHX_SIM=1; RL ghx_card_set o 3 PVTI_x PVTSSF_abc df73e18b >/dev/null 2>&1)
+ok "ghx_card_set: id GraphQL (string) diterjemahkan ke id REST" "$(grep -c -- '-X PATCH users/o/projectsV2/3/items/285528753' "$FAKE/calls")|$(jq -c '.fields[0].id' "$FAKE/patch.json")" '1|434173140'
+: > "$FAKE/calls"; ok "ghx_card_set: GraphQL = project view lalu item-edit" "$(RL ghx_card_set o 3 PVTI_x F1 OD >/dev/null 2>&1; grep -cE '^project (view 3 --owner o --format json -q .id|item-edit --id PVTI_x --project-id PID --field-id F1 --single-select-option-id OD)$' "$FAKE/calls")" 2
+(export GHX_SIM=1 PROJ_ERR=404; RL ghx_items o 3 >/dev/null 2>"$tmp/rl/err"); rc=$?
+ok "ghx_items: REST kartu 404 -> exit 77 dengan petunjuk scope project" "$rc|$(grep -c "scope 'project'" "$tmp/rl/err")" '77|1'
 
 [ "$fails" = 0 ] && echo "SEMUA LULUS" || { echo "$fails GAGAL"; exit 1; }
