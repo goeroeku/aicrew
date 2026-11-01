@@ -974,4 +974,47 @@ ok "audit: paket sama di dua versi -> satu issue dalam satu putaran" "$(grep -c 
 grep -q 'privat' PRIVACY.md; ok "PRIVACY: menyebut nama paket privat/internal ikut terkirim" $? 0
 grep -q 'yarn.lock' README.md && grep -q 'pnpm-lock.yaml' README.md; ok "README: jujur soal lockfile yang belum tercakup (yarn.lock, pnpm-lock.yaml)" $? 0
 
+# 3k-1. cleanup.sh: laporan kandidat cabang/worktree ter-merge (repo git nyata + remote bare lokal; gh palsu untuk REST)
+CL="$tmp/cl"; mkdir -p "$CL/bin"; export CL
+cat > "$CL/bin/gh" <<'EOF'
+#!/usr/bin/env bash
+a="$*"
+case "$a" in
+  "api repos/o/r") echo '{"default_branch":"main","delete_branch_on_merge":false}' ;;
+  "api repos/o/r/pulls?state=open"*) [ -n "${OPEN_FAIL:-}" ] && { echo "HTTP 500" >&2; exit 1; }; cat "$CL/open.json" ;;
+  "api repos/o/r/pulls?head="*) b="${a##*head=}"; b="${b%%&*}"; b="$(printf '%b' "${b//%/\\x}")"; b="${b#o:}"; f="$CL/pr-$(printf '%s' "$b" | tr / _).json"; if [ -f "$f" ]; then cat "$f"; else echo '[]'; fi ;;
+esac
+EOF
+chmod +x "$CL/bin/gh"
+G() { git -C "$CL/w" "$@"; }
+MK() {   # repo sementara: main (bawaan), integ (integrasi), cabang ter-merge/squash/belum, worktree bersih/kotor/terkunci/terlepas/Orca
+  rm -rf "$CL/w" "$CL/remote.git" "$CL"/w-* "$CL/orca"; git init -q --bare "$CL/remote.git"; git --git-dir="$CL/remote.git" symbolic-ref HEAD refs/heads/main
+  git clone -q "$CL/remote.git" "$CL/w" 2>/dev/null; G checkout -q -b main; mkdir -p "$CL/w/docs"
+  printf -- '- Backend: github — repo: o/r\n3. Cabang integrasi: integ\n' > "$CL/w/docs/WORKFLOW.md"; G add -A; G commit -q -m base; G push -q -u origin main; G remote set-head origin main >/dev/null
+  G branch integ; G push -q origin integ
+  for n in issue-1 issue-5 issue-6 issue-7 issue-8 fitur/x stack-base; do G checkout -q -b "$n" main; echo "$n" > "$CL/w/$(tr / _ <<<"$n").txt"; G add -A; G commit -q -m "$n"; G push -q origin "$n"; G checkout -q main; G merge -q --no-ff "$n" -m "merge $n"; done
+  G push -q origin main
+  for n in issue-2 stack-child; do G checkout -q -b "$n" main; echo "$n" > "$CL/w/$n.txt"; G add -A; G commit -q -m "$n"; G push -q origin "$n"; G checkout -q main; done
+  for n in issue-3 issue-4; do G checkout -q -b "$n" main; echo "$n" > "$CL/w/$n.txt"; G add -A; G commit -q -m "$n"; G push -q origin "$n"; G checkout -q main; G merge -q --squash "$n"; G commit -q -m "squash $n"; done
+  G push -q origin main; S3="$(G rev-parse issue-3)"; S4="$(G rev-parse issue-4)"
+  G checkout -q issue-4; echo extra > "$CL/w/extra.txt"; G add -A; G commit -q -m extra; G checkout -q main   # ujung lokal issue-4 menyimpang dari PR
+  G worktree add -q "$CL/w-wt-5" issue-5; G worktree add -q "$CL/w-wt-6" issue-6; echo dirty > "$CL/w-wt-6/kotor.txt"
+  G worktree add -q "$CL/w-wt-7" issue-7; G worktree lock "$CL/w-wt-7"; G worktree add -q --detach "$CL/w-detached" main
+  mkdir -p "$CL/orca/workspaces"; G worktree add -q "$CL/orca/workspaces/w-wt-8" issue-8
+  for n in 3 4; do v="S$n"; printf '[{"number":%s,"merged_at":"2026-11-01T00:00:00Z","head":{"ref":"issue-%s","sha":"%s"},"base":{"ref":"main"}}]' "1$n" "$n" "${!v}" > "$CL/pr-issue-$n.json"; done
+  printf '[{"number":21,"head":{"ref":"fitur/x"},"base":{"ref":"main"}},{"number":22,"head":{"ref":"stack-child"},"base":{"ref":"stack-base"}}]' > "$CL/open.json"
+}
+CLN() { (cd "$CL/w" && GH_REPO=o/r PATH="$CL/bin:$PATH" bash "$root/scripts/cleanup.sh" "$@" 2>"$CL/err"); }
+TBL() { cut -f1,2,4,5 | LC_ALL=C sort | paste -sd'|' -; }
+MK
+EXP='cabang-lokal	fitur/x	leluhur	lewati:pr-terbuka|cabang-lokal	issue-1	leluhur	hapus|cabang-lokal	issue-2	-	lewati:belum-ter-merge|cabang-lokal	issue-3	pr-merged	hapus|cabang-lokal	issue-4	-	lewati:belum-ter-merge|cabang-lokal	issue-5	leluhur	hapus|cabang-lokal	issue-6	leluhur	lewati:checkout|cabang-lokal	issue-7	leluhur	lewati:checkout|cabang-lokal	issue-8	leluhur	lewati:checkout|cabang-lokal	stack-base	leluhur	lewati:base-pr-terbuka|cabang-lokal	stack-child	-	lewati:pr-terbuka|cabang-remote	fitur/x	leluhur	lewati:pr-terbuka|cabang-remote	issue-1	leluhur	hapus|cabang-remote	issue-2	-	lewati:belum-ter-merge|cabang-remote	issue-3	pr-merged	hapus|cabang-remote	issue-4	pr-merged	hapus|cabang-remote	issue-5	leluhur	hapus|cabang-remote	issue-6	leluhur	hapus|cabang-remote	issue-7	leluhur	hapus|cabang-remote	issue-8	leluhur	hapus|cabang-remote	stack-base	leluhur	lewati:base-pr-terbuka|cabang-remote	stack-child	-	lewati:pr-terbuka|worktree	w-detached	-	lewati:tanpa-cabang|worktree	w-wt-5	leluhur	hapus|worktree	w-wt-6	-	lewati:kotor|worktree	w-wt-7	-	lewati:terkunci|worktree	w-wt-8	-	lewati:orca'
+ok "cleanup laporan: kandidat, bukti, dan semua perlindungan (tabel lengkap)" "$(CLN --no-fetch | TBL)" "$EXP"
+ok "cleanup laporan: bawaan tidak menghapus apa pun" "$(G for-each-ref refs/heads | wc -l | tr -d ' ')" 13
+ok "cleanup laporan: main dan integ (bawaan dan integrasi) tidak pernah tampil" "$(CLN --no-fetch | cut -f2 | grep -cxE 'main|integ')" 0
+ok "cleanup laporan: dengan fetch (tanpa --no-fetch) hasilnya sama" "$(CLN | TBL)" "$EXP"
+ok "cleanup laporan: --only orkestrator hanya issue-N dan w-wt-N" "$(CLN --no-fetch --only orkestrator | cut -f2 | grep -cvE '^(issue-[0-9]+|w-wt-[0-9]+)$')" 0
+OPEN_FAIL=1 CLN --no-fetch | grep -q "^cabang-remote.issue-1.*lewati:pr-tak-terbaca"; ok "cleanup laporan: daftar PR terbuka tak terbaca -> remote lewati:pr-tak-terbaca" $? 0
+G remote set-head origin integ >/dev/null; ok "cleanup laporan: cabang bawaan bukan main (origin/HEAD=integ) dikenali" "$(CLN --no-fetch | cut -f2 | grep -cxE 'integ')" 0; G remote set-head origin main >/dev/null
+printf -- '- Backend: gitlab — repo: o/r\n' > "$CL/w/docs/WORKFLOW.md"; out="$(CLN --no-fetch)"; rc=$?; ok "cleanup: Backend gitlab -> exit 0, pesan tidak didukung, tanpa tabel" "$rc|$(grep -c 'tidak didukung' "$CL/err")|$(grep -c . <<<"$out")" '0|1|0'
+
 [ "$fails" = 0 ] && echo "SEMUA LULUS" || { echo "$fails GAGAL"; exit 1; }
