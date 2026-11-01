@@ -754,6 +754,13 @@ ok "ghx_card_set: id GraphQL (string) diterjemahkan ke id REST" "$(grep -c -- '-
 (export GHX_SIM=1 PROJ_ERR=404; RL ghx_items o 3 >/dev/null 2>"$tmp/rl/err"); rc=$?
 ok "ghx_items: REST kartu 404 -> exit 77 dengan petunjuk scope project" "$rc|$(grep -c "scope 'project'" "$tmp/rl/err")" '77|1'
 
+# 3i-4b. board.sh: argumen kurang -> Pemakaian + nama argumen di stderr, exit 64 (bukan "line 8: 2: nomor project")
+for a in "--sync" "o 3" "o 3 5"; do
+  bash "$root/scripts/board.sh" $a >/dev/null 2>"$tmp/bu.err"; rc=$?
+  ok "board '$a': argumen kurang -> exit 64" "$rc" 64
+  ok "board '$a': stderr memuat Pemakaian dan <owner> <proj>" "$(grep -c 'Pemakaian.*<owner> <proj>' "$tmp/bu.err")" 1
+done
+
 # 3i-5. board.sh memakai pustaka: batas -> REST; langkah khusus GraphQL dilewati dengan PERINGATAN
 mkdir -p "$tmp/rl/w/docs"; BD() { (cd "$tmp/rl/w" && PATH="$tmp/rl/bin:$PATH" bash "$root/scripts/board.sh" "$@"); }
 printf -- '- Kartu Done: agen-setelah-merge.\n' > "$tmp/rl/w/docs/WORKFLOW.md"
