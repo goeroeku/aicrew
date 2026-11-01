@@ -36,6 +36,11 @@ Pulihkan state dari fakta, bukan ingatan: `bash ${CLAUDE_PLUGIN_ROOT}/scripts/re
 Issue `in-progress` yang tidak ada di keluaran resume adalah milik worktree yang masih berjalan; jangan disentuh. Batas iterasi dihitung per putaran;
 `autopilot.sh` memanggil `budget.sh newrun` tiap putaran dan `--max-total` membatasi total proyek.
 
+## Mode tanpa pengawasan (autopilot)
+- Sesi dijalankan `autopilot.sh` per putaran; daftar issue-nya adalah potret saat putaran mulai. Setelah laporan, **akhiri giliran** bila yang tersisa hanya menunggu owner (merge L2, keputusan `needs-principal`) atau agen: jangan menunggu di dalam giliran. `autopilot.sh` memantau murah dan memulai putaran baru dengan daftar segar.
+- Sebelum menyimpulkan "tidak ada pekerjaan", jalankan ulang `gh issue list` untuk issue Ready: label dan keputusan owner bisa berubah selama sesi.
+- Sesi yang menganggur melewati `AICREW_IDLE_LIMIT` (bawaan 30 menit tanpa perubahan transkrip dan tanpa proses turunan sah) diinterupsi `autopilot.sh` (SIGINT, lalu SIGTERM bila bertahan). Wrapper `AICREW_CLAUDE` wajib `exec claude ...`, supaya sinyal sampai ke sesi.
+
 ## Pemilihan issue siap
 Siap = terbuka, belum assignee/in-progress, semua `blocked-by` sudah ter-merge ke cabang integrasi (atau `main` bila tidak ada cabang integrasi), tidak berlabel
 `needs-principal`, dan tidak menyentuh file yang sama dengan issue yang sedang berjalan.
