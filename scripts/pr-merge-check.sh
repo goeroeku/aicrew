@@ -5,6 +5,7 @@
 #   pr-merge-check.sh <pr> <cabang-tujuan> --auto   seperti mode pertama, dan menolak PR/issue berlabel risk:L2 (auto-merge tidak boleh)
 #   pr-merge-check.sh <pr> <cabang-tujuan> --after  setelah merge: exit 1 bila commit merge tak ada di origin/<tujuan>
 set -u
+source "$(dirname "$0")/ghx.sh"  # hanya ghx_explain_limit: gerbang TIDAK pindah ke REST (closingIssuesReferences tak ada di REST)
 pr="${1:?pr}"; dst="${2:?cabang-tujuan}"
 if [ "${3:-}" = "--after" ]; then
   read -r st oid < <(gh pr view "$pr" --json state,mergeCommit -q '[.state, .mergeCommit.oid // "-"] | @tsv')
@@ -14,7 +15,7 @@ if [ "${3:-}" = "--after" ]; then
 else
   base=$(gh pr view "$pr" --json baseRefName -q .baseRefName)
   echo "PR #$pr basis: $base"
-  fail() { echo "GAGAL: $*"; exit 1; }
+  fail() { echo "GAGAL: $*"; ghx_explain_limit; exit 1; }  # fail-closed; bila penyebabnya batas GraphQL, jelaskan dan beri jam reset
   body="$(gh pr view "$pr" --json body -q .body)" || fail "badan PR #$pr tak terbaca"
   grep -Eiq '(close[sd]?|fix(e[sd])?|resolve[sd]?) +#[0-9]+ *(,|&|and|dan) *#?[0-9]' <<<"$body" \
     && echo "PERINGATAN: satu kata kunci hanya menutup satu issue; tulis satu 'Closes #n' per baris"

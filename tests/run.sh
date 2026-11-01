@@ -631,7 +631,7 @@ case "$1" in issue|project|repo|pr) [ "${GHX_SIM:-0}" = 1 ] && { echo "GraphQL: 
 case "$*" in
   "repo view"*) echo o/viewed ;;
   "api users/o -q"*) echo "${OWNER_TYPE:-User}" ;;
-  "api graphql"*) printf 'HTTP/2.0 200 OK\nX-Ratelimit-Remaining: %s\nX-Ratelimit-Reset: 1793490517\n' "${REMAINING:-0}" ;;
+  "api graphql"*) printf 'HTTP/2.0 200 OK\nX-Ratelimit-Remaining: %s\n' "${REMAINING:-0}"; [ "${NORESET:-0}" = 1 ] || echo 'X-Ratelimit-Reset: 1793490517' ;;
   "issue list"*) echo '[]' ;;
   "api repos/o/r/issues?"*) [ "${RESTFAIL:-0}" = 1 ] && { echo "HTTP 500" >&2; exit 1; }
     a="$*"; p="${a##*page=}"; p="${p%%&*}"; f="$FAKE/issues.json"; case "$a" in *labels=epic*) [ -f "$FAKE/issues-epic.json" ] && f="$FAKE/issues-epic.json" ;; esac
@@ -756,5 +756,14 @@ ok "board --sync: REST kartu 404 -> exit 0, 2 langkah dilewati, tidak ada PATCH 
 ok "board <owner> <n> <issue> Done: batas -> PATCH opsi Done via REST" "$(export GHX_SIM=1; BD o 3 5 Done 2>/dev/null)|$(jq -c '.fields[0].value' "$FAKE/patch.json")" 'board: #5 -> Done|"98236657"'
 (export GHX_SIM=1 PROJ_ERR=403; BD o 3 5 Done >/dev/null 2>"$tmp/rl/err"); rc=$?
 ok "board <owner> <n> <issue> Done: REST kartu 403 -> exit non-0 dengan petunjuk scope" "$([ $rc != 0 ] && echo gagal)|$(grep -c "scope 'project'" "$tmp/rl/err")" 'gagal|1'
+
+# 3i-6. pr-merge-check.sh: tetap menolak saat GraphQL habis, tetapi menjelaskan penyebab dan jam reset
+PM() { (cd "$tmp/rl/w" && PATH="$tmp/rl/bin:$PATH" bash "$root/scripts/pr-merge-check.sh" 15 main 2>&1); }
+out="$(export GHX_SIM=1; PM)"; rc=$?
+ok "pr-merge-check: GraphQL habis -> exit 1, GAGAL, batas GraphQL, jam reset" "$rc|$(grep -c '^GAGAL' <<<"$out")|$(grep -c 'batas GraphQL GitHub habis; reset 23:48:37 UTC' <<<"$out")" '1|1|1'
+out="$(export GHX_SIM=1 NORESET=1; PM)"; rc=$?
+ok "pr-merge-check: header reset hilang -> tetap menolak, pesan batas tanpa jam" "$rc|$(grep -c 'batas GraphQL GitHub habis\. Tunggu' <<<"$out")|$(grep -c 'reset 23' <<<"$out")" '1|1|0'
+out="$(export REMAINING=7; PM)"; rc=$?
+ok "pr-merge-check: kegagalan biasa (basis salah) -> tanpa baris Penyebab" "$rc|$(grep -c '^GAGAL: basis' <<<"$out")|$(grep -c '^Penyebab' <<<"$out")" '1|1|0'
 
 [ "$fails" = 0 ] && echo "SEMUA LULUS" || { echo "$fails GAGAL"; exit 1; }
