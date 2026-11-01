@@ -1014,6 +1014,22 @@ LK2 "$P/package-lock.json" @acme/x 1.0.0 lodash 4.17.15; FX npm lodash 4.17.15 "
 ok "cve privat: publik HIGH di lockfile campuran -> exit 1 dan hanya lodash" "$rc|$(cut -f1 <<<"$out")" '1|lodash'
 $CV --list "$P/package-lock.json" 2>/dev/null | grep -q '@acme/x'; ok "cve --list tidak menyaring" $? 0
 
+# 3l-2. cve-private.sh: pengumpul pola dari WORKFLOW, .npmrc, GOPRIVATE (#25)
+CPV="$root/scripts/cve-private.sh"; Q="$tmp/cve/w/priv2"; mkdir -p "$Q"
+CQ() { (unset GOPRIVATE; PATH="$Q/nogo:$PATH" bash "$CPV" "$@" 2>&1 | tr '\t' ':' | paste -sd'|' -); }
+printf -- '# t\n- Paket privat: @acme/*, git.corp.com/team,  internal-lib.\n' > "$Q/wf.md"
+ok "cve-private: baris Paket privat dari WORKFLOW (spasi dipangkas, titik penutup dibuang)" "$(CQ --workflow "$Q/wf.md")" '*:@acme/*|*:git.corp.com/team|*:internal-lib'
+printf -- '- Paket privat: \n- Pemeriksaan CVE: ya\n' > "$Q/wf0.md"; ok "cve-private: baris Paket privat kosong -> tanpa pola" "$(CQ --workflow "$Q/wf0.md")" ''
+printf '@acme:registry=https://corp.example/npm/\n@pub:registry=https://REGISTRY.npmjs.org/\n@y:registry="https://registry.yarnpkg.com"\n' > "$Q/.npmrc"
+ok "cve-private: .npmrc scope ke proxy -> npm @scope/*; npmjs/yarnpkg (huruf besar, kutip, / akhir) -> publik" "$(CQ --npmrc "$Q/.npmrc")" 'npm:@acme/*'
+printf '//corp.example/:_authToken=SECRET123\nregistry=https://proxy.example/\n@acme:registry=https://corp.example/\n' > "$Q/.npmrc2"; o="$(CQ --npmrc "$Q/.npmrc2")"
+ok "cve-private: token dan registry global .npmrc tidak pernah tampil" "$o|$(grep -c 'SECRET123\|proxy.example\|_authToken' <<<"$o")" 'npm:@acme/*|0'
+mkdir -p "$Q/nogo"; printf '#!/bin/sh\nexit 1\n' > "$Q/nogo/go"; chmod +x "$Q/nogo/go"
+ok "cve-private: GOPRIVATE env -> pola Go per koma" "$( (export GOPRIVATE='git.corp.com/*,x.io/y'; PATH="$Q/nogo:$PATH" bash "$CPV" --goprivate | tr '\t' ':' | paste -sd'|' -) )" 'Go:git.corp.com/*|Go:x.io/y'
+ok "cve-private: GOPRIVATE kosong dan go gagal -> kosong" "$(CQ --goprivate)" ''
+ok "cve-private: berkas tak ada -> kosong, exit 0" "$(CQ --workflow "$Q/tidak.md" --npmrc "$Q/tidak")|$(bash "$CPV" --workflow "$Q/tidak.md" >/dev/null 2>&1; echo $?)" '|0'
+ok "cve-private: dua sumber digabung tanpa duplikat" "$(CQ --workflow "$Q/wf.md" --workflow "$Q/wf.md" | tr '|' '\n' | grep -c .)" 3
+
 # 3k-1. cleanup.sh: laporan kandidat cabang/worktree ter-merge (repo git nyata + remote bare lokal; gh palsu untuk REST)
 CL="$tmp/cl"; mkdir -p "$CL/bin"; export CL
 cat > "$CL/bin/gh" <<'EOF'
