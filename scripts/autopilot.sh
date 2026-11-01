@@ -2,22 +2,22 @@
 # aicrew autopilot: jalankan orkestrator berulang (sesi baru tiap putaran) sampai selesai, buntu, atau menunggu owner.
 # Tahan limit token/mingguan: bila putaran berakhir karena limit, tidur lalu coba lagi. State ada di GitHub dan .aicrew/,
 # jadi putaran baru melanjutkan (skill orchestrate: bagian Resume). Jalankan dari akar repo project. GitHub/gh saja.
-#   autopilot.sh [--sleep DETIK=1800] [--max-rounds N=500] [--stuck N=3] [--max-total ITERASI] [--reset-total] [--idle-limit DETIK=1800] [--round-timeout DETIK=0] [--wait DETIK=600] [--wait-max DETIK=604800] [--prompt TEKS]
+#   autopilot.sh [--sleep DETIK=1800] [--max-rounds N=500] [--stuck N=3] [--retry-stuck] [--max-total ITERASI] [--reset-total] [--idle-limit DETIK=1800] [--round-timeout DETIK=0] [--wait DETIK=600] [--wait-max DETIK=604800] [--prompt TEKS]
 #   (slash command plugin tidak tersedia di mode -p; prompt bawaan meminta pemakaian skill lewat Skill tool)
 # Lingkungan: AICREW_CLAUDE (default claude), AICREW_PLUGIN_DIR (default: akar plugin ini; sesi -p tidak mewarisi plugin dari --plugin-dir sesi lain), AICREW_CLAUDE_ARGS (mis. --permission-mode ... --max-budget-usd ...),
 #   AICREW_TG_TOKEN/AICREW_TG_CHAT (opsional, lewat notify.sh). Jangan memakai --dangerously-skip-permissions.
 # Watchdog idle (#48): AICREW_IDLE_LIMIT/--idle-limit (bawaan 1800 dtk; 0 = mati), AICREW_ROUND_TIMEOUT/--round-timeout (bawaan 0 = mati), AICREW_IDLE_POLL (30), AICREW_IDLE_IGNORE (pembantu yang tak dihitung sibuk),
 #   AICREW_IDLE_GRACE (30) dan AICREW_TERM_GRACE (60): masa tenggang SIGINT -> SIGTERM, AICREW_TRANSCRIPT_DIR (menimpa ~/.claude/projects/<cwd>). Status kesehatan: .aicrew/autopilot.json. Wrapper AICREW_CLAUDE wajib `exec claude ...`.
-# Exit: 0 semua issue selesai, 1 error beruntun, 2 buntu (tanpa kemajuan), 3 hanya tersisa menunggu owner (needs-principal, atau PR terbuka menunggu merge: dipantau murah lewat gh, tanpa claude,
+# Exit: 0 semua issue selesai, 1 error beruntun, 2 buntu (tanpa kemajuan), 5 masih buntu (start ulang dengan keadaan issue/PR sama seperti saat berhenti buntu terakhir; tidak ada putaran dijalankan, --retry-stuck memaksa), 3 hanya tersisa menunggu owner (needs-principal, atau PR terbuka menunggu merge: dipantau murah lewat gh, tanpa claude,
 #   sampai ada perubahan atau --wait-max), 4 batas total.
 set -u
 here="$(cd "$(dirname "$0")" && pwd)"
 # jaga Mac tetap bangun selama loop
 [ -z "${AICREW_CAFF:-}" ] && command -v caffeinate >/dev/null 2>&1 && AICREW_CAFF=1 exec caffeinate -i bash "$0" "$@"
 idle_limit="${AICREW_IDLE_LIMIT:-1800}"; round_timeout="${AICREW_ROUND_TIMEOUT:-0}"; poll="${AICREW_IDLE_POLL:-30}"; cur_round=0
-sleep_s=1800; max_rounds=500; stuck_max=3; max_total=""; reset_total=0; wait_s=600; wait_max=604800; prompt="Gunakan skill aicrew:orchestrate (panggil lewat Skill tool) di repo ini sekarang dan ikuti sampai selesai atau sampai aturan berhenti. Mode tanpa pengawasan: jangan bertanya ke owner; tandai dan lanjut."
+sleep_s=1800; max_rounds=500; stuck_max=3; retry_stuck=0; max_total=""; reset_total=0; wait_s=600; wait_max=604800; prompt="Gunakan skill aicrew:orchestrate (panggil lewat Skill tool) di repo ini sekarang dan ikuti sampai selesai atau sampai aturan berhenti. Mode tanpa pengawasan: jangan bertanya ke owner; tandai dan lanjut."
 while [ $# -gt 0 ]; do case "$1" in
-  --sleep) sleep_s="$2"; shift 2 ;; --max-rounds) max_rounds="$2"; shift 2 ;; --stuck) stuck_max="$2"; shift 2 ;; --wait) wait_s="$2"; shift 2 ;; --wait-max) wait_max="$2"; shift 2 ;;
+  --sleep) sleep_s="$2"; shift 2 ;; --max-rounds) max_rounds="$2"; shift 2 ;; --stuck) stuck_max="$2"; shift 2 ;; --retry-stuck) retry_stuck=1; shift ;; --wait) wait_s="$2"; shift 2 ;; --wait-max) wait_max="$2"; shift 2 ;;
   --idle-limit) idle_limit="$2"; shift 2 ;; --round-timeout) round_timeout="$2"; shift 2 ;;
   --max-total) max_total="$2"; shift 2 ;; --reset-total) reset_total=1; shift ;; --prompt) prompt="$2"; shift 2 ;; *) echo "argumen tak dikenal: $1" >&2; exit 64 ;; esac; done
 claude="${AICREW_CLAUDE:-claude}"; L_INT="$(bash "$here/label.sh" integrated --json)"
@@ -62,6 +62,7 @@ waiting_on_owner() {
 # Sasaran = satu-satunya anak langsung autopilot ini selain subshell pemantau (wrapper AICREW_CLAUDE wajib `exec claude ...`). Tidak ada sinyal/direktori = tidak ada tindakan.
 idle_ignore="${AICREW_IDLE_IGNORE:-codebase-memory|gopls|mcp|typescript-language-server|tsserver}"
 descendants() { local c; for c in $(pgrep -P "$1" 2>/dev/null); do echo "$c"; descendants "$c"; done; }
+# sleep dibungkus { ...; } 2>/dev/null: stop_watch membunuh sleep yang sedang berjalan; tanpa ini shell mencetak "Terminated: 15 sleep" tiap putaran (#63)
 watch_round() { # <awal-epoch> <induk-pid>
   local start="$1" parent="$2" me tdir mark last now target c nm busy idle_ok=1 reason=""
   me="$(sh -c 'echo $PPID')"   # pid subshell ini ($BASHPID tidak ada di bash 3.2)
@@ -70,7 +71,7 @@ watch_round() { # <awal-epoch> <induk-pid>
   case " ${AICREW_CLAUDE_ARGS:-} " in *" --no-session-persistence "*) idle_ok=0; log "putaran $cur_round: --no-session-persistence di AICREW_CLAUDE_ARGS (transkrip tidak ditulis); watchdog idle tidak aktif untuk putaran ini, --round-timeout tetap berlaku" ;; esac
   [ -d "$tdir" ] || { idle_ok=0; log "putaran $cur_round: direktori transkrip tidak ditemukan ($tdir); watchdog idle tidak aktif untuk putaran ini"; }
   while :; do
-    sleep "$poll"; kill -0 "$parent" 2>/dev/null || return 0; now="$(date +%s)"   # induk mati (mis. SIGTERM) -> pemantau berhenti sendiri
+    { sleep "$poll"; } 2>/dev/null; kill -0 "$parent" 2>/dev/null || return 0; now="$(date +%s)"   # induk mati (mis. SIGTERM) -> pemantau berhenti sendiri
     target="$(pgrep -P "$parent" 2>/dev/null | grep -vx "$me" | head -1)"; [ -n "$target" ] || continue
     if [ "$round_timeout" -gt 0 ] 2>/dev/null && [ $((now-start)) -ge "$round_timeout" ]; then reason="batas waktu putaran ($((now-start)) detik)"
     elif [ "$idle_ok" = 1 ] && [ "$idle_limit" -gt 0 ] 2>/dev/null; then
@@ -86,9 +87,9 @@ watch_round() { # <awal-epoch> <induk-pid>
     : > "$d/idle-interrupt"; set_phase idle-diinterupsi "$cur_round" "$((now-last))"
     log "putaran $cur_round: $reason; diinterupsi (SIGINT)"; kill -INT "$target" 2>/dev/null
     # eskalasi: sesi yang mengabaikan SIGINT sudah macet (menggantung = masalah #48). Dicatat setelah AICREW_IDLE_GRACE (30 dtk), SIGTERM setelah AICREW_TERM_GRACE (60 dtk) lagi; tidak pernah SIGKILL
-    ig="${AICREW_IDLE_GRACE:-30}"; tg="${AICREW_TERM_GRACE:-60}"; sleep "$ig"
+    ig="${AICREW_IDLE_GRACE:-30}"; tg="${AICREW_TERM_GRACE:-60}"; { sleep "$ig"; } 2>/dev/null
     if pgrep -P "$parent" 2>/dev/null | grep -vx "$me" | grep -qx "$target"; then
-      log "putaran $cur_round: sesi masih hidup $ig detik setelah SIGINT; menunggu $tg detik lagi"; sleep "$tg"
+      log "putaran $cur_round: sesi masih hidup $ig detik setelah SIGINT; menunggu $tg detik lagi"; { sleep "$tg"; } 2>/dev/null
       if pgrep -P "$parent" 2>/dev/null | grep -vx "$me" | grep -qx "$target"; then log "putaran $cur_round: sesi tidak berakhir; dikirim SIGTERM"; kill -TERM "$target" 2>/dev/null; fi
     fi
     return 0
@@ -103,6 +104,14 @@ rm -f "$d/idle-interrupt"   # penanda basi dari proses yang mati tidak boleh men
 errs=0; same=0; was_limit=0; last="$(fingerprint)"
 # sidik jari akhir putaran terakhir tersimpan: setelah restart (laptop mati) tanpa perubahan, langsung menunggu, tidak membakar putaran claude
 [ "$(cat "$d/last-round-fp" 2>/dev/null)" = "$last" ] && same=1
+# buntu berulang (#56): sidik jari saat berhenti buntu disimpan di $d/stuck. Start ulang (supervisor/loop luar) dengan keadaan sama = langsung exit 5 tanpa putaran claude;
+# keadaan berubah atau --retry-stuck menghapus penanda.
+if [ "$retry_stuck" = 1 ]; then rm -f "$d/stuck"
+elif [ -f "$d/stuck" ]; then
+  if [ "$(cat "$d/stuck")" = "$last" ]; then
+    set_phase stuck 0; log "autopilot: masih buntu: keadaan issue/PR sama seperti saat berhenti buntu terakhir; tidak ada putaran dijalankan (ubah sesuatu, atau pakai --retry-stuck)"; exit 5
+  else rm -f "$d/stuck"; fi
+fi
 for ((i=1; i<=max_rounds; i++)); do
   cur_round=$i
   # issue berlabel integrasi ($L_INT, bawaan integrated; nama lama di-integrasi tetap dikenali) sudah selesai (menunggu merge ke main oleh owner): bukan pekerjaan tersisa
@@ -167,6 +176,6 @@ for ((i=1; i<=max_rounds; i++)); do
   errs=0
   now="$(fingerprint)"; printf '%s' "$now" > "$d/last-round-fp"
   if [ "$now" = "$last" ]; then same=$((same+1)); else same=0; last="$now"; fi
-  [ "$same" -ge "$stuck_max" ] && { note "autopilot: buntu, $stuck_max putaran tanpa perubahan di issue/PR; berhenti"; exit 2; }
+  [ "$same" -ge "$stuck_max" ] && { printf '%s' "$now" > "$d/stuck"; set_phase stuck "$i"; note "autopilot: buntu, $stuck_max putaran tanpa perubahan di issue/PR; berhenti"; exit 2; }
 done
 note "autopilot: batas putaran ($max_rounds) tercapai"; exit 1
