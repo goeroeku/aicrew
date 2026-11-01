@@ -1037,4 +1037,21 @@ ok "cleanup apply: cabang remote yang sudah dihapus GitHub -> dihapus (idempoten
 MK; G remote set-url origin "$CL/tidak-ada.git"; OUT="$(CLN --no-fetch --apply)"; rc=$?
 ok "cleanup apply: push gagal (bukan 'sudah terhapus') -> lewati:gagal dan exit 1, lokal tetap diproses" "$rc|$(grep -c $'^cabang-remote.*lewati:gagal' <<<"$OUT" | awk '{print ($1>0)?"ada":"nol"}')|$(LB | tr ' ' '\n' | grep -cx issue-1)" '1|ada|0'
 
+# 3k-3. cleanup.sh --setelah-merge: opsi WORKFLOW "Bersihkan setelah merge", langkah 8 orchestrate, izin update-ref
+WFO() { printf -- '- Backend: github — repo: o/r\n%s' "$1" > "$CL/w/docs/WORKFLOW.md"; }   # tanpa baris Cabang integrasi: workflow.sh memakai berkas lokal
+MK; WFO '- Bersihkan setelah merge: ya\n'; CLN --no-fetch --setelah-merge --issue 1 >/dev/null
+ok "setelah-merge: opsi ya -> issue-1 terhapus (lokal dan remote), issue-3 tidak disentuh" "$(LB | tr ' ' '\n' | grep -cx issue-1)|$(RB | tr ' ' '\n' | grep -cx issue-1)|$(LB | tr ' ' '\n' | grep -cx issue-3)" '0|0|1'
+MK; WFO ''; CLN --no-fetch --setelah-merge --issue 1 >/dev/null; ok "setelah-merge: baris hilang = bawaan ya -> terhapus" "$(LB | tr ' ' '\n' | grep -cx issue-1)" 0
+MK; WFO '- Bersihkan setelah merge: laporkan\n'; out="$(CLN --no-fetch --setelah-merge --issue 1)"; rc=$?
+ok "setelah-merge: opsi laporkan -> hanya melaporkan, tidak ada yang terhapus" "$rc|$(LB | tr ' ' '\n' | grep -cx issue-1)|$(grep -c $'\thapus$' <<<"$out")" '0|1|2'
+MK; WFO '- Bersihkan setelah merge: tidak\n'; out="$(CLN --no-fetch --setelah-merge --issue 1)"; rc=$?
+ok "setelah-merge: opsi tidak -> tanpa keluaran, tidak terhapus, exit 0" "$rc|$(grep -c . <<<"$out")|$(LB | tr ' ' '\n' | grep -cx issue-1)" '0|0|1'
+MK; WFO '- Bersihkan setelah merge: mungkin\n'; CLN --no-fetch --setelah-merge --issue 1 >/dev/null; ok "setelah-merge: nilai tak dikenal diperlakukan laporkan (aman)" "$(LB | tr ' ' '\n' | grep -cx issue-1)" 1
+CLN --setelah-merge >/dev/null 2>&1; ok "setelah-merge tanpa --issue -> exit 64" $? 64
+MK; WFO '- Bersihkan setelah merge: ya\n'; CLN --no-fetch --setelah-merge --issue 5 >/dev/null
+ok "setelah-merge --issue 5: worktree w-wt-5 dan cabang issue-5 terhapus dalam satu putaran" "$([ -d "$CL/w-wt-5" ] && echo ada || echo hilang)|$(LB | tr ' ' '\n' | grep -cx issue-5)" 'hilang|0'
+grep -q 'Bersihkan setelah merge:' templates/WORKFLOW.md; ok "templat WORKFLOW memuat 'Bersihkan setelah merge:'" $? 0
+grep -q 'cleanup.sh --setelah-merge' skills/orchestrate/SKILL.md && grep -q 'tidak pernah menghentikan' skills/orchestrate/SKILL.md; ok "orchestrate langkah 8 memanggil cleanup.sh --setelah-merge dan 'tidak pernah menghentikan'" $? 0
+jq -e '.permissions.allow|index("Bash(git update-ref:*)")' templates/autopilot-permissions.json >/dev/null; ok "autopilot-permissions.json memuat git update-ref" $? 0
+
 [ "$fails" = 0 ] && echo "SEMUA LULUS" || { echo "$fails GAGAL"; exit 1; }

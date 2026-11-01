@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # aicrew cleanup: laporkan cabang dan worktree yang TERBUKTI ter-merge dan aman dihapus. Pakai:
 #   cleanup.sh [--apply] [--no-fetch] [--only orkestrator] [--issue <n>]    (tanpa --apply hanya melaporkan)
+#   cleanup.sh --setelah-merge --issue <n>   dipakai orchestrate langkah 8: = --only orkestrator --issue <n>; opsi WORKFLOW.md "Bersihkan setelah merge:" ya (bawaan,
+#                                            juga bila baris hilang) = --apply; laporkan (dan nilai tak dikenal) = hanya laporan; tidak = keluar 0 tanpa apa pun.
 # Keluaran TSV: jenis  nama  sha  bukti  aksi   (jenis worktree|cabang-lokal|cabang-remote; bukti leluhur|pr-merged|-; aksi hapus|dihapus|lewati:<alasan>).
 # --apply menghapus berurutan: worktree (tanpa --force), cabang lokal (git branch -d, cadangan update-ref -d <ref> <sha> yang hanya berhasil bila ujung belum berubah), remote
 # (git push --delete; "remote ref does not exist" = sudah terhapus). Setiap baris memuat SHA ujung supaya bisa dipulihkan: git branch <nama> <sha>. Kode keluar 1 bila ada yang gagal.
@@ -9,21 +11,27 @@
 # worktree kotor/terkunci/terlepas/di ~/orca/workspaces/. Hanya git dan REST (gh api), tanpa GraphQL. GitHub saja (backend lain: keluar 0).
 set -u
 here="$(dirname "$0")"; source "$here/ghx.sh"
-usage() { echo "pakai: cleanup.sh [--apply] [--no-fetch] [--only orkestrator] [--issue <n>]" >&2; exit 64; }
-only=""; issue=""; fetch=1; apply=0
+usage() { echo "pakai: cleanup.sh [--apply] [--no-fetch] [--only orkestrator] [--issue <n>] | --setelah-merge --issue <n>" >&2; exit 64; }
+only=""; issue=""; fetch=1; apply=0; aftermerge=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --apply) apply=1 ;;
+    --setelah-merge) aftermerge=1 ;;
     --no-fetch) fetch=0 ;;
     --only) only="${2:-}"; [ "$only" = orkestrator ] || usage; shift ;;
     --issue) issue="${2:-}"; [[ "$issue" =~ ^[0-9]+$ ]] || usage; shift ;;
     *) usage ;;
   esac; shift
 done
+[ "$aftermerge" = 0 ] || [ -n "$issue" ] || usage
 top="$(git rev-parse --show-toplevel 2>/dev/null)" || { echo "cleanup: bukan repo git" >&2; exit 64; }; cd "$top"
 tab="$(printf '\t')"; T="$(mktemp -d)"; trap 'rm -rf "$T"' EXIT; reponame="${top##*/}"
 
 wf="$(bash "$here/workflow.sh" 2>/dev/null)"
+if [ "$aftermerge" = 1 ]; then
+  only=orkestrator; opt="$(sed -n 's/^[- ]*Bersihkan setelah merge: *\([a-z]*\).*/\1/p' <<<"$wf" | head -1)"
+  case "${opt:-ya}" in ya) apply=1 ;; tidak) exit 0 ;; *) apply=0 ;; esac
+fi
 bk="$(sed -n 's/^[- ]*Backend: *\([A-Za-z]*\).*/\1/p' <<<"$wf" | head -1)"
 [ -z "$bk" ] || [ "$bk" = github ] || { echo "cleanup: tidak didukung (bukan GitHub: $bk)" >&2; exit 0; }
 repo="$(ghx_repo)" || { echo "cleanup: repo tak dapat ditentukan" >&2; exit 1; }; owner="${repo%%/*}"
