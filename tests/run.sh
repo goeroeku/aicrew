@@ -1478,7 +1478,7 @@ for f in agents/senior-coder.md agents/devops.md agents/ui-ux.md templates/codex
 grep -q 'nama cabang/database' templates/WORKFLOW.md; ok "templat WORKFLOW: Bahasa artefak menyebut nama cabang/database" $? 0
 
 # 3p. autopilot: watchdog idle dan status (#48, #17) — harness mandiri (gh, claude, sleep palsu)
-AP3="$tmp/ap3"; mkdir -p "$AP3/bin" "$AP3/w" "$AP3/fx" "$AP3/tr"; git init -q "$AP3/w"; export AP3FX="$AP3/fx"
+AP3="$tmp/ap3"; mkdir -p "$AP3/bin" "$AP3/w" "$AP3/fx" "$AP3/tr"; git init -q "$AP3/w"; export AP3FX="$AP3/fx"; mkfifo "$AP3/fx/fifo"
 cat > "$AP3/bin/gh" <<'GHEOF'
 #!/usr/bin/env bash
 c="$1 $2"; q=""; head=""; st=""; prev=""
@@ -1490,7 +1490,7 @@ if [ -n "$q" ]; then jq -r "$q" <<<"$data"; else echo "$data"; fi
 GHEOF
 cat > "$AP3/bin/sleep" <<'SLEOF'
 #!/usr/bin/env bash
-[ -f .aicrew/autopilot.json ] && cat .aicrew/autopilot.json >> "$AP3FX/sleeps"; echo >> "$AP3FX/sleeps"; exit 0
+[ -f .aicrew/autopilot.json ] && cat .aicrew/autopilot.json >> "$AP3FX/sleeps"; echo >> "$AP3FX/sleeps"; exec /bin/sleep "$@"
 SLEOF
 cat > "$AP3/bin/claude" <<'CLEOF'
 #!/usr/bin/env bash
@@ -1501,10 +1501,12 @@ case "$(sed -n "${n}p" "$AP3FX/script")" in
   peek) cp .aicrew/autopilot.json "$AP3FX/peek.json"; head -1 .aicrew/autopilot.status > "$AP3FX/peek.status"; closeall; echo ok ;;
   limit) echo "Claude usage limit reached. Your limit will reset at 5pm."; exit 1 ;;
   noop) echo noop ;;
-  idle) echo "menunggu owner"; exec /bin/sleep 600 ;;
+  idle) echo "menunggu owner"; exec /bin/sleep 20 ;;
   active) i=0; while [ "$i" -lt 6 ]; do touch "$AICREW_TRANSCRIPT_DIR/t.jsonl"; /bin/sleep 1; i=$((i+1)); done; closeall; echo ok ;;
   child) /bin/sleep 5 & wait; closeall; echo ok ;;
-  ignore) trap '' INT; while :; do /bin/sleep 1; done ;;
+  quiet) exec 3<>"$AP3FX/fifo"; read -t 4 -u 3 _; closeall; echo ok ;;
+  idlelimit) echo "Claude usage limit reached. Your limit will reset at 5pm."; exec /bin/sleep 20 ;;
+  ignore) trap '' INT; i=0; while [ "$i" -lt 20 ]; do /bin/sleep 1; i=$((i+1)); done ;;
   *) echo noop ;;
 esac
 CLEOF
@@ -1523,5 +1525,34 @@ ap3 '[{"number":1,"state":"OPEN","labels":[{"name":"needs-principal"}]}]' close;
 ok "autopilot status: hanya needs-principal -> exit 3 dan fase menunggu-owner" "$rc|$(jq -r .fase "$AP3/w/.aicrew/autopilot.json")" '3|menunggu-owner'
 ap3 "$AP3OPEN" $'limit\nclose'; rc=$?
 ok "autopilot status: tidur karena limit -> fase tidur-limit tercatat saat tidur" "$rc|$(grep -c '"fase":"tidur-limit"' "$AP3FX/sleeps")" '0|1'
+
+# 3p-2. watchdog idle: SIGINT, penanda, normalisasi rc, trap Ctrl-C (#48)
+APLOG() { cat "$AP3/w/.aicrew/autopilot.log" 2>/dev/null; }
+AP3ENV="AICREW_IDLE_LIMIT=2 AICREW_IDLE_POLL=1" ap3 "$AP3OPEN" $'idle\nclose'; rc=$?
+ok "watchdog: sesi idle melewati batas diinterupsi, putaran berikut dimulai dan selesai (exit 0, claude 2 kali, log 'diinterupsi')" "$rc|$(cat "$AP3FX/n")|$(APLOG | grep -c 'idle.*diinterupsi (SIGINT)')" '0|2|1'
+AP3ENV="AICREW_IDLE_LIMIT=2 AICREW_IDLE_POLL=1" ap3 "$AP3OPEN" $'active'; rc=$?
+ok "watchdog: transkrip terus berubah -> tidak diinterupsi (claude 1 kali, tanpa 'diinterupsi')" "$rc|$(cat "$AP3FX/n")|$(APLOG | grep -c 'diinterupsi')" '0|1|0'
+AP3ENV="AICREW_IDLE_LIMIT=2 AICREW_IDLE_POLL=1" ap3 "$AP3OPEN" $'child'; rc=$?
+ok "watchdog: sesi punya anak proses non-pembantu -> tidak diinterupsi" "$rc|$(cat "$AP3FX/n")|$(APLOG | grep -c 'diinterupsi')" '0|1|0'
+AP3ENV="AICREW_IDLE_LIMIT=2 AICREW_IDLE_POLL=1 AICREW_IDLE_IGNORE=sleep" ap3 "$AP3OPEN" $'child\nclose'; rc=$?
+ok "watchdog: anak proses yang namanya cocok AICREW_IDLE_IGNORE tidak dihitung sibuk -> diinterupsi" "$rc|$(APLOG | grep -c 'diinterupsi')" '0|1'
+AP3ENV="AICREW_IDLE_LIMIT=2 AICREW_IDLE_POLL=1" ap3 "$AP3OPEN" $'quiet'; rc=$?
+ok "watchdog: sesi diam tanpa anak proses 4 detik, batas 2 -> diinterupsi" "$rc|$(APLOG | grep -c 'diinterupsi')" '0|1'
+AP3ENV="AICREW_IDLE_LIMIT=0 AICREW_IDLE_POLL=1" ap3 "$AP3OPEN" $'quiet'; rc=$?
+ok "watchdog: --idle-limit 0 (env 0) mematikan watchdog" "$rc|$(APLOG | grep -c 'diinterupsi')" '0|0'
+AP3ENV="AICREW_IDLE_LIMIT=2 AICREW_IDLE_POLL=1 AICREW_TRANSCRIPT_DIR=$AP3/tidak-ada" ap3 "$AP3OPEN" $'quiet'; rc=$?
+ok "watchdog: direktori transkrip tak ada -> tidak ada tindakan, satu baris log" "$rc|$(APLOG | grep -c 'diinterupsi')|$(APLOG | grep -c 'direktori transkrip tidak ditemukan')" '0|0|1'
+AP3ENV="AICREW_IDLE_LIMIT=2 AICREW_IDLE_POLL=1" ap3 "$AP3OPEN" $'idle\nidle\nidle\nidle'; rc=$?
+ok "watchdog: tiga putaran idle tanpa perubahan -> exit 2 (--stuck), bukan exit 1; tanpa catatan gagal" "$rc|$(cat "$AP3FX/n")|$(APLOG | grep -c 'gagal rc')" '2|3|0'
+AP3ENV="AICREW_IDLE_LIMIT=2 AICREW_IDLE_POLL=1" ap3 "$AP3OPEN" $'idlelimit\nclose'; rc=$?
+ok "watchdog: keluaran sesi yang diinterupsi memuat teks limit -> bukan limit (tanpa 'kena limit', putaran berikut jalan)" "$rc|$(cat "$AP3FX/n")|$(APLOG "$AP3/out" | grep -c 'kena limit')|$(grep -c 'kena limit' "$AP3/out")" '0|2|0|0'
+# Ctrl-C pemilik: SIGINT ke autopilot dan sesi (seperti Ctrl-C di terminal) -> autopilot keluar 130, tanpa yatim
+printf 'idle\n' > "$AP3FX/script"; rm -f "$AP3FX/n"; echo "$AP3OPEN" > "$AP3FX/issues.json"; rm -rf "$AP3/w/.aicrew"
+(cd "$AP3/w" && exec env PATH="$AP3/bin:$PATH" AP3FX="$AP3FX" AICREW_CAFF=1 AICREW_CLAUDE=claude AICREW_TRANSCRIPT_DIR="$AP3/tr" AICREW_IDLE_LIMIT=100 AICREW_IDLE_POLL=1 perl -e '$SIG{INT}="DEFAULT"; exec @ARGV' bash "$root/scripts/autopilot.sh" --sleep 0 --stuck 77 >"$AP3/out" 2>&1) &
+apid=$!; /bin/sleep 3; cpid="$(pgrep -P "$apid" | head -1)"
+kill -INT "$cpid" "$apid" 2>/dev/null; wait "$apid" 2>/dev/null; rc=$?
+ok "watchdog: Ctrl-C pemilik (tanpa penanda) -> autopilot keluar 130" "$rc" 130
+/bin/sleep 1
+ok "watchdog: tidak ada proses autopilot/pemantau yatim setelah Ctrl-C" "$(pgrep -f 'autopilot[.]sh --sleep 0 --stuck 77' | wc -l | tr -d ' ')" 0
 
 [ "$fails" = 0 ] && echo "SEMUA LULUS" || { echo "$fails GAGAL"; exit 1; }

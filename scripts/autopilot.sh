@@ -35,6 +35,42 @@ waiting_on_owner() {
   done
   return 0
 }
+# watchdog idle (#48): subshell latar selama satu putaran; claude tetap di latar depan (perintah asinkron dari shell non-interaktif mengabaikan SIGINT).
+# Idle = tidak ada berkas berubah di direktori transkrip sesi DAN tidak ada proses turunan selain pembantu (AICREW_IDLE_IGNORE) selama --idle-limit detik.
+# Sasaran = satu-satunya anak langsung autopilot ini selain subshell pemantau (wrapper AICREW_CLAUDE wajib `exec claude ...`). Tidak ada sinyal/direktori = tidak ada tindakan.
+idle_ignore="${AICREW_IDLE_IGNORE:-codebase-memory|gopls|mcp|typescript-language-server|tsserver}"
+descendants() { local c; for c in $(pgrep -P "$1" 2>/dev/null); do echo "$c"; descendants "$c"; done; }
+watch_round() { # <awal-epoch> <induk-pid>
+  local start="$1" parent="$2" me tdir mark last now target c nm busy idle_ok=1 reason=""
+  me="$(sh -c 'echo $PPID')"   # pid subshell ini ($BASHPID tidak ada di bash 3.2)
+  tdir="${AICREW_TRANSCRIPT_DIR:-$HOME/.claude/projects/$(pwd -P | sed 's/[^A-Za-z0-9]/-/g')}"
+  mark="$d/idle-mark"; touch "$mark"; last="$start"
+  [ -d "$tdir" ] || { idle_ok=0; log "putaran $cur_round: direktori transkrip tidak ditemukan ($tdir); watchdog idle tidak aktif untuk putaran ini"; }
+  while :; do
+    sleep "$poll"; now="$(date +%s)"
+    target="$(pgrep -P "$parent" 2>/dev/null | grep -vx "$me" | head -1)"; [ -n "$target" ] || continue
+    if [ "$round_timeout" -gt 0 ] 2>/dev/null && [ $((now-start)) -ge "$round_timeout" ]; then reason="batas waktu putaran ($((now-start)) detik)"
+    elif [ "$idle_ok" = 1 ] && [ "$idle_limit" -gt 0 ] 2>/dev/null; then
+      if [ -n "$(find "$tdir" -type f -newer "$mark" 2>/dev/null | head -1)" ]; then touch "$mark"; last="$now"; fi
+      busy=0
+      for c in $(descendants "$target"); do nm="$(basename "$(ps -o comm= -p "$c" 2>/dev/null)" 2>/dev/null)"; [ -n "$nm" ] || continue; printf '%s' "$nm" | grep -Eq "$idle_ignore" || busy=1; done
+      [ "$busy" = 0 ] || last="$now"
+      set_phase putaran "$cur_round" "$((now-last))"
+      [ $((now-last)) -ge "$idle_limit" ] && reason="idle $(((now-last)/60)) menit"
+    fi
+    [ -n "$reason" ] || continue
+    pgrep -P "$parent" 2>/dev/null | grep -vx "$me" | grep -qx "$target" || continue   # pid masih anak langsung autopilot ini
+    : > "$d/idle-interrupt"; set_phase idle-diinterupsi "$cur_round" "$((now-last))"
+    log "putaran $cur_round: $reason; diinterupsi (SIGINT)"; kill -INT "$target" 2>/dev/null
+    return 0
+  done
+}
+wpid=""
+stop_watch() { [ -z "$wpid" ] || { pkill -P "$wpid" 2>/dev/null; kill "$wpid" 2>/dev/null; { wait "$wpid"; } 2>/dev/null; wpid=""; }; return 0; }
+trap 'stop_watch' EXIT
+trap 'stop_watch; exit 143' TERM
+# INT dari pemantau (penanda ada) = putaran idle diakhiri, autopilot lanjut; selain itu Ctrl-C pemilik: matikan pemantau dan sesi, keluar 130
+trap 'if [ -f "$d/idle-interrupt" ]; then :; else stop_watch; pkill -INT -P $$ 2>/dev/null; exit 130; fi' INT
 errs=0; same=0; was_limit=0; last="$(fingerprint)"
 # sidik jari akhir putaran terakhir tersimpan: setelah restart (laptop mati) tanpa perubahan, langsung menunggu, tidak membakar putaran claude
 [ "$(cat "$d/last-round-fp" 2>/dev/null)" = "$last" ] && same=1
@@ -68,12 +104,17 @@ for ((i=1; i<=max_rounds; i++)); do
   rm -f "$d/principal-note"
   bash "$here/budget.sh" newrun
   out="$d/round-$i.log"; log "putaran $i: $n_open issue terbuka ($n_wait needs-principal)"; set_phase putaran "$i"
+  rm -f "$d/idle-interrupt"; rstart="$(date +%s)"
+  if [ "$idle_limit" -gt 0 ] 2>/dev/null || [ "$round_timeout" -gt 0 ] 2>/dev/null; then watch_round "$rstart" "$$" & wpid=$!; fi
   # shellcheck disable=SC2086
   "$claude" --plugin-dir "${AICREW_PLUGIN_DIR:-$here/..}" -p "$prompt" ${AICREW_CLAUDE_ARGS:-} </dev/null >"$out" 2>&1; rc=$?
+  stop_watch
 
   # rc tiap putaran dicatat; keluaran yang bergejala (menyebut limit, atau rc != 0) diarsipkan (20 terakhir) supaya limit sungguhan terekam utuh
   printf '%s putaran %s: rc=%s\n' "$(date '+%F %T')" "$i" "$rc" | tee -a "$d/autopilot.log"
   likely=0; tail -n 20 "$out" | grep -qiE 'usage limit|rate.?limit|limit (reached|will reset)|resets? (at|in)' && likely=1
+  # putaran yang diakhiri watchdog idle (penanda ada): rc dinormalkan, bukan limit dan bukan gagal; sidik jari dibandingkan seperti biasa (--stuck menghentikan bila berulang)
+  if [ -f "$d/idle-interrupt" ]; then rc=0; likely=0; log "putaran $i: diakhiri watchdog idle (rc dinormalkan); daftar issue dimuat ulang di putaran berikut"; fi
   if [ "$likely" = 1 ] || [ "$rc" != 0 ]; then
     mkdir -p "$d/archive"; cp "$out" "$d/archive/round-$run-$i-rc$rc.log"
     ls -1t "$d/archive" | tail -n +21 | while read -r af; do rm -f "$d/archive/$af"; done
