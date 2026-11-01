@@ -142,6 +142,8 @@ cat > "$tmp/bin/claude" <<'EOF'
 n=$(( $(cat "$FAKE/n" 2>/dev/null || echo 0) + 1 )); echo $n > "$FAKE/n"
 case "$(sed -n "${n}p" "$FAKE/script")" in
   limit) echo "Claude usage limit reached. Your limit will reset at 5pm."; exit 1 ;;
+  neg) printf 'Round summary\n- reviewed issue 1\n- waited for QA\n- no PR changes\n- budget ok\nNo agent hit a usage limit, and I created no new issues.\n'; exit 0 ;;
+  short0) echo "Claude usage limit reached. Your limit will reset at 5pm."; exit 0 ;;
   close) jq 'map(.state="CLOSED")' "$FAKE/issues.json" > "$FAKE/i2" && mv "$FAKE/i2" "$FAKE/issues.json"; echo ok ;;
   fail) echo boom; exit 1 ;;
   *) echo noop ;;
@@ -159,6 +161,16 @@ run_ap "$OPEN" $'fail\nfail\nfail\nfail'; ok "autopilot: 3 gagal beruntun -> exi
 run_ap '[{"number":1,"state":"OPEN","labels":[{"name":"needs-principal"}]}]' "close"; r=$?; ok "autopilot: hanya needs-principal -> exit 3" $r 3; ok "autopilot: claude tidak dipanggil" "$(cat $F/n 2>/dev/null || echo 0)" 0
 run_ap '[{"number":1,"state":"OPEN","labels":[{"name":"di-integrasi"}]},{"number":2,"state":"OPEN","labels":[{"name":"di-integrasi"}]}]' "close"; r=$?; ok "autopilot: issue di-integrasi dianggap selesai -> exit 0" $r 0; ok "autopilot: claude tidak dipanggil (di-integrasi)" "$(cat $F/n 2>/dev/null || echo 0)" 0
 run_ap '[{"number":1,"state":"OPEN","labels":[{"name":"di-integrasi"}]},{"number":2,"state":"OPEN","labels":[{"name":"role:qa"}]}]' $'close'; ok "autopilot: sisa satu issue biasa tetap dikerjakan" "$(cat $F/n)" 1
+# 2b1. #24: laporan normal panjang yang memuat kata limit (rc=0) bukan limit; limit sungguhan menunda; rc tercatat; keluaran mencurigakan diarsipkan
+APO() { printf '%s\n' "$1" > "$F/script"; rm -f "$F/n"; echo "$OPEN" > "$F/issues.json"; rm -rf .aicrew; PATH="$P" AICREW_CAFF=1 AICREW_ERR_SLEEP=0 AICREW_CLAUDE=claude $AP 2>&1; }
+out="$(APO $'neg\nclose')"; rc=$?
+ok "autopilot #24: laporan panjang berisi 'No agent hit a usage limit' dengan rc=0 -> bukan limit, dicatat dianggap normal" "$rc|$(grep -c 'kena limit' <<<"$out")|$(grep -c 'dianggap normal' <<<"$out")" '0|0|1'
+ok "autopilot #24: rc tercatat tiap putaran di autopilot.log" "$(grep -c 'putaran 1: rc=0' .aicrew/autopilot.log)|$(grep -c 'putaran 2: rc=0' .aicrew/autopilot.log)" '1|1'
+ok "autopilot #24: keluaran yang menyebut limit diarsipkan (round-<run>-1-rc0.log), putaran biasa tidak" "$(ls .aicrew/archive 2>/dev/null | grep -c -- '-1-rc0.log$')|$(ls .aicrew/archive 2>/dev/null | grep -c -- '-2-rc')" '1|0'
+out="$(APO $'limit\nclose')"; rc=$?
+ok "autopilot #24: limit sungguhan (rc!=0 + teks) tetap memicu tunggu dan diarsipkan dengan rc-nya" "$rc|$(grep -c 'kena limit' <<<"$out")|$(grep -c 'dianggap normal' <<<"$out")|$(ls .aicrew/archive | grep -c -- '-1-rc1.log$')" '0|1|0|1'
+out="$(APO $'short0\nclose')"; rc=$?
+ok "autopilot #24: keluaran limit pendek dengan rc=0 (bug API yang dilaporkan) tetap dianggap limit" "$rc|$(grep -c 'kena limit' <<<"$out")" '0|1'
 # 2b2. autopilot menunggu owner (merge/keputusan): polling murah tanpa claude, merge terdeteksi otomatis, tahan restart, notifikasi tidak berulang
 printf '#!/usr/bin/env bash\necho "$*" >> "$FAKE/curl.calls"\n' > "$tmp/bin/curl"; chmod +x "$tmp/bin/curl"
 WI='[{"number":1,"state":"OPEN","labels":[{"name":"in-review"}]}]'; echo '[{"number":7,"state":"OPEN","head":"issue-1"}]' > "$F/pr.json"

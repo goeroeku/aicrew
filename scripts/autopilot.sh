@@ -17,7 +17,7 @@ while [ $# -gt 0 ]; do case "$1" in
   --sleep) sleep_s="$2"; shift 2 ;; --max-rounds) max_rounds="$2"; shift 2 ;; --stuck) stuck_max="$2"; shift 2 ;; --wait) wait_s="$2"; shift 2 ;; --wait-max) wait_max="$2"; shift 2 ;;
   --max-total) max_total="$2"; shift 2 ;; --prompt) prompt="$2"; shift 2 ;; *) echo "argumen tak dikenal: $1" >&2; exit 64 ;; esac; done
 claude="${AICREW_CLAUDE:-claude}"; L_INT="$(bash "$here/label.sh" integrated)"
-g="$(git rev-parse --git-common-dir)" && d="$(cd "$g/.." && pwd)/.aicrew"; mkdir -p "$d"
+g="$(git rev-parse --git-common-dir)" && d="$(cd "$g/.." && pwd)/.aicrew"; mkdir -p "$d"; run="$(date +%Y%m%d-%H%M%S)"   # nama unik per jalan untuk arsip keluaran putaran (round-N.log ditimpa tiap jalan)
 log() { printf '%s %s\n' "$(date '+%F %T')" "$*" | tee -a "$d/autopilot.log"; printf '%s\n' "$*" > "$d/autopilot.status"; }
 note() { log "$*"; command -v jq >/dev/null && jq -n --arg m "$*" '{message:$m}' | bash "$here/notify.sh"; return 0; }
 fingerprint() { { gh issue list --state all --limit 200 --json number,state,labels; gh pr list --state all --limit 200 --json number,state; } | shasum | cut -d' ' -f1; }
@@ -64,11 +64,22 @@ for ((i=1; i<=max_rounds; i++)); do
   # shellcheck disable=SC2086
   "$claude" --plugin-dir "${AICREW_PLUGIN_DIR:-$here/..}" -p "$prompt" ${AICREW_CLAUDE_ARGS:-} </dev/null >"$out" 2>&1; rc=$?
 
-  # limit: cari di ekor keluaran saja (laporan orkestrator bisa memuat kata "batas")
-  if tail -n 20 "$out" | grep -qiE 'usage limit|rate.?limit|limit (reached|will reset)|resets? (at|in)'; then
+  # rc tiap putaran dicatat; keluaran yang bergejala (menyebut limit, atau rc != 0) diarsipkan (20 terakhir) supaya limit sungguhan terekam utuh
+  printf '%s putaran %s: rc=%s\n' "$(date '+%F %T')" "$i" "$rc" | tee -a "$d/autopilot.log"
+  likely=0; tail -n 20 "$out" | grep -qiE 'usage limit|rate.?limit|limit (reached|will reset)|resets? (at|in)' && likely=1
+  if [ "$likely" = 1 ] || [ "$rc" != 0 ]; then
+    mkdir -p "$d/archive"; cp "$out" "$d/archive/round-$run-$i-rc$rc.log"
+    ls -1t "$d/archive" | tail -n +21 | while read -r af; do rm -f "$d/archive/$af"; done
+  fi
+  # limit = teks limit di ekor DAN (rc != 0, atau keluaran pendek <= 3 baris). Laporan orkestrator yang normal panjang dan rc=0 bisa memuat kalimat
+  # seperti "No agent hit a usage limit" (kejadian nyata, #24): itu bukan limit. Keluaran pendek dengan rc=0 tetap dianggap limit karena ada laporan
+  # bahwa galat API (rate limit) bisa berakhir rc=0.
+  # ponytail: heuristik panjang; ganti dengan --output-format json dan is_error bila perlu pasti.
+  if [ "$likely" = 1 ] && { [ "$rc" != 0 ] || [ "$(grep -c . "$out")" -le 3 ]; }; then
     [ "$was_limit" = 0 ] && note "autopilot: kena limit, menunggu $((sleep_s/60)) menit lalu coba lagi"
     was_limit=1; sleep "$sleep_s"; continue
   fi
+  [ "$likely" = 0 ] || [ "$rc" != 0 ] || log "putaran $i: keluaran menyebut kata limit tetapi rc=0 dan laporan panjang ($(grep -c . "$out") baris); dianggap normal (bukan limit)"
   [ "$was_limit" = 1 ] && note "autopilot: lanjut setelah limit" && was_limit=0
   if [ "$rc" != 0 ]; then
     errs=$((errs+1)); log "putaran $i: gagal rc=$rc ($errs berturut-turut), lihat $out"
