@@ -84,7 +84,7 @@
     ]
   },
   "modes": {
-    "agen-setelah-QA": {
+    "agent-after-qa": {
       "allow": [
         "Bash(gh pr merge:*)",
         "Bash(rtk gh pr merge:*)"

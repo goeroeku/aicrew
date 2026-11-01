@@ -87,7 +87,7 @@ else
     cve_fetch "$dst" docs/WORKFLOW.md "$cdir/wf"; fr=$?
     # pola paket privat dibaca dari cabang tujuan; sumber yang gagal dibaca (selain 404) = tolak, karena nama privat bisa terkirim ke OSV
     [ "$fr" = 0 ] || [ "$fr" = 4 ] || fail "cve: docs/WORKFLOW.md tak terbaca di cabang tujuan (REST); pola paket privat tak diketahui"
-    if [ "$fr" = 0 ] && grep -qE '^[- ]*Pemeriksaan CVE: *tidak' "$cdir/wf"; then
+    if [ "$fr" = 0 ] && bash "$(dirname "$0")/lib/wf-normalize.sh" < "$cdir/wf" | grep -qE '^[- ]*CVE check: *no'; then
       echo "PERINGATAN: pemeriksaan CVE dimatikan di WORKFLOW.md"
     else
       cbase="$(gh api "repos/$cr/compare/$dst...$head" 2>/dev/null | jq -r '.merge_base_commit.sha // empty' 2>/dev/null)"; [ -n "$cbase" ] || cbase="$dst"
@@ -124,7 +124,7 @@ else
     fi
   fi
   # alur terjadwal/dependabot (#32): GitHub hanya mengaktifkannya dari cabang bawaan; peringatan saja, tidak memblokir
-  at="$(bash "$(dirname "$0")/alur-terjadwal.sh" "$pr" "$head")"; arc=$?
+  at="$(bash "$(dirname "$0")/scheduled-workflow.sh" "$pr" "$head")"; arc=$?
   if [ "$arc" != 0 ]; then echo "PERINGATAN: alur terjadwal tidak dapat diperiksa"
   elif [ -n "$at" ]; then
     dflt="$(gh api "repos/$(ghx_repo)" 2>/dev/null | jq -r '.default_branch // empty' 2>/dev/null)"
@@ -135,7 +135,7 @@ else
   fi
   # catatan rilis (#30): bila opsi di cabang tujuan = CHANGELOG.md, PR tanpa baris 'Release note:' diperingatkan (tidak memblokir; galat baca = tanpa peringatan)
   wfr="$(gh api -H 'Accept: application/vnd.github.raw' "repos/$(ghx_repo)/contents/docs/WORKFLOW.md?ref=$dst" 2>/dev/null)" || wfr=""
-  if sed -En 's/^[- ]*Release notes: *(CHANGELOG\.md).*$/\1/p' <<<"$wfr" | grep -q . && [ -z "$(bash "$(dirname "$0")/release-notes.sh" --parse-badan <<<"$body" 2>/dev/null)" ]; then
+  if bash "$(dirname "$0")/lib/wf-normalize.sh" <<<"$wfr" | sed -En 's/^[- ]*Release notes: *(CHANGELOG\.md).*$/\1/p' | grep -q . && [ -z "$(bash "$(dirname "$0")/release-notes.sh" --parse-body <<<"$body" 2>/dev/null)" ]; then
     echo "PERINGATAN: PR tanpa baris 'Release note:' (docs/WORKFLOW.md di $dst memakai CHANGELOG.md); tulis 'Release note: <Added|Changed|Fixed|Security> - <teks>' atau 'Release note: -' bila internal"
   fi
   echo "ok: gerbang lolos untuk head $head. Merge dengan: gh pr merge $pr --match-head-commit $head"

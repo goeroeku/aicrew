@@ -9,14 +9,14 @@ source "$(dirname "$0")/ghx.sh"  # cadangan REST saat GraphQL kena batas
 repo="$(ghx_repo)"
 if [ "${1:-}" = "--check" ]; then
   epics="$(ghx_issues open epic 100 number,body)"; orphan=0
-  np="$(bash "$(dirname "$0")/label.sh" noparent)"  # yatim yang disengaja (mis. payung tindak lanjut) diberi label ini
+  np="$(bash "$(dirname "$0")/label.sh" noparent --all | jq -Rsc 'split("\n")|map(select(.!=""))')"  # yatim yang disengaja (mis. payung tindak lanjut) diberi label ini
   while read -r i; do
     [ -n "$i" ] || continue; n="$(jq .number <<<"$i")"
     p="$(gh api "repos/$repo/issues/$n/parent" --jq .number 2>/dev/null || true)"; [[ "$p" =~ ^[0-9]+$ ]] && continue
     jq -r '.[].body // ""' <<<"$epics" | grep -qE "^- \[[ xX]\] #$n\b" && continue
     echo "yatim: #$n $(jq -r .title <<<"$i")"; orphan=1
   done < <(open="$(ghx_issues open - 200 number,title,labels)"; [ "$(jq length <<<"$open")" -lt 200 ] || echo "epic-link --check: 200 issue terbuka pertama saja diperiksa; hasil bisa tidak lengkap" >&2
-           jq -c --arg np "$np" '.[]|select((.labels|map(.name)|index("epic") or index($np))|not)' <<<"$open")
+           jq -c --argjson np "$np" '.[]|select(((.labels|map(.name)) as $n|($n|index("epic")) or any($np[]; . as $x|$n|index($x)))|not)' <<<"$open")
   exit $((orphan*3))
 fi
 if [ "${1:-}" = "--inherit" ]; then

@@ -32,7 +32,7 @@ case "$backend" in
       esac
     fi
     if git remote -v 2>/dev/null | grep -q .; then
-      n="$(bash "$(dirname "$0")/cleanup.sh" --hitung 2>/dev/null)"
+      n="$(bash "$(dirname "$0")/cleanup.sh" --count 2>/dev/null)"
       [ "${n:-0}" = 0 ] || say info "$n cabang ter-merge (bukti offline) belum dihapus; daftar dan pengecualian PR terbuka: bash scripts/cleanup.sh"
     fi
     gh auth status 2>&1 | grep -qE "Token scopes:.*'project'" && say ok "gh scope project (kanban)" \

@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # aicrew release-notes: bagian CHANGELOG.md per versi, disusun dari baris bertanda di badan PR yang ter-merge (#30). REST + git saja, deterministik (bukan model).
-#   release-notes.sh --versi X.Y.Z [--sejak REF] [--tanggal YYYY-MM-DD] [--tulis | --ekstrak]
+#   release-notes.sh --version X.Y.Z [--since REF] [--date YYYY-MM-DD] [--write | --extract]
 # Opt-in: hanya bila docs/WORKFLOW.md memuat "Release notes: CHANGELOG.md" (lain/hilang/placeholder = none: tidak mencetak dan tidak menyentuh berkas).
 # Baris bertanda di badan PR (satu baris per entri; blok kode dan komentar HTML diabaikan):
 #   Release note: <Added|Changed|Fixed|Security> - <teks>     Release note: -   (PR internal, tanpa entri)     Behavior change: <teks>
 # Jendela: PR ter-merge ke cabang bawaan atau cabang integrasi yang merge_commit_sha-nya BUKAN leluhur tag sebelumnya (tag vX.Y.Z tertinggi di bawah --versi,
 # atau --sejak REF) dan, bila tag v<versi> sudah ada, leluhur tag itu (jalan ulang setelah rilis memberi hasil sama). Gagal baca/REST/tanpa tag sebelumnya = exit 2, tanpa menulis apa pun.
-# Kode keluar: 0, 1 (--ekstrak: bagian versi tak ada), 2 tak bisa disusun, 64 argumen.
+# Kode keluar: 0, 1 (--extract: bagian versi tak ada), 2 tak bisa disusun, 64 argumen.
 set -u
 here="$(cd "$(dirname "$0")" && pwd)"; source "$here/ghx.sh"
 # badan PR -> "Kategori<TAB>teks" | "BEHAVIOR<TAB>teks" | "INTERNAL" | "BAD<TAB>teks"; \r dibuang, blok kode dan komentar HTML diabaikan
@@ -35,14 +35,14 @@ parse_body() {
       if (line ~ /^Behavior change: / && length(line) > 17) { print "BEHAVIOR\t" substr(line, 18); next }
     }'
 }
-# --parse-badan: baca badan PR dari stdin dan cetak hasil urai (dipakai gerbang pr-merge-check.sh; satu sumber aturan)
-[ "${1:-}" != "--parse-badan" ] || { parse_body; exit 0; }
+# --parse-body: baca badan PR dari stdin dan cetak hasil urai (dipakai gerbang pr-merge-check.sh; satu sumber aturan)
+[ "${1:-}" != "--parse-body" ] && [ "${1:-}" != "--parse-badan" ] || { parse_body; exit 0; }
 versi=""; sejak=""; tanggal=""; mode=cetak
 while [ $# -gt 0 ]; do case "$1" in
-  --versi) versi="${2:-}"; shift 2 ;; --sejak) sejak="${2:-}"; shift 2 ;; --tanggal) tanggal="${2:-}"; shift 2 ;;
-  --tulis) mode=tulis; shift ;; --ekstrak) mode=ekstrak; shift ;;
-  *) echo "pakai: release-notes.sh --versi X.Y.Z [--sejak REF] [--tanggal YYYY-MM-DD] [--tulis | --ekstrak]" >&2; exit 64 ;; esac; done
-printf '%s' "$versi" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$' || { echo "release-notes: --versi harus X.Y.Z" >&2; exit 64; }
+  --version|--versi) versi="${2:-}"; shift 2 ;; --since|--sejak) sejak="${2:-}"; shift 2 ;; --date|--tanggal) tanggal="${2:-}"; shift 2 ;;
+  --write|--tulis) mode=tulis; shift ;; --extract|--ekstrak) mode=ekstrak; shift ;;
+  *) echo "pakai: release-notes.sh --version X.Y.Z [--since REF] [--date YYYY-MM-DD] [--write | --extract]" >&2; exit 64 ;; esac; done
+printf '%s' "$versi" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$' || { echo "release-notes: --version harus X.Y.Z" >&2; exit 64; }
 cant() { echo "release-notes: $*" >&2; exit 2; }
 CL=CHANGELOG.md
 
@@ -61,17 +61,17 @@ td="$(mktemp -d)"; trap 'rm -rf "$td"' EXIT
 repo="$(ghx_repo)" || cant "repo tak dapat ditentukan"
 git fetch -q --tags origin 2>/dev/null || true
 if [ -n "$sejak" ]; then
-  git rev-parse -q --verify "$sejak^{commit}" >/dev/null || cant "--sejak $sejak tidak dikenal"
+  git rev-parse -q --verify "$sejak^{commit}" >/dev/null || cant "--since $sejak tidak dikenal"
   prev="$sejak"
 else
   prev="$(git tag -l 'v[0-9]*' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sed 's/^v//' | sort -t. -k1,1n -k2,2n -k3,3n \
     | awk -v v="$versi" 'function cmp(a,b,  x,y,i){split(a,x,".");split(b,y,".");for(i=1;i<=3;i++){if(x[i]+0<y[i]+0)return -1;if(x[i]+0>y[i]+0)return 1}return 0} cmp($0,v)<0{last=$0} END{if(last!="")print "v" last}')"
-  [ -n "$prev" ] || cant "tidak ada tag sebelum v$versi; pakai --sejak <ref> (rilis pertama dimulai dari sana)"
+  [ -n "$prev" ] || cant "tidak ada tag sebelum v$versi; pakai --since <ref> (rilis pertama dimulai dari sana)"
 fi
 ub=""; git rev-parse -q --verify "refs/tags/v$versi^{commit}" >/dev/null && ub="v$versi"
 
 def="$(gh api "repos/$repo" | jq -r '.default_branch // empty')" && [ -n "$def" ] || cant "cabang bawaan tak terbaca (REST)"
-integ="$(bash "$here/workflow.sh" 2>/dev/null | sed -n 's/^[- ]*.*Cabang integrasi: *\([A-Za-z0-9._\/-]*\).*/\1/p' | head -1 | sed 's/[.,;:]*$//')"
+integ="$(bash "$here/workflow.sh" 2>/dev/null | sed -n 's/^[- ]*.*Integration branch: *\([A-Za-z0-9._\/-]*\).*/\1/p' | head -1 | sed 's/[.,;:]*$//')"
 case "$integ" in tidak|none|nihil|-) integ="" ;; esac
 bases="$def"; [ -z "$integ" ] || [ "$integ" = "$def" ] || bases="$bases $integ"
 for b in $bases; do git fetch -q origin "$b" 2>/dev/null; git rev-parse -q --verify "origin/$b" >/dev/null || cant "origin/$b tak dapat diambil"; done
@@ -126,7 +126,7 @@ for k in Added Changed Fixed Security Behavior; do
 done
 
 if [ "$mode" = cetak ]; then printf '%s\n' "$sec"; exit 0; fi
-# --tulis: sisipkan di atas bagian "## [" pertama; ganti bagian versi yang sama; buat kerangka bila berkas belum ada
+# --write: sisipkan di atas bagian "## [" pertama; ganti bagian versi yang sama; buat kerangka bila berkas belum ada
 new="$td/CHANGELOG.new"; printf '%s\n' "$sec" > "$td/sec"
 if [ ! -f "$CL" ]; then
   { printf '# Changelog\n\nAll notable changes to this project are documented in this file.\nThe format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).\n\n'; cat "$td/sec"; } > "$new"
