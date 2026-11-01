@@ -2,6 +2,7 @@
 # aicrew pr-merge-check: cegah merge PR bertumpuk tersasar (GitHub/gh saja).
 #   pr-merge-check.sh <pr> <cabang-tujuan>          sebelum merge: exit 1 bila basis PR != tujuan, atau PR/issue yang ditutupnya
 #                                                   berlabel needs-security/needs-perf tanpa laporan lulus untuk head PR (waiver owner bercakupan perf atau rahasia)
+#                                                   PR yang menyentuh package-lock.json/go.mod/requirements*.txt juga diperiksa CVE-nya (paket baru/berubah; waiver owner (cve))
 #   pr-merge-check.sh <pr> <cabang-tujuan> --auto   seperti mode pertama, dan menolak PR/issue berlabel risk:L2 (auto-merge tidak boleh)
 #   pr-merge-check.sh <pr> <cabang-tujuan> --after  setelah merge: exit 1 bila commit merge tak ada di origin/<tujuan>
 set -u
@@ -68,5 +69,41 @@ else
   scan="$(printf '%s\n' "$diff" | bash "$(dirname "$0")/baseline-scan.sh" --body "$bf" --perf-labeled "$perfl")"; rc=$?
   [ -z "$scan" ] || echo "$scan"
   [ "$rc" = 0 ] || waiver_ok rahasia || fail "baseline-scan menemukan rahasia pada diff; perbaiki, atau waiver owner (rahasia) untuk head PR"
+  # CVE (OSV): hanya bila PR menyentuh manifest/lockfile, dan hanya paket baru/berubah dibanding MERGE-BASE (bukan ujung cabang tujuan,
+  # yang bisa lebih baru dari cabang PR). Daftar berkas dari REST pulls/N/files (header diff bisa menipu: path berisi " b/" atau ber-kutip git).
+  # Fail-closed: berkas tak terbaca atau OSV mati = tolak, kecuali waiver owner (cve). Opt-out dibaca dari CABANG TUJUAN, bukan dari PR itu sendiri.
+  if printf '%s\n' "$diff" | grep -qE 'package-lock\.json|go\.mod|requirements[^ ]*\.txt'; then
+    cr="$(ghx_repo)" || fail "cve: repo tak dapat ditentukan"
+    cj="$(gh api "repos/$cr/pulls/$pr/files" --paginate)" || fail "cve: daftar berkas PR #$pr tak terbaca (REST)"
+    mfs="$(jq -r '.[]|select(.status!="removed")|.filename' <<<"$cj" | grep -E '(^|/)(package-lock\.json|go\.mod|requirements[^/]*\.txt)$' | sort -u)"
+  else mfs=""; fi
+  if [ -n "$mfs" ]; then
+    cve_fetch() { # <ref> <path> <keluaran>: 0 ok, 4 = 404 (tidak ada di ref itu), 1 = galat lain. Isi lewat REST (mendukung berkas >1 MB), tanpa GraphQL
+      local e rc=0 q; q="$(jq -rn --arg p "$2" '$p|split("/")|map(@uri)|join("/")')"
+      e="$(gh api -H 'Accept: application/vnd.github.raw' "repos/$cr/contents/$q?ref=$1" 2>&1 >"$3")" || rc=$?
+      [ "$rc" = 0 ] && return 0; grep -qE 'HTTP 404|Not Found' <<<"$e" && return 4; return 1
+    }
+    cdir="$(mktemp -d)"; trap 'rm -f "$bf"; rm -rf "$cdir"' EXIT
+    cve_fetch "$dst" docs/WORKFLOW.md "$cdir/wf"; fr=$?
+    if [ "$fr" = 0 ] && grep -qE '^[- ]*Pemeriksaan CVE: *tidak' "$cdir/wf"; then
+      echo "PERINGATAN: pemeriksaan CVE dimatikan di WORKFLOW.md"
+    else
+      cbase="$(gh api "repos/$cr/compare/$dst...$head" 2>/dev/null | jq -r '.merge_base_commit.sha // empty' 2>/dev/null)"; [ -n "$cbase" ] || cbase="$dst"
+      cblock=0; cdown=0; ci=0
+      while IFS= read -r mp; do
+        [ -n "$mp" ] || continue; ci=$((ci+1)); mn="${mp##*/}"; mkdir -p "$cdir/$ci/h" "$cdir/$ci/b"
+        cve_fetch "$head" "$mp" "$cdir/$ci/h/$mn"; fr=$?
+        [ "$fr" = 0 ] || { [ "$fr" = 4 ] && fail "cve: $mp tidak ditemukan di head (REST) padahal tidak dihapus"; fail "cve: $mp tak terbaca di head (REST)"; }
+        cve_fetch "$cbase" "$mp" "$cdir/$ci/b/$mn"; fr=$?
+        if [ "$fr" = 4 ]; then : > "$cdir/$ci/b/$mn"; elif [ "$fr" != 0 ]; then fail "cve: $mp tak terbaca di merge-base (REST)"; fi   # berkas baru/dipindah: semua paket baru
+        cres="$(bash "$(dirname "$0")/cve-check.sh" "$cdir/$ci/h/$mn" --base "$cdir/$ci/b/$mn" 2>"$cdir/err")"; crc=$?
+        grep '^tidak lengkap' "$cdir/err" | sed "s#^#PERINGATAN: cve ($mp) #"; grep -v '^tidak lengkap' "$cdir/err" >&2
+        [ -z "$cres" ] || printf '%s\n' "$cres" | awk -F'\t' -v p="$mp" '{k=($9=="baru" && $6=="prod" && ($5=="HIGH"||$5=="CRITICAL"||$5=="UNKNOWN"))?"BLOK":"PERINGATAN"; printf "%s: cve (%s) %s %s %s %s %s paparan=%s target=%s saran=%s\n",k,p,$1,$2,$3,$5,$6,$9,$7,$8}'
+        case "$crc" in 0) ;; 1) cblock=1 ;; *) cdown=1 ;; esac
+      done <<<"$mfs"
+      [ "$cblock" = 0 ] || waiver_ok cve || fail "cve: kerentanan HIGH/CRITICAL/UNKNOWN baru pada dependensi; naikkan sesuai saran di atas, atau waiver owner (cve) untuk head PR"
+      [ "$cdown" = 0 ] || waiver_ok cve || fail "cve: OSV tidak terjangkau untuk PR yang menyentuh manifest; ulangi nanti, atau waiver owner (cve) untuk head PR"
+    fi
+  fi
   echo "ok: gerbang lolos untuk head $head. Merge dengan: gh pr merge $pr --match-head-commit $head"
 fi
