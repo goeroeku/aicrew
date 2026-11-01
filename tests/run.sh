@@ -1457,4 +1457,17 @@ RR2; ok "release-report: tanpa --versi -> tanpa bagian draf" "$(grep -c '^## Cat
 echo "3. Cabang integrasi: integ." > "$tmp/rr/docs/WORKFLOW.md"; RR2 --versi 0.3.0; ok "release-report: tanpa opsi Catatan rilis -> tanpa bagian draf" "$(grep -c '^## Catatan rilis (draf)' "$tmp/rr.md")" 0
 cd "$root" || exit 1
 
+# 3n-5. perbaikan hasil review akhir #30
+grep -q '^- Bersihkan setelah merge: tidak' docs/WORKFLOW.md; ok "docs/WORKFLOW.md aicrew: Bersihkan setelah merge: tidak (berkas baru tak mengaktifkan hapus otomatis)" $? 0
+mkdir -p "$CF/main/docs"; printf -- '- Catatan rilis: CHANGELOG.md\n' > "$CF/main/docs/WORKFLOW.md"
+out="$(export DIFF="$DRM" GBODY=$'Closes #1\n<!--\nCatatan rilis: Added - contoh templat\n-->'; GE2)"; ok "gerbang catatan: contoh di komentar HTML (templat tak diisi) tetap diperingatkan" "$(grep -c "baris 'Catatan rilis:'" <<<"$out")" 1
+out="$(export DIFF="$DRM" GBODY=$'Closes #1\n```\nCatatan rilis: Added - dalam blok kode\n```'; GE2)"; ok "gerbang catatan: contoh di blok kode tetap diperingatkan" "$(grep -c "baris 'Catatan rilis:'" <<<"$out")" 1
+rm -rf "$CF/main/docs"
+! grep -q -- '--argjson a "\$all"' scripts/release-notes.sh; ok "release-notes: daftar PR tidak dikirim sebagai argumen proses (batas 128 KB per argumen di Linux)" $? 0
+printf '# Changelog\n\n## [0.2.0] - 2026-10-01\n\n### Added\n\n- fitur satu (#11)\n' > "$RN/w/CHANGELOG.md"
+out="$(RNS --versi 0.3.0 --tanggal 2026-11-02 2>/dev/null)"; ok "release-notes: PR yang nomornya sudah ada di bagian lain CHANGELOG.md tidak muncul lagi (#11), PR lain tetap (#12)" "$(grep -c 'fitur satu' <<<"$out")|$(grep -c 'bug dua (#12)' <<<"$out")" '0|1'
+printf '# Changelog\n\n## [0.3.0] - 2026-11-02\n\n### Added\n\n- fitur satu (#11)\n\n## [0.2.0] - 2026-10-01\n' > "$RN/w/CHANGELOG.md"
+out="$(RNS --versi 0.3.0 --tanggal 2026-11-02 2>/dev/null)"; ok "release-notes: nomor di bagian versi yang sedang disusun tidak dihitung 'sudah ada' (jalan ulang tetap memuat #11)" "$(grep -c 'fitur satu (#11)' <<<"$out")" 1
+rm -f "$RN/w/CHANGELOG.md"
+
 [ "$fails" = 0 ] && echo "SEMUA LULUS" || { echo "$fails GAGAL"; exit 1; }

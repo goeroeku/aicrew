@@ -9,55 +9,6 @@
 # Kode keluar: 0, 1 (--ekstrak: bagian versi tak ada), 2 tak bisa disusun, 64 argumen.
 set -u
 here="$(cd "$(dirname "$0")" && pwd)"; source "$here/ghx.sh"
-versi=""; sejak=""; tanggal=""; mode=cetak
-while [ $# -gt 0 ]; do case "$1" in
-  --versi) versi="${2:-}"; shift 2 ;; --sejak) sejak="${2:-}"; shift 2 ;; --tanggal) tanggal="${2:-}"; shift 2 ;;
-  --tulis) mode=tulis; shift ;; --ekstrak) mode=ekstrak; shift ;;
-  *) echo "pakai: release-notes.sh --versi X.Y.Z [--sejak REF] [--tanggal YYYY-MM-DD] [--tulis | --ekstrak]" >&2; exit 64 ;; esac; done
-printf '%s' "$versi" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$' || { echo "release-notes: --versi harus X.Y.Z" >&2; exit 64; }
-cant() { echo "release-notes: $*" >&2; exit 2; }
-CL=CHANGELOG.md
-
-# bagian "## [versi]" dari CHANGELOG.md (sampai "## [" berikutnya atau akhir berkas)
-ekstrak() { awk -v h="## [$versi]" 'index($0,h)==1{p=1;print;next} /^## \[/{p=0} p' "$CL" 2>/dev/null; }
-if [ "$mode" = ekstrak ]; then
-  out="$(ekstrak)"; [ -n "$out" ] || { echo "release-notes: bagian [$versi] tidak ada di $CL" >&2; exit 1; }
-  printf '%s\n' "$out"; exit 0
-fi
-
-opsi="$(bash "$here/workflow.sh" 2>/dev/null | sed -En 's/^[- ]*Catatan rilis: *(CHANGELOG\.md|dikelola alat lain|tidak ada).*$/\1/p' | head -1)"
-if [ "$opsi" != "CHANGELOG.md" ]; then echo "release-notes: Catatan rilis bukan CHANGELOG.md; tidak ada yang disusun" >&2; exit 0; fi
-[ -n "$tanggal" ] || tanggal="$(date -u +%F)"
-
-repo="$(ghx_repo)" || cant "repo tak dapat ditentukan"
-git fetch -q --tags origin 2>/dev/null || true
-if [ -n "$sejak" ]; then
-  git rev-parse -q --verify "$sejak^{commit}" >/dev/null || cant "--sejak $sejak tidak dikenal"
-  prev="$sejak"
-else
-  prev="$(git tag -l 'v[0-9]*' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sed 's/^v//' | sort -t. -k1,1n -k2,2n -k3,3n \
-    | awk -v v="$versi" 'function cmp(a,b,  x,y,i){split(a,x,".");split(b,y,".");for(i=1;i<=3;i++){if(x[i]+0<y[i]+0)return -1;if(x[i]+0>y[i]+0)return 1}return 0} cmp($0,v)<0{last=$0} END{if(last!="")print "v" last}')"
-  [ -n "$prev" ] || cant "tidak ada tag sebelum v$versi; pakai --sejak <ref> (rilis pertama dimulai dari sana)"
-fi
-ub=""; git rev-parse -q --verify "refs/tags/v$versi^{commit}" >/dev/null && ub="v$versi"
-
-def="$(gh api "repos/$repo" | jq -r '.default_branch // empty')" && [ -n "$def" ] || cant "cabang bawaan tak terbaca (REST)"
-integ="$(bash "$here/workflow.sh" 2>/dev/null | sed -n 's/^[- ]*.*Cabang integrasi: *\([A-Za-z0-9._\/-]*\).*/\1/p' | head -1 | sed 's/[.,;:]*$//')"
-case "$integ" in tidak|none|nihil|-) integ="" ;; esac
-bases="$def"; [ -z "$integ" ] || [ "$integ" = "$def" ] || bases="$bases $integ"
-for b in $bases; do git fetch -q origin "$b" 2>/dev/null; git rev-parse -q --verify "origin/$b" >/dev/null || cant "origin/$b tak dapat diambil"; done
-basesj="$(printf '%s\n' $bases | jq -R . | jq -sc .)"
-
-all="[]"; page=1
-while :; do
-  pj="$(gh api "repos/$repo/pulls?state=closed&per_page=100&page=$page")" || cant "daftar PR tak terbaca (REST)"
-  n="$(jq 'length' <<<"$pj" 2>/dev/null)" || cant "daftar PR tak dapat diurai"
-  [ "$n" -gt 0 ] || break
-  all="$(jq -c --argjson a "$all" '$a + .' <<<"$pj")" || cant "daftar PR tak dapat digabung"
-  page=$((page+1)); [ "$page" -le 200 ] || cant "terlalu banyak halaman PR"
-done
-prs="$(jq -c --argjson b "$basesj" '[.[]|select(.merged_at != null and (.base.ref as $x | $b | index($x)))] | sort_by(.number)' <<<"$all")" || cant "PR tak dapat disaring"
-
 # badan PR -> "Kategori<TAB>teks" | "BEHAVIOR<TAB>teks" | "INTERNAL" | "BAD<TAB>teks"; \r dibuang, blok kode dan komentar HTML diabaikan
 parse_body() {
   tr -d '\r' | awk '
@@ -84,12 +35,68 @@ parse_body() {
       if (line ~ /^Perubahan perilaku: / && length(line) > 20) { print "BEHAVIOR\t" substr(line, 21); next }
     }'
 }
-anc() { git merge-base --is-ancestor "$1" "$2" 2>/dev/null; }   # 0 leluhur, 1 bukan, 128 commit tak dikenal
+# --parse-badan: baca badan PR dari stdin dan cetak hasil urai (dipakai gerbang pr-merge-check.sh; satu sumber aturan)
+[ "${1:-}" != "--parse-badan" ] || { parse_body; exit 0; }
+versi=""; sejak=""; tanggal=""; mode=cetak
+while [ $# -gt 0 ]; do case "$1" in
+  --versi) versi="${2:-}"; shift 2 ;; --sejak) sejak="${2:-}"; shift 2 ;; --tanggal) tanggal="${2:-}"; shift 2 ;;
+  --tulis) mode=tulis; shift ;; --ekstrak) mode=ekstrak; shift ;;
+  *) echo "pakai: release-notes.sh --versi X.Y.Z [--sejak REF] [--tanggal YYYY-MM-DD] [--tulis | --ekstrak]" >&2; exit 64 ;; esac; done
+printf '%s' "$versi" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$' || { echo "release-notes: --versi harus X.Y.Z" >&2; exit 64; }
+cant() { echo "release-notes: $*" >&2; exit 2; }
+CL=CHANGELOG.md
+
+# bagian "## [versi]" dari CHANGELOG.md (sampai "## [" berikutnya atau akhir berkas)
+ekstrak() { awk -v h="## [$versi]" 'index($0,h)==1{p=1;print;next} /^## \[/{p=0} p' "$CL" 2>/dev/null; }
+if [ "$mode" = ekstrak ]; then
+  out="$(ekstrak)"; [ -n "$out" ] || { echo "release-notes: bagian [$versi] tidak ada di $CL" >&2; exit 1; }
+  printf '%s\n' "$out"; exit 0
+fi
+
+opsi="$(bash "$here/workflow.sh" 2>/dev/null | sed -En 's/^[- ]*Catatan rilis: *(CHANGELOG\.md|dikelola alat lain|tidak ada).*$/\1/p' | head -1)"
+if [ "$opsi" != "CHANGELOG.md" ]; then echo "release-notes: Catatan rilis bukan CHANGELOG.md; tidak ada yang disusun" >&2; exit 0; fi
+[ -n "$tanggal" ] || tanggal="$(date -u +%F)"
 
 td="$(mktemp -d)"; trap 'rm -rf "$td"' EXIT
+repo="$(ghx_repo)" || cant "repo tak dapat ditentukan"
+git fetch -q --tags origin 2>/dev/null || true
+if [ -n "$sejak" ]; then
+  git rev-parse -q --verify "$sejak^{commit}" >/dev/null || cant "--sejak $sejak tidak dikenal"
+  prev="$sejak"
+else
+  prev="$(git tag -l 'v[0-9]*' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sed 's/^v//' | sort -t. -k1,1n -k2,2n -k3,3n \
+    | awk -v v="$versi" 'function cmp(a,b,  x,y,i){split(a,x,".");split(b,y,".");for(i=1;i<=3;i++){if(x[i]+0<y[i]+0)return -1;if(x[i]+0>y[i]+0)return 1}return 0} cmp($0,v)<0{last=$0} END{if(last!="")print "v" last}')"
+  [ -n "$prev" ] || cant "tidak ada tag sebelum v$versi; pakai --sejak <ref> (rilis pertama dimulai dari sana)"
+fi
+ub=""; git rev-parse -q --verify "refs/tags/v$versi^{commit}" >/dev/null && ub="v$versi"
+
+def="$(gh api "repos/$repo" | jq -r '.default_branch // empty')" && [ -n "$def" ] || cant "cabang bawaan tak terbaca (REST)"
+integ="$(bash "$here/workflow.sh" 2>/dev/null | sed -n 's/^[- ]*.*Cabang integrasi: *\([A-Za-z0-9._\/-]*\).*/\1/p' | head -1 | sed 's/[.,;:]*$//')"
+case "$integ" in tidak|none|nihil|-) integ="" ;; esac
+bases="$def"; [ -z "$integ" ] || [ "$integ" = "$def" ] || bases="$bases $integ"
+for b in $bases; do git fetch -q origin "$b" 2>/dev/null; git rev-parse -q --verify "origin/$b" >/dev/null || cant "origin/$b tak dapat diambil"; done
+basesj="$(printf '%s\n' $bases | jq -R . | jq -sc .)"
+
+# halaman PR ditumpuk di berkas (bukan argumen proses: batas 128 KB per argumen di Linux)
+: > "$td/pages"; page=1
+while :; do
+  pj="$(gh api "repos/$repo/pulls?state=closed&per_page=100&page=$page")" || cant "daftar PR tak terbaca (REST)"
+  n="$(jq 'length' <<<"$pj" 2>/dev/null)" || cant "daftar PR tak dapat diurai"
+  [ "$n" -gt 0 ] || break
+  jq -c . <<<"$pj" >> "$td/pages" || cant "daftar PR tak dapat disimpan"
+  page=$((page+1)); [ "$page" -le 200 ] || cant "terlalu banyak halaman PR"
+done
+all="$(jq -sc 'add // []' "$td/pages")" || cant "daftar PR tak dapat digabung"
+prs="$(jq -c --argjson b "$basesj" '[.[]|select(.merged_at != null and (.base.ref as $x | $b | index($x)))] | sort_by(.number)' <<<"$all")" || cant "PR tak dapat disaring"
+# nomor PR yang sudah tercatat di bagian LAIN CHANGELOG.md tidak dimasukkan lagi (mis. PR integrasi yang di-squash ke main muncul di jendela rilis berikutnya)
+seen="$(awk -v h="## [$versi]" 'index($0,h)==1{s=1;next} /^## \[/{s=0} !s' "$CL" 2>/dev/null | grep -Eo '\(#[0-9]+\)' | tr -dc '0-9\n')"
+
+anc() { git merge-base --is-ancestor "$1" "$2" 2>/dev/null; }   # 0 leluhur, 1 bukan, 128 commit tak dikenal
+
 while IFS= read -r pr; do
   [ -n "$pr" ] || continue
   num="$(jq -r .number <<<"$pr")"; sha="$(jq -r '.merge_commit_sha // empty' <<<"$pr")"
+  if [ -n "$seen" ] && grep -qx "$num" <<<"$seen"; then continue; fi
   [ -n "$sha" ] || cant "PR #$num tanpa merge_commit_sha"
   git cat-file -e "$sha^{commit}" 2>/dev/null || cant "commit $sha (PR #$num) tak dikenal; jalankan git fetch"
   if anc "$sha" "$prev"; then continue; fi
