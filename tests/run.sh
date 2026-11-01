@@ -577,10 +577,13 @@ echo '[{"number":5,"state":"CLOSED","labels":[{"name":"enhancement"}]},{"number"
 echo '[{"number":20,"body":"- [ ] #5 a\n- [ ] #6 b","labels":[]}]' > "$FAKE/epics.json"; EY
 ok "epic: sebagian anak Done, belum ada yang berjalan -> In progress (bukan Backlog)" "$(grep 'item-edit' "$FAKE/calls" | grep -c 'I20.*OP')" 1
 ok "epic: progres diposting ke epic ('1/2 Done')" "$(grep -c 'aicrew-progress: 1/2 Done' "$FAKE/calls")" 1
+ok "epic: sebagian Done -> komentar progres tanpa kalimat siap ditinjau" "$(grep -c 'siap ditinjau pemilik' "$FAKE/calls")" 0
 echo '[{"number":5,"state":"CLOSED","labels":[{"name":"phase:discovery"}]},{"number":6,"state":"CLOSED","labels":[{"name":"discovery"}]}]' > "$FAKE/states.json"; EY
 ok "epic: semua anak Done tapi hanya discovery -> bukan In review" "$(grep 'item-edit' "$FAKE/calls" | grep -c 'I20.*OR')" 0
+ok "epic: hanya discovery -> komentar progres tanpa kalimat siap ditinjau" "$(grep -c 'siap ditinjau pemilik' "$FAKE/calls")" 0
 echo '[{"number":5,"state":"CLOSED","labels":[{"name":"discovery"}]},{"number":6,"state":"CLOSED","labels":[]}]' > "$FAKE/states.json"; EY
 ok "epic: ada anak non-discovery dan semua Done -> In review" "$(grep 'item-edit' "$FAKE/calls" | grep -c 'I20.*OR')" 1
+ok "epic: semua anak Done -> komentar progres menjelaskan siap ditinjau pemilik" "$(grep -c 'semua anak selesai, siap ditinjau pemilik untuk ditutup' "$FAKE/calls")" 1
 echo '[{"number":20,"body":"- [ ] #5 a","labels":[{"name":"belum-dipecah"}]}]' > "$FAKE/epics.json"
 echo '[{"number":5,"state":"CLOSED","labels":[]}]' > "$FAKE/states.json"; EY
 ok "epic: label belum-dipecah -> tidak pernah In review" "$(grep 'item-edit' "$FAKE/calls" | grep -c 'I20.*OR')" 0
