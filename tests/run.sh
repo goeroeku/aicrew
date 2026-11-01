@@ -1502,7 +1502,7 @@ case "$(sed -n "${n}p" "$AP3FX/script")" in
   limit) echo "Claude usage limit reached. Your limit will reset at 5pm."; exit 1 ;;
   noop) echo noop ;;
   idle) echo "menunggu owner"; exec /bin/sleep 20 ;;
-  active) i=0; while [ "$i" -lt 6 ]; do touch "$AICREW_TRANSCRIPT_DIR/t.jsonl"; /bin/sleep 1; i=$((i+1)); done; closeall; echo ok ;;
+  active) trap 'exit 130' INT; i=0; while [ "$i" -lt 6 ]; do touch "$AICREW_TRANSCRIPT_DIR/t.jsonl"; /bin/sleep 1; i=$((i+1)); done; closeall; echo ok ;;
   child) /bin/sleep 5 & wait; closeall; echo ok ;;
   quiet) exec 3<>"$AP3FX/fifo"; read -t 4 -u 3 _; closeall; echo ok ;;
   idlelimit) echo "Claude usage limit reached. Your limit will reset at 5pm."; exec /bin/sleep 20 ;;
@@ -1512,9 +1512,10 @@ esac
 CLEOF
 chmod +x "$AP3/bin/gh" "$AP3/bin/sleep" "$AP3/bin/claude"
 AP3OPEN='[{"number":1,"state":"OPEN","labels":[{"name":"role:qa"}]}]'
+# SIGINT: suite sering dijalankan sebagai pekerjaan latar (SIGINT diabaikan, aturan POSIX); perl mengembalikannya ke bawaan agar tes watchdog menguji SIGINT sungguhan
 # ap3 <issues-json> <skrip-per-putaran> [argumen autopilot...]; env tambahan lewat variabel AP3ENV (string "K=V ...")
 ap3() { printf '%s\n' "$2" > "$AP3FX/script"; rm -f "$AP3FX/n" "$AP3FX/sleeps" "$AP3FX/peek.json" "$AP3FX/peek.status"; echo "$1" > "$AP3FX/issues.json"; rm -rf "$AP3/w/.aicrew"
-  (cd "$AP3/w" && env PATH="$AP3/bin:$PATH" AP3FX="$AP3FX" AICREW_CAFF=1 AICREW_ERR_SLEEP=0 AICREW_CLAUDE=claude AICREW_TRANSCRIPT_DIR="$AP3/tr" $AP3ENV bash "$root/scripts/autopilot.sh" --sleep 0 "${@:3}" >"$AP3/out" 2>&1); }
+  (cd "$AP3/w" && env PATH="$AP3/bin:$PATH" AP3FX="$AP3FX" AICREW_CAFF="${AP3CAFF-1}" AICREW_ERR_SLEEP=0 AICREW_CLAUDE=claude AICREW_TRANSCRIPT_DIR="$AP3/tr" $AP3ENV perl -e '$SIG{INT}="DEFAULT"; exec @ARGV' bash "$root/scripts/autopilot.sh" --sleep 0 "${@:3}" >"$AP3/out" 2>&1); }
 ap3 "$AP3OPEN" close --idle-limit 5 --round-timeout 9; ok "autopilot: --idle-limit dan --round-timeout diterima (bukan exit 64)" $? 0
 AP3ENV="AICREW_IDLE_LIMIT=7 AICREW_ROUND_TIMEOUT=11" ap3 "$AP3OPEN" close; ok "autopilot: AICREW_IDLE_LIMIT/AICREW_ROUND_TIMEOUT dibaca dari lingkungan" $? 0
 ap3 "$AP3OPEN" peek; rc=$?
@@ -1536,7 +1537,7 @@ AP3ENV="AICREW_IDLE_LIMIT=2 AICREW_IDLE_POLL=1" ap3 "$AP3OPEN" $'child'; rc=$?
 ok "watchdog: sesi punya anak proses non-pembantu -> tidak diinterupsi" "$rc|$(cat "$AP3FX/n")|$(APLOG | grep -c 'diinterupsi')" '0|1|0'
 AP3ENV="AICREW_IDLE_LIMIT=2 AICREW_IDLE_POLL=1 AICREW_IDLE_IGNORE=sleep" ap3 "$AP3OPEN" $'child\nclose'; rc=$?
 ok "watchdog: anak proses yang namanya cocok AICREW_IDLE_IGNORE tidak dihitung sibuk -> diinterupsi" "$rc|$(APLOG | grep -c 'diinterupsi')" '0|1'
-AP3ENV="AICREW_IDLE_LIMIT=2 AICREW_IDLE_POLL=1" ap3 "$AP3OPEN" $'quiet'; rc=$?
+AP3ENV="AICREW_IDLE_LIMIT=2 AICREW_IDLE_POLL=1" ap3 "$AP3OPEN" $'quiet\nclose'; rc=$?
 ok "watchdog: sesi diam tanpa anak proses 4 detik, batas 2 -> diinterupsi" "$rc|$(APLOG | grep -c 'diinterupsi')" '0|1'
 AP3ENV="AICREW_IDLE_LIMIT=0 AICREW_IDLE_POLL=1" ap3 "$AP3OPEN" $'quiet'; rc=$?
 ok "watchdog: --idle-limit 0 (env 0) mematikan watchdog" "$rc|$(APLOG | grep -c 'diinterupsi')" '0|0'
@@ -1554,5 +1555,20 @@ kill -INT "$cpid" "$apid" 2>/dev/null; wait "$apid" 2>/dev/null; rc=$?
 ok "watchdog: Ctrl-C pemilik (tanpa penanda) -> autopilot keluar 130" "$rc" 130
 /bin/sleep 1
 ok "watchdog: tidak ada proses autopilot/pemantau yatim setelah Ctrl-C" "$(pgrep -f 'autopilot[.]sh --sleep 0 --stuck 77' | wc -l | tr -d ' ')" 0
+
+# 3p-3. eskalasi SIGTERM, --round-timeout, jalur caffeinate (#48)
+AP3ENV="AICREW_IDLE_LIMIT=2 AICREW_IDLE_POLL=1" ap3 "$AP3OPEN" $'idle\nclose'
+ok "watchdog: sesi yang mati oleh SIGINT tidak dikirimi SIGTERM" "$(APLOG | grep -c 'SIGTERM')" 0
+AP3ENV="AICREW_IDLE_LIMIT=2 AICREW_IDLE_POLL=1 AICREW_IDLE_GRACE=1 AICREW_TERM_GRACE=2 AICREW_IDLE_IGNORE=sleep" ap3 "$AP3OPEN" $'ignore\nclose'; rc=$?
+ok "watchdog: sesi yang mengabaikan SIGINT -> dicatat masih hidup lalu SIGTERM; putaran berikut jalan (exit 0, claude 2 kali)" "$rc|$(cat "$AP3FX/n")|$(APLOG | grep -c 'masih hidup')|$(APLOG | grep -c 'SIGTERM')" '0|2|1|1'
+ok "watchdog: tidak pernah SIGKILL" "$(APLOG | grep -ci 'SIGKILL')" 0
+AP3ENV="AICREW_IDLE_LIMIT=100 AICREW_IDLE_POLL=1" ap3 "$AP3OPEN" $'active\nclose' --round-timeout 2; rc=$?
+ok "round-timeout: sesi aktif diinterupsi setelah batas waktu putaran (log 'batas waktu putaran', claude 2 kali)" "$rc|$(cat "$AP3FX/n")|$(APLOG | grep -c 'batas waktu putaran')" '0|2|1'
+AP3ENV="AICREW_IDLE_LIMIT=100 AICREW_IDLE_POLL=1" ap3 "$AP3OPEN" $'active' --round-timeout 0; rc=$?
+ok "round-timeout 0 = mati: sesi aktif tidak diinterupsi" "$rc|$(APLOG | grep -c 'diinterupsi')" '0|0'
+if command -v caffeinate >/dev/null 2>&1; then
+  AP3CAFF= AP3ENV="AICREW_IDLE_LIMIT=2 AICREW_IDLE_POLL=1" ap3 "$AP3OPEN" $'idle\nclose'; rc=$?
+  ok "watchdog: jalur caffeinate (tanpa AICREW_CAFF) -> sesi idle diinterupsi dan putaran berikut jalan" "$rc|$(cat "$AP3FX/n")|$(APLOG | grep -c 'diinterupsi (SIGINT)')" '0|2|1'
+else ok "watchdog: caffeinate tak tersedia (Linux); jalur dilewati" 0 0; fi
 
 [ "$fails" = 0 ] && echo "SEMUA LULUS" || { echo "$fails GAGAL"; exit 1; }

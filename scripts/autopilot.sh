@@ -62,6 +62,12 @@ watch_round() { # <awal-epoch> <induk-pid>
     pgrep -P "$parent" 2>/dev/null | grep -vx "$me" | grep -qx "$target" || continue   # pid masih anak langsung autopilot ini
     : > "$d/idle-interrupt"; set_phase idle-diinterupsi "$cur_round" "$((now-last))"
     log "putaran $cur_round: $reason; diinterupsi (SIGINT)"; kill -INT "$target" 2>/dev/null
+    # eskalasi: sesi yang mengabaikan SIGINT sudah macet (menggantung = masalah #48). Dicatat setelah AICREW_IDLE_GRACE (30 dtk), SIGTERM setelah AICREW_TERM_GRACE (60 dtk) lagi; tidak pernah SIGKILL
+    ig="${AICREW_IDLE_GRACE:-30}"; tg="${AICREW_TERM_GRACE:-60}"; sleep "$ig"
+    if pgrep -P "$parent" 2>/dev/null | grep -vx "$me" | grep -qx "$target"; then
+      log "putaran $cur_round: sesi masih hidup $ig detik setelah SIGINT; menunggu $tg detik lagi"; sleep "$tg"
+      if pgrep -P "$parent" 2>/dev/null | grep -vx "$me" | grep -qx "$target"; then log "putaran $cur_round: sesi tidak berakhir; dikirim SIGTERM"; kill -TERM "$target" 2>/dev/null; fi
+    fi
     return 0
   done
 }
