@@ -1091,7 +1091,7 @@ grep -q 'Paket privat:' templates/WORKFLOW.md; ok "templat WORKFLOW memuat 'Pake
 grep -q 'Paket privat:' PRIVACY.md && grep -q '~/.npmrc' PRIVACY.md; ok "PRIVACY: sumber pola dan ~/.npmrc tidak dibaca" $? 0
 grep -q 'Paket privat:' README.md; ok "README menyebut 'Paket privat:'" $? 0
 grep -q 'Paket privat' skills/cve-audit/SKILL.md; ok "skill cve-audit menyebut paket privat" $? 0
-grep -q '"version": "0.9.0"' .claude-plugin/plugin.json; ok "plugin.json versi 0.9.0" $? 0
+grep -q '"version": "0.9.1"' .claude-plugin/plugin.json; ok "plugin.json versi 0.9.1" $? 0
 
 # 3l-5. perbaikan hasil review akhir #25
 printf -- '- Paket privat: @acme/*, git.corp.com/tim. Penjelasan, panjang.\n' > "$Q/wfa.md"
