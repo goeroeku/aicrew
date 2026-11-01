@@ -1322,6 +1322,15 @@ out="$(MI_FAIL=1 MR --cek 55)"; ok "menunggu-rilis --cek: REST gagal -> exit 2" 
 # resume.sh: issue terbuka berlabel menunggu-rilis -> aksi periksa-rilis
 echo '[{"number":55,"labels":[{"name":"di-integrasi"},{"name":"menunggu-rilis"}]},{"number":56,"pull_request":{},"labels":[{"name":"menunggu-rilis"}]}]' > "$MI/fx/repos_o_r_issues_state_open_labels_menunggu-rilis_per_page_100"
 out="$(cd "$MI/w" && GH_REPO=o/r MI_FX="$MI/fx" PATH="$MI/bin:$PATH" bash "$root/scripts/resume.sh" 2>&1 | cut -f1,2 | tr '\t\n' '::')"; ok "resume: issue berlabel menunggu-rilis -> periksa-rilis (PR diabaikan)" "$out" "55:periksa-rilis:"
+
+# 3m-4. cve-audit.sh: alur terjadwal/dependabot yang hanya ada di cabang integrasi (#32)
+CAU() { (cd "$MI/w" && PATH="$MI/bin:$PATH" GH_REPO=o/r bash "$root/scripts/cve-audit.sh" 2>&1); }
+(cd "$MI/w" && git checkout -q integrasi && mkdir -p .github/workflows && printf 'on:\n  schedule:\n    - cron: "0 3 * * *"\n' > .github/workflows/v.yml && printf 'on:\n  push:\n' > .github/workflows/ci.yml && printf 'version: 2\n' > .github/dependabot.yml && git add .github && git commit -q -m alur && git push -q origin integrasi && git checkout -q main)
+ok "cve-audit: schedule + dependabot hanya di integrasi (ci biasa tidak dihitung) -> '2 alur terjadwal belum aktif'" "$(grep -c '^2 alur terjadwal belum aktif (hanya di integrasi)$' <<<"$(CAU)")" 1
+printf -- '- Pemeriksaan CVE: ya\n' > "$MI/w/docs/WORKFLOW.md"; ok "cve-audit: tanpa cabang integrasi -> tanpa baris alur" "$(grep -c 'alur terjadwal' <<<"$(CAU)")" 0
+printf -- '- Cabang integrasi: integrasi\n' > "$MI/w/docs/WORKFLOW.md"
+(cd "$MI/w" && git merge -q --no-edit integrasi && git push -q origin main)
+ok "cve-audit: alur sudah ada di cabang bawaan -> tanpa baris" "$(grep -c 'alur terjadwal' <<<"$(CAU)")" 0
 cd "$root" || exit 1
 
 [ "$fails" = 0 ] && echo "SEMUA LULUS" || { echo "$fails GAGAL"; exit 1; }
