@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # aicrew release-notes: bagian CHANGELOG.md per versi, disusun dari baris bertanda di badan PR yang ter-merge (#30). REST + git saja, deterministik (bukan model).
 #   release-notes.sh --versi X.Y.Z [--sejak REF] [--tanggal YYYY-MM-DD] [--tulis | --ekstrak]
-# Opt-in: hanya bila docs/WORKFLOW.md memuat "Catatan rilis: CHANGELOG.md" (lain/hilang/placeholder = tidak ada: tidak mencetak dan tidak menyentuh berkas).
+# Opt-in: hanya bila docs/WORKFLOW.md memuat "Release notes: CHANGELOG.md" (lain/hilang/placeholder = none: tidak mencetak dan tidak menyentuh berkas).
 # Baris bertanda di badan PR (satu baris per entri; blok kode dan komentar HTML diabaikan):
-#   Catatan rilis: <Added|Changed|Fixed|Security> - <teks>     Catatan rilis: -   (PR internal, tanpa entri)     Perubahan perilaku: <teks>
+#   Release note: <Added|Changed|Fixed|Security> - <teks>     Release note: -   (PR internal, tanpa entri)     Behavior change: <teks>
 # Jendela: PR ter-merge ke cabang bawaan atau cabang integrasi yang merge_commit_sha-nya BUKAN leluhur tag sebelumnya (tag vX.Y.Z tertinggi di bawah --versi,
 # atau --sejak REF) dan, bila tag v<versi> sudah ada, leluhur tag itu (jalan ulang setelah rilis memberi hasil sama). Gagal baca/REST/tanpa tag sebelumnya = exit 2, tanpa menulis apa pun.
 # Kode keluar: 0, 1 (--ekstrak: bagian versi tak ada), 2 tak bisa disusun, 64 argumen.
@@ -20,9 +20,9 @@ parse_body() {
       if (line ~ /^[ \t]*<!--/) { if (line !~ /-->/) com = 1; next }
       sub(/^- /, "", line)
       sub(/[ \t]+$/, "", line)
-      if (line == "Catatan rilis: -") { print "INTERNAL"; next }
-      if (line ~ /^Catatan rilis: /) {
-        rest = substr(line, 16)
+      if (line == "Release note: -") { print "INTERNAL"; next }
+      if (line ~ /^Release note: /) {
+        rest = substr(line, 15)
         if (match(rest, / - /)) {
           k = tolower(substr(rest, 1, RSTART - 1)); t = substr(rest, RSTART + 3)
           if (t != "" && k == "added") { print "Added\t" t; next }
@@ -32,7 +32,7 @@ parse_body() {
         }
         print "BAD\t" rest; next
       }
-      if (line ~ /^Perubahan perilaku: / && length(line) > 20) { print "BEHAVIOR\t" substr(line, 21); next }
+      if (line ~ /^Behavior change: / && length(line) > 17) { print "BEHAVIOR\t" substr(line, 18); next }
     }'
 }
 # --parse-badan: baca badan PR dari stdin dan cetak hasil urai (dipakai gerbang pr-merge-check.sh; satu sumber aturan)
@@ -53,8 +53,8 @@ if [ "$mode" = ekstrak ]; then
   printf '%s\n' "$out"; exit 0
 fi
 
-opsi="$(bash "$here/workflow.sh" 2>/dev/null | sed -En 's/^[- ]*Catatan rilis: *(CHANGELOG\.md|dikelola alat lain|tidak ada).*$/\1/p' | head -1)"
-if [ "$opsi" != "CHANGELOG.md" ]; then echo "release-notes: Catatan rilis bukan CHANGELOG.md; tidak ada yang disusun" >&2; exit 0; fi
+opsi="$(bash "$here/workflow.sh" 2>/dev/null | sed -En 's/^[- ]*Release notes: *(CHANGELOG\.md|external|none).*$/\1/p' | head -1)"
+if [ "$opsi" != "CHANGELOG.md" ]; then echo "release-notes: Release notes bukan CHANGELOG.md; tidak ada yang disusun" >&2; exit 0; fi
 [ -n "$tanggal" ] || tanggal="$(date -u +%F)"
 
 td="$(mktemp -d)"; trap 'rm -rf "$td"' EXIT
@@ -108,13 +108,13 @@ while IFS= read -r pr; do
     [ -n "$kat" ] || continue
     case "$kat" in
       INTERNAL) marked=1 ;;
-      BAD) marked=1; echo "PERINGATAN: PR #$num kategori tak dikenal pada baris 'Catatan rilis:' (entri tidak ditulis)" >&2 ;;
+      BAD) marked=1; echo "PERINGATAN: PR #$num kategori tak dikenal pada baris 'Release note:' (entri tidak ditulis)" >&2 ;;
       BEHAVIOR) printf '%s\t%s\n' "$num" "$txt" >> "$td/Behavior" ;;
       *) marked=1; [ "$kat" != Security ] || has_sec=1; printf '%s\t%s\n' "$num" "$txt" >> "$td/$kat" ;;
     esac
   done <<<"$parsed"
-  [ "$marked" = 1 ] || echo "PERINGATAN: PR #$num tanpa baris 'Catatan rilis:'" >&2
-  [ "$sec_label" = 0 ] || [ "$has_sec" = 1 ] || echo "PERINGATAN: PR #$num berlabel needs-security tanpa baris 'Catatan rilis: Security - ...'" >&2
+  [ "$marked" = 1 ] || echo "PERINGATAN: PR #$num tanpa baris 'Release note:'" >&2
+  [ "$sec_label" = 0 ] || [ "$has_sec" = 1 ] || echo "PERINGATAN: PR #$num berlabel needs-security tanpa baris 'Release note: Security - ...'" >&2
 done < <(jq -c '.[]' <<<"$prs")
 
 sec="## [$versi] - $tanggal"

@@ -81,7 +81,7 @@ fi
   [ "${#reasons[@]}" != 0 ] && { echo; echo "Alasan belum siap:"; printf -- '- %s\n' "${reasons[@]}"; }
   echo; echo "## Suite penuh (salinan segar $integ)"; echo "$suite"
   echo; echo "## PR ter-merge ke $integ"; jq -r '.[]|"- #\(.number) \(.title)"' <<<"$merged"
-  if [ -n "$versi" ] && grep -Eq '^[- 0-9.]*Catatan rilis: *CHANGELOG\.md' "$wf" 2>/dev/null; then
+  if [ -n "$versi" ] && grep -Eq '^[- 0-9.]*Release notes: *CHANGELOG\.md' "$wf" 2>/dev/null; then
     echo; echo "## Catatan rilis (draf)"
     if draft="$(bash "$here/release-notes.sh" --versi "$versi" 2>"$d/release-notes.err")"; then printf '%s\n' "$draft"; else echo "(draf tidak dapat disusun: $(tail -n 1 "$d/release-notes.err" 2>/dev/null))"; fi
     [ ! -s "$d/release-notes.err" ] || { echo; sed 's/^/> /' "$d/release-notes.err" | head -n 20; }
