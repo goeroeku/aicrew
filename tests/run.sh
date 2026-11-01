@@ -738,4 +738,23 @@ ok "ghx_card_set: id GraphQL (string) diterjemahkan ke id REST" "$(grep -c -- '-
 (export GHX_SIM=1 PROJ_ERR=404; RL ghx_items o 3 >/dev/null 2>"$tmp/rl/err"); rc=$?
 ok "ghx_items: REST kartu 404 -> exit 77 dengan petunjuk scope project" "$rc|$(grep -c "scope 'project'" "$tmp/rl/err")" '77|1'
 
+# 3i-5. board.sh memakai pustaka: batas -> REST; langkah khusus GraphQL dilewati dengan PERINGATAN
+mkdir -p "$tmp/rl/w/docs"; BD() { (cd "$tmp/rl/w" && PATH="$tmp/rl/bin:$PATH" bash "$root/scripts/board.sh" "$@"); }
+printf -- '- Kartu Done: agen-setelah-merge.\n' > "$tmp/rl/w/docs/WORKFLOW.md"
+: > "$FAKE/calls"; rm -f "$FAKE/patch.json" "$FAKE/body.out"
+(export GHX_SIM=1; BD o 3 --sync >"$tmp/rl/out" 2>"$tmp/rl/err"); rc=$?
+ok "board --sync: batas -> exit 0, status epic dipindah lewat REST (Backlog)" "$rc|$(jq -c '.fields[0].value' "$FAKE/patch.json" 2>/dev/null)" '0|"f75ad846"'
+ok "board --sync: batas -> PERINGATAN 1 langkah dilewati" "$(grep -c 'PERINGATAN: 1 langkah dilewati (batas GraphQL), jalankan --sync lagi setelah reset' "$tmp/rl/err")" 1
+ok "board --sync: anak proses tidak memanggil GraphQL lagi (hanya satu percobaan 'project')" "$(grep -c '^project ' "$FAKE/calls")" 1
+ok "board --sync: komentar progres epic tetap ditulis" "$(cat "$FAKE/body.out")" $'<!-- aicrew-progress -->\naicrew-progress: 0/1 Done'
+: > "$FAKE/calls"; (BD o 3 --sync >"$tmp/rl/out" 2>"$tmp/rl/err"); rc=$?
+ok "board --sync: tanpa batas -> exit 0 tanpa PERINGATAN" "$rc|$(grep -c PERINGATAN "$tmp/rl/err")" '0|0'
+printf -- '- Kartu Done: agen-setelah-merge.\n- Tutup issue setelah merge integrasi: ya\n' > "$tmp/rl/w/docs/WORKFLOW.md"
+: > "$FAKE/calls"; rm -f "$FAKE/patch.json"
+(export GHX_SIM=1 PROJ_ERR=404; BD o 3 --sync >"$tmp/rl/out" 2>"$tmp/rl/err"); rc=$?
+ok "board --sync: REST kartu 404 -> exit 0, 2 langkah dilewati, tidak ada PATCH kartu, tutup issue di-integrasi tetap jalan" "$rc|$(grep -c 'PERINGATAN: 2 langkah dilewati' "$tmp/rl/err")|$([ -e "$FAKE/patch.json" ] && echo patch || echo nopatch)|$(grep -c 'PATCH repos/o/r/issues/[23] -f state=closed' "$FAKE/calls")" '0|1|nopatch|2'
+ok "board <owner> <n> <issue> Done: batas -> PATCH opsi Done via REST" "$(export GHX_SIM=1; BD o 3 5 Done 2>/dev/null)|$(jq -c '.fields[0].value' "$FAKE/patch.json")" 'board: #5 -> Done|"98236657"'
+(export GHX_SIM=1 PROJ_ERR=403; BD o 3 5 Done >/dev/null 2>"$tmp/rl/err"); rc=$?
+ok "board <owner> <n> <issue> Done: REST kartu 403 -> exit non-0 dengan petunjuk scope" "$([ $rc != 0 ] && echo gagal)|$(grep -c "scope 'project'" "$tmp/rl/err")" 'gagal|1'
+
 [ "$fails" = 0 ] && echo "SEMUA LULUS" || { echo "$fails GAGAL"; exit 1; }
