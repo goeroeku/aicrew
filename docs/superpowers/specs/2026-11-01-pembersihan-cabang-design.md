@@ -17,7 +17,7 @@ Cabang dan worktree menumpuk dan tidak ada yang membersihkannya. Bukti 2026-11-0
 ## Anti-tujuan (gagal walau tampak jalan)
 - Menghapus commit yang tidak ada di tempat lain (cabang yang ujungnya belum ter-merge, atau punya commit setelah PR-nya di-merge).
 - Menghapus cabang yang PR-nya masih terbuka, cabang yang sedang di-checkout di worktree mana pun, `main`/cabang bawaan, cabang integrasi, atau apa pun di `~/orca/workspaces/` (wilayah Orca).
-- `git worktree remove --force` atau `git branch -D`.
+- `git worktree remove --force`, atau menghapus cabang tanpa bukti ter-merge (lihat "Keputusan tambahan": penghapusan cabang squash-merge memakai `git update-ref -d <ref> <sha>` yang hanya berhasil bila ujung cabang masih sama dengan yang dibuktikan, bukan `-D` buta).
 - Penghapusan tanpa jejak: setiap aksi mencetak SHA ujung cabang supaya bisa dipulihkan (`git branch <nama> <sha>`).
 
 ## Rancangan
@@ -28,6 +28,16 @@ Cabang dan worktree menumpuk dan tidak ada yang membersihkannya. Bukti 2026-11-0
 **Opsi `WORKFLOW.md` [saya]:** `Bersihkan setelah merge: ya|laporkan|tidak` (bawaan `ya`, hanya berlaku untuk milik orkestrator). `orchestrate` langkah 8 setelah `--after` ok menjalankan `cleanup.sh --only orkestrator --issue <n>` dan menambahkan `--apply` bila `ya`; `laporkan` hanya mencetak; `tidak` melewati.
 **Preflight [saya]:** selain `AWAS` setelan GitHub, satu baris `info` bila ada kandidat ("N cabang ter-merge belum dihapus; jalankan `scripts/cleanup.sh`").
 **Tanpa GraphQL [saya]:** hanya `git` dan REST (`gh api`), agar tidak terganggu batas GraphQL.
+
+## Keputusan tambahan (hasil pemeriksaan builder; semuanya **[saya]**, kecuali ditandai)
+- **Cabang yang di-checkout di worktree:** dilindungi hanya bila worktree-nya TIDAK ikut dihapus dalam proses yang sama (worktree utama, Orca, kotor, atau cabangnya bukan kandidat). Algoritma: tentukan dulu worktree yang akan dihapus (bersih, bukan utama/Orca, cabangnya kandidat); cabang yang ter-checkout di worktree lain tetap dilindungi; urutan aksi: hapus worktree, lalu hapus cabang.
+- **PR bertumpuk:** cabang yang menjadi `base` PR terbuka juga dilindungi (menghapusnya menutup PR itu). Satu kueri `GET repos/<r>/pulls?state=open&per_page=100` (paginasi) dipakai untuk memeriksa `head` dan `base` sekaligus.
+- **Kesegaran bukti:** `cleanup.sh` menjalankan `git fetch --prune origin` dulu (hanya memperbarui ref `origin/*`, tidak menyentuh cabang lokal atau berkas kerja, jadi mode laporan tetap aman). Opsi `--no-fetch` untuk offline dan untuk preflight.
+- **Cabang lokal:** tiap ref dievaluasi dari ujungnya sendiri. Leluhur dari `origin/<basis>` → hapus dengan `git branch -d`. Terbukti lewat PR merged dengan `head.sha` sama dengan ujung lokal → hapus dengan `git update-ref -d refs/heads/<nama> <sha>` (menolak bila ujung sudah berubah; `-d` biasa menolak cabang squash-merge). Ujung lokal yang menyimpang dari ujung PR (commit tambahan) → `lewati:belum-ter-merge`. Cabang lokal tanpa pasangan remote dievaluasi sama; gagal menghapus dilaporkan `lewati:<alasan>`, tidak menghentikan proses.
+- **Preflight:** hanya bukti offline (ancestry, tanpa fetch, tanpa REST) dan hanya bila ada remote; mencetak "setidaknya N cabang ter-merge belum dihapus". Bukti `pr-merged` hanya dihitung oleh `cleanup.sh` penuh.
+- **Pemasangan lama tanpa baris opsi:** baris `Bersihkan setelah merge` yang hilang diperlakukan sebagai bawaan `ya` untuk milik orkestrator **[owner: bawaan `ya`]**; templat memuat baris itu secara eksplisit, dan catatan rilis menyebut perubahan perilaku ini.
+- **Izin:** `scripts/*` dan `git branch|worktree|push` sudah ada di `templates/autopilot-permissions.json`; tambahkan `Bash(git update-ref:*)`. Worktree yang disiapkan manual/Orca dan tidak bernama `<repo>-wt-<n>` dilewati oleh `--only orkestrator`.
+- **Backend non-GitHub:** bila `Backend:` di `WORKFLOW.md` bukan `github`, `cleanup.sh` keluar 0 dengan pesan "tidak didukung (bukan GitHub)". Langkah 8 `orchestrate` memperlakukan kode keluar bukan-0 dari `cleanup.sh` hanya sebagai laporan, tidak pernah menghentikan alur.
 
 ## Kendala
 - Tes tanpa jaringan: repo git sementara dengan remote bare lokal; `gh` palsu untuk REST (daftar PR, setelan repo).
