@@ -44,6 +44,7 @@ if [ "${3:-}" = "--sync" ]; then
     [ "$cards" = 0 ] || [ "$(st_of "$en")" = "$want" ] || bash "$0" "$owner" "$num" "$en" "$want" || true
     [ "$cards" = 1 ] || continue  # kartu ditolak: angka Done dari data kosong akan salah; jangan menimpa komentar progres
     prog="aicrew-progress: $done_n/$total Done"; [ "$active" -gt 0 ] && prog="$prog, $active In progress"
+    [ "$want" = "In review" ] && prog="$prog; semua anak selesai, siap ditinjau pemilik untuk ditutup"
     cid="$(gh api "repos/$repo/issues/$en/comments" --jq '[.[]|select(.body|startswith("<!-- aicrew-progress -->"))][0]|"\(.id)\t\(.body)"' 2>/dev/null || true)"
     cbody="<!-- aicrew-progress -->"$'\n'"$prog"
     if [ -z "$cid" ] || [ "$cid" = "null"$'\t'"null" ]; then gh api -X POST "repos/$repo/issues/$en/comments" -f body="$cbody" >/dev/null 2>&1 || true
