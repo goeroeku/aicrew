@@ -864,4 +864,38 @@ out="$(CK "$W/package-lock.json" --base "$W/base-lock.json" 2>/dev/null)"; rc=$?
 LK "$W/base-lock.json" other 1.0.0; out="$(CK "$W/package-lock.json" --base "$W/base-lock.json" 2>/dev/null)"; rc=$?; ok "cve --base: paket baru (tak ada di basis) -> semua baru, exit 1" "$rc|$(cut -f9 <<<"$out" | sort -u | paste -sd, -)" '1|baru'
 : > "$W/kosong.json"; out="$(CK "$W/package-lock.json" --base "$W/kosong.json" 2>/dev/null)"; rc=$?; ok "cve --base: berkas basis kosong (404) -> semua paket baru" "$rc" 1
 
+# 3j-4. pr-merge-check.sh: gerbang CVE (paket baru/berubah; fail-closed; waiver cve; opt-out)
+mkdir -p "$tmp/cve/gbin" "$tmp/cve/gw/docs"; export CF="$tmp/cvegate"; mkdir -p "$CF/abc1234567" "$CF/main"
+cat > "$tmp/cve/gbin/gh" <<'EOF'
+#!/usr/bin/env bash
+case "$*" in
+  *"/contents/"*) a="$*"; u="${a##*contents/}"; r="${u##*ref=}"; p="${u%%\?ref=*}"; p="$(printf '%b' "${p//%/\\x}")"
+    [ -n "${CF_ERR:-}" ] && { echo "gh: Server Error (HTTP 500)" >&2; exit 1; }
+    if [ -f "$CF/$r/$p" ]; then cat "$CF/$r/$p"; else echo "gh: Not Found (HTTP 404)" >&2; exit 1; fi ;;
+  *) exec "$PMB/gh" "$@" ;;
+esac
+EOF
+chmod +x "$tmp/cve/gbin/gh"
+GE() { (cd "$tmp/cve/gw" && BASE=main BODY=x GH_REPO=o/r PMB="$tmp/pmb" PATH="$tmp/cve/gbin:$tmp/cve/bin:$PATH" bash "$root/scripts/pr-merge-check.sh" 9 main 2>&1); }
+DGO=$'diff --git a/go.mod b/go.mod\n--- a/go.mod\n+++ b/go.mod\n@@ -1 +1 @@\n+require golang.org/x/net v0.7.0'
+printf 'module m\n\nrequire golang.org/x/net v0.7.0\n' > "$CF/abc1234567/go.mod"
+FX Go golang.org/x/net 0.7.0 "{\"vulns\":[$(jq -nc '{id:"GHSA-gate-0000-aaaa",aliases:["CVE-2099-1"],database_specific:{severity:"HIGH"},affected:[{package:{name:"golang.org/x/net",ecosystem:"Go"},ranges:[{type:"SEMVER",events:[{introduced:"0"},{fixed:"0.17.0"}]}]}]}')]}"
+: > "$CVE_FIX/calls"; out="$(export DIFF="$DGO"; GE)"; rc=$?
+ok "gerbang cve: kerentanan HIGH baru pada go.mod -> exit 1, pesan cve, saran" "$rc|$(grep -c '^GAGAL: cve' <<<"$out")|$(grep -c 'BLOK: cve (go.mod) golang.org/x/net 0.7.0 GHSA-gate-0000-aaaa HIGH.*0.17.0.*minor' <<<"$out")" '1|1|1'
+out="$(export DIFF="$DGO" COMM='Pengecualian disetujui owner (cve): belum ada perbaikan upstream (Commit: abc1234)'; GE)"; ok "gerbang cve: waiver (cve) untuk head -> exit 0" $? 0
+out="$(export DIFF="$DGO" COMM='Pengecualian disetujui owner (perf): angka ukur belum ada (Commit: abc1234)'; GE)"; ok "gerbang cve: waiver (perf) tidak menutup cve -> exit 1" $? 1
+out="$(export DIFF="$DGO" CVE_DOWN=1; GE)"; rc=$?; ok "gerbang cve: OSV mati + manifest -> exit 1 'GAGAL: cve: OSV tidak terjangkau'" "$rc|$(grep -c '^GAGAL: cve: OSV tidak terjangkau' <<<"$out")" '1|1'
+out="$(export DIFF="$DGO" CVE_DOWN=1 COMM='Pengecualian disetujui owner (cve): OSV mati, risiko diterima (Commit: abc1234)'; GE)"; ok "gerbang cve: OSV mati + waiver cve -> exit 0" $? 0
+: > "$CVE_FIX/calls"; out="$(export DIFF=$'diff --git a/README.md b/README.md\n+x'; GE)"; ok "gerbang cve: diff tanpa manifest -> curl tidak dipanggil, exit 0" "$?|$(wc -l < "$CVE_FIX/calls" | tr -d ' ')" '0|0'
+rm -f "$CF/abc1234567/go.mod"; : > "$CVE_FIX/calls"; out="$(export DIFF="$DGO"; GE)"; ok "gerbang cve: berkas dihapus di head (404) -> dilewati, exit 0, curl 0" "$?|$(wc -l < "$CVE_FIX/calls" | tr -d ' ')" '0|0'
+printf 'module m\n\nrequire golang.org/x/net v0.7.0\n' > "$CF/abc1234567/go.mod"
+out="$(export DIFF="$DGO" CF_ERR=1; GE)"; rc=$?; ok "gerbang cve: galat selain 404 saat membaca berkas -> exit 1 (fail-closed)" "$rc|$(grep -c 'tak terbaca' <<<"$out")" '1|1'
+FX Go golang.org/x/net 0.7.0 "{\"vulns\":[$(jq -nc '{id:"GHSA-gate-0000-bbbb",aliases:["CVE-2099-2"],database_specific:{severity:"MODERATE"},affected:[]}')]}"
+out="$(export DIFF="$DGO"; GE)"; rc=$?; ok "gerbang cve: MODERATE saja -> exit 0 dengan PERINGATAN cve" "$rc|$(grep -c '^PERINGATAN: cve (go.mod)' <<<"$out")" '0|1'
+FX Go golang.org/x/net 0.7.0 "{\"vulns\":[$(jq -nc '{id:"GHSA-gate-0000-aaaa",aliases:["CVE-2099-1"],database_specific:{severity:"HIGH"},affected:[]}')]}"
+printf -- '- Pemeriksaan CVE: tidak. Dimatikan untuk uji.\n' > "$tmp/cve/gw/docs/WORKFLOW.md"; : > "$CVE_FIX/calls"; out="$(export DIFF="$DGO"; GE)"; rc=$?
+ok "gerbang cve: opt-out di WORKFLOW.md -> exit 0, PERINGATAN dimatikan, curl 0" "$rc|$(grep -c 'PERINGATAN: pemeriksaan CVE dimatikan di WORKFLOW.md' <<<"$out")|$(wc -l < "$CVE_FIX/calls" | tr -d ' ')" '0|1|0'
+rm -f "$tmp/cve/gw/docs/WORKFLOW.md"; mkdir -p "$CF/abc1234567/sub dir"; printf 'module m\n\nrequire golang.org/x/net v0.7.0\n' > "$CF/abc1234567/sub dir/go.mod"; rm -f "$CF/abc1234567/go.mod"
+out="$(export DIFF=$'diff --git a/sub dir/go.mod b/sub dir/go.mod\n+x'; GE)"; rc=$?; ok "gerbang cve: path bersepasi (sub dir/go.mod) dibaca dan diperiksa -> exit 1" "$rc|$(grep -c 'BLOK: cve (sub dir/go.mod)' <<<"$out")" '1|1'
+
 [ "$fails" = 0 ] && echo "SEMUA LULUS" || { echo "$fails GAGAL"; exit 1; }
