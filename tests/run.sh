@@ -371,6 +371,12 @@ for f in agents/senior-coder.md agents/ui-ux.md agents/devops.md agents/perf.md 
   grep -q "Tanpa atribusi AI" "$f"; ok "aturan tanpa atribusi AI di $f" $? 0
 done
 
+# ui-ux: bagian Aset (ikon SVG, logo) memuat kata kunci wajib
+grep -q '^## Aset' agents/ui-ux.md; ok "ui-ux: bagian Aset ada" $? 0
+for k in 'viewBox' 'currentColor' '<title>' 'persetujuan owner' 'shot.mjs' 'lisensi'; do
+  grep -qF -- "$k" agents/ui-ux.md; ok "ui-ux: Aset memuat '$k'" $? 0
+done
+
 # guard-attribution.sh memblokir atribusi AI pada commit/PR, tidak pada perintah lain
 G="bash scripts/guard-attribution.sh"
 echo '{"tool_input":{"command":"git commit -m \"x\n\nCo-Authored-By: Bot\""}}' | $G 2>/dev/null; ok "guard: commit dengan Co-Authored-By -> exit 2" $? 2
