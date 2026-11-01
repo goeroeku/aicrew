@@ -346,7 +346,7 @@ for s in $(grep -rhoE 'scripts/[a-z-]+\.sh' skills templates agents hooks 2>/dev
   [ -f "$s" ]; ok "dirujuk ada: $s" $? 0
 done
 for f in templates/WORKFLOW.md skills/kickoff/SKILL.md skills/orchestrate/SKILL.md agents/principal.md; do grep -q 'principal-auto\|ESKALASI' "$f"; ok "principal-auto disebut di $f" $? 0; done
-grep -q 'keputusan-otomatis' templates/WORKFLOW.md && grep -q 'keputusan-otomatis' skills/orchestrate/SKILL.md && grep -q 'keputusan-otomatis' scripts/label.sh; ok "label keputusan-otomatis konsisten (template, skill, laporan rilis)" $? 0
+grep -q 'auto-decision' templates/WORKFLOW.md && grep -q 'auto-decision' skills/orchestrate/SKILL.md && grep -q 'auto-decision' scripts/label.sh; ok "label auto-decision konsisten (template, skill, laporan rilis)" $? 0
 for k in skills/*/SKILL.md; do head -1 "$k" | grep -q '^---$'; ok "frontmatter $k" $? 0; done
 
 # gerbang kapasitas dan keamanan: role perf, label, bagian host, artefak bukti
@@ -478,10 +478,10 @@ L() { (cd "$tmp/lb" && env -u AICREW_LABEL_INTEGRATED "$@" bash "$root/scripts/l
 LK=integrated; ok "label.sh: dari WORKFLOW.md" "$(L)" integrated
 LK=auto; ok "label.sh: keputusan otomatis dari WORKFLOW.md" "$(L)" auto-decided
 LK=integrated; ok "label.sh: env menang" "$(L AICREW_LABEL_INTEGRATED=zzz)" zzz
-LK=integrated; ok "label.sh: bawaan di-integrasi" "$(cd "$tmp/plain" && bash "$root/scripts/label.sh" integrated)" di-integrasi
-LK=auto; ok "label.sh: bawaan keputusan-otomatis" "$(cd "$tmp/plain" && bash "$root/scripts/label.sh" auto)" keputusan-otomatis
+LK=integrated; ok "label.sh: bawaan integrated" "$(cd "$tmp/plain" && bash "$root/scripts/label.sh" integrated)" integrated
+LK=auto; ok "label.sh: bawaan auto-decision" "$(cd "$tmp/plain" && bash "$root/scripts/label.sh" auto)" auto-decision
 ! grep -q '"di-integrasi"\|has keputusan-otomatis' scripts/release-report.sh scripts/autopilot.sh; ok "release-report/autopilot tanpa nama label tertanam" $? 0
-grep -q 'label.sh' scripts/release-report.sh && grep -q 'label.sh' scripts/autopilot.sh && grep -q 'Label integrasi' templates/WORKFLOW.md; ok "label.sh dipakai skrip dan WORKFLOW" $? 0
+grep -q 'label.sh' scripts/release-report.sh && grep -q 'label.sh' scripts/autopilot.sh && grep -q 'Integrated label' templates/WORKFLOW.md; ok "label.sh dipakai skrip dan WORKFLOW" $? 0
 
 # 3i. ISSUE.md: boilerplate keamanan untuk issue discovery yang membaca repo lain
 grep -q '\.env' templates/ISSUE.md && grep -qi 'data' templates/ISSUE.md && grep -qi 'git history' templates/ISSUE.md; ok "ISSUE.md: boilerplate keamanan discovery" $? 0
@@ -654,9 +654,9 @@ V="$tmp/ec/wf2"; mkdir -p "$V/o" "$V/c"; git init -q --bare "$V/o/r.git"; git cl
   && git checkout -qb int.v2 && printf -- '3. Cabang integrasi: int.v2. Issue yang saling bergantung\nBaru\n' > docs/WORKFLOW.md && git commit -qam b && git push -q origin int.v2 && git checkout -q main )
 ok "workflow.sh: titik penutup kalimat tidak ikut nama cabang (titik di tengah tetap)" "$(cd "$V/c/r" && bash "$root/scripts/workflow.sh" | grep -c Baru)" 1
 ok "workflow.sh: tanpa cabang integrasi -> berkas lokal" "$(cd "$tmp/ec/w" && printf 'Halo\n' > docs/WORKFLOW.md && bash "$root/scripts/workflow.sh")" Halo
-grep -q 'epic-link.sh' skills/breakdown/SKILL.md && grep -q 'epic-link.sh --inherit' skills/orchestrate/SKILL.md && grep -q 'Tutup issue setelah merge integrasi' templates/WORKFLOW.md && grep -q 'native sub-issues' README.md; ok "0.6.0: skill, templat WORKFLOW dan README menyebut epic-link/inherit/tutup issue" $? 0
+grep -q 'epic-link.sh' skills/breakdown/SKILL.md && grep -q 'epic-link.sh --inherit' skills/orchestrate/SKILL.md && grep -q 'Close issues after integration merge' templates/WORKFLOW.md && grep -q 'native sub-issues' README.md; ok "0.6.0: skill, templat WORKFLOW dan README menyebut epic-link/inherit/tutup issue" $? 0
 grep -q 'Journey = epic = parent' README.md && grep -q 'Parent issue' README.md && grep -q 'Parent issue' scripts/board-init.sh && grep -q 'epic-link.sh --check' skills/orchestrate/SKILL.md; ok "0.6.1: README konsep, langkah UI manual, skill menyebut --check" $? 0
-grep -q 'lock.sh' skills/orchestrate/SKILL.md && grep -q 'Label tanpa induk' templates/WORKFLOW.md && grep -q 'lock.sh' README.md; ok "0.6.3: skill, templat WORKFLOW dan README menyebut lock.sh dan tanpa-induk" $? 0
+grep -q 'lock.sh' skills/orchestrate/SKILL.md && grep -q 'No-parent label' templates/WORKFLOW.md && grep -q 'lock.sh' README.md; ok "0.6.3: skill, templat WORKFLOW dan README menyebut lock.sh dan tanpa-induk" $? 0
 # 4d. journey otomatis: skill prd menggali journey saat diskusi; breakdown mengusulkan journey bila PRD belum punya
 cd "$root" || exit 1
 grep -q 'Journeys' skills/prd/SKILL.md && grep -q 'infrastruktur' skills/prd/SKILL.md && grep -qi 'apa yang bisa dilakukan pengguna' skills/prd/SKILL.md; ok "prd: menggali journey, tiap kebutuhan masuk journey atau infrastruktur" $? 0
@@ -949,9 +949,9 @@ out="$(export DIFF="$DGO" CF_ERR=1; GE)"; rc=$?; ok "gerbang cve: galat selain 4
 FX Go golang.org/x/net 0.7.0 "{\"vulns\":[$(jq -nc '{id:"GHSA-gate-0000-bbbb",aliases:["CVE-2099-2"],database_specific:{severity:"MODERATE"},affected:[]}')]}"
 out="$(export DIFF="$DGO"; GE)"; rc=$?; ok "gerbang cve: MODERATE saja -> exit 0 dengan PERINGATAN cve" "$rc|$(grep -c '^PERINGATAN: cve (go.mod)' <<<"$out")" '0|1'
 FX Go golang.org/x/net 0.7.0 "{\"vulns\":[$(jq -nc '{id:"GHSA-gate-0000-aaaa",aliases:["CVE-2099-1"],database_specific:{severity:"HIGH"},affected:[]}')]}"
-mkdir -p "$CF/main/docs"; printf -- '- Pemeriksaan CVE: tidak. Dimatikan untuk uji.\n' > "$CF/main/docs/WORKFLOW.md"; : > "$CVE_FIX/calls"; out="$(export DIFF="$DGO"; GE)"; rc=$?
+mkdir -p "$CF/main/docs"; printf -- '- CVE check: tidak. Dimatikan untuk uji.\n' > "$CF/main/docs/WORKFLOW.md"; : > "$CVE_FIX/calls"; out="$(export DIFF="$DGO"; GE)"; rc=$?
 ok "gerbang cve: opt-out di WORKFLOW.md CABANG TUJUAN -> exit 0, PERINGATAN dimatikan, curl 0" "$rc|$(grep -c 'PERINGATAN: pemeriksaan CVE dimatikan di WORKFLOW.md' <<<"$out")|$(wc -l < "$CVE_FIX/calls" | tr -d ' ')" '0|1|0'
-printf 'module m\n\nrequire golang.org/x/net v0.7.0\n' > "$CF/abc1234567/go.mod"; rm -f "$CF/main/docs/WORKFLOW.md"; printf -- '- Pemeriksaan CVE: tidak. PR ini mencoba mematikan gerbang.\n' > "$tmp/cve/gw/docs/WORKFLOW.md"
+printf 'module m\n\nrequire golang.org/x/net v0.7.0\n' > "$CF/abc1234567/go.mod"; rm -f "$CF/main/docs/WORKFLOW.md"; printf -- '- CVE check: tidak. PR ini mencoba mematikan gerbang.\n' > "$tmp/cve/gw/docs/WORKFLOW.md"
 out="$(export DIFF="$DGO"; GE)"; rc=$?; ok "gerbang cve: opt-out hanya di checkout/PR (bukan cabang tujuan) tidak mematikan gerbang -> exit 1" "$rc|$(grep -c 'dimatikan' <<<"$out")" '1|0'
 rm -f "$tmp/cve/gw/docs/WORKFLOW.md"; rm -f "$CF/abc1234567/go.mod"; mkdir -p "$CF/abc1234567/sub dir"; printf 'module m\n\nrequire golang.org/x/net v0.7.0\n' > "$CF/abc1234567/sub dir/go.mod"; rm -f "$CF/abc1234567/go.mod"
 out="$(export DIFF=$'diff --git a/sub dir/go.mod b/sub dir/go.mod\n+x'; GE)"; rc=$?; ok "gerbang cve: path bersepasi (sub dir/go.mod) dibaca dan diperiksa -> exit 1" "$rc|$(grep -c 'BLOK: cve (sub dir/go.mod)' <<<"$out")" '1|1'
@@ -987,12 +987,12 @@ jq -n '{lockfileVersion:3,packages:{"":{},"node_modules/zz":{version:"1.0.0"}}}'
 ok "audit: bersih -> kalimat per tanggal, tanpa POST, exit 0" "$rc|$(grep -c "tidak ada kerentanan diketahui di OSV per $(date -u +%F) untuk clean-lock/package-lock.json" <<<"$out")|$(grep -c '^api -X POST' "$CFA/calls")" '0|1|0'
 : > "$CFA/calls"; out="$(export CVE_DOWN=1; AU)"; rc=$?; ok "audit: OSV mati -> exit 2, tanpa POST" "$rc|$(grep -c '^api -X POST' "$CFA/calls")" '2|0'
 grep -q 'cve-audit.sh' skills/cve-audit/SKILL.md && grep -q 'dry-run' skills/cve-audit/SKILL.md && grep -q '^name: cve-audit' skills/cve-audit/SKILL.md; ok "skill cve-audit: ada, memanggil cve-audit.sh dan dry-run" $? 0
-grep -q 'Pemeriksaan CVE:' templates/WORKFLOW.md; ok "templat WORKFLOW memuat 'Pemeriksaan CVE:'" $? 0
+grep -q 'CVE check:' templates/WORKFLOW.md; ok "templat WORKFLOW memuat 'CVE check:'" $? 0
 grep -q 'cve-check.sh' agents/security.md; ok "agen security menyebut cve-check.sh" $? 0
 
 # 3j-6. PRIVACY.md dan README menjelaskan pemeriksaan CVE (jaringan keluar ke OSV)
 grep -q 'api.osv.dev' PRIVACY.md && ! grep -q 'Satu-satunya jaringan keluar' PRIVACY.md; ok "PRIVACY: menyebut api.osv.dev dan tidak lagi mengaku 'satu-satunya' jaringan keluar" $? 0
-grep -q 'cve-check.sh' README.md && grep -q 'owner waiver `(cve)`' README.md && grep -q 'Pemeriksaan CVE:' README.md && grep -q 'cve-audit' README.md; ok "README: cve-check.sh, waiver (cve), Pemeriksaan CVE, cve-audit" $? 0
+grep -q 'cve-check.sh' README.md && grep -q 'owner waiver `(cve)`' README.md && grep -q 'CVE check:' README.md && grep -q 'cve-audit' README.md; ok "README: cve-check.sh, waiver (cve), CVE check, cve-audit" $? 0
 
 # 3j-7. perbaikan hasil review akhir
 mkdir -p "$CF/abc1234567/x b/y" "$CF/abc1234567/é" "$CF/mb1234"; printf 'module m\n\nrequire golang.org/x/net v0.7.0\n' > "$CF/abc1234567/x b/y/go.mod"; cp "$CF/abc1234567/x b/y/go.mod" "$CF/abc1234567/é/go.mod"
@@ -1059,7 +1059,7 @@ CPV="$root/scripts/cve-private.sh"; Q="$tmp/cve/w/priv2"; mkdir -p "$Q"
 CQ() { (unset GOPRIVATE; PATH="$Q/nogo:$PATH" bash "$CPV" "$@" 2>&1 | tr '\t' ':' | paste -sd'|' -); }
 printf -- '# t\n- Paket privat: @acme/*, git.corp.com/team,  internal-lib.\n' > "$Q/wf.md"
 ok "cve-private: baris Paket privat dari WORKFLOW (spasi dipangkas, titik penutup dibuang)" "$(CQ --workflow "$Q/wf.md")" '*:@acme/*|*:git.corp.com/team|*:internal-lib'
-printf -- '- Paket privat: \n- Pemeriksaan CVE: ya\n' > "$Q/wf0.md"; ok "cve-private: baris Paket privat kosong -> tanpa pola" "$(CQ --workflow "$Q/wf0.md")" ''
+printf -- '- Paket privat: \n- CVE check: ya\n' > "$Q/wf0.md"; ok "cve-private: baris Paket privat kosong -> tanpa pola" "$(CQ --workflow "$Q/wf0.md")" ''
 printf '@acme:registry=https://corp.example/npm/\n@pub:registry=https://REGISTRY.npmjs.org/\n@y:registry="https://registry.yarnpkg.com"\n' > "$Q/.npmrc"
 ok "cve-private: .npmrc scope ke proxy -> npm @scope/*; npmjs/yarnpkg (huruf besar, kutip, / akhir) -> publik" "$(CQ --npmrc "$Q/.npmrc")" 'npm:@acme/*'
 printf '//corp.example/:_authToken=SECRET123\nregistry=https://proxy.example/\n@acme:registry=https://corp.example/\n' > "$Q/.npmrc2"; o="$(CQ --npmrc "$Q/.npmrc2")"
@@ -1092,7 +1092,7 @@ rm -f "$CF/main/.npmrc"; printf -- '- Paket privat: git.corp.com/team\n' > "$CF/
 out="$(export DIFF="$DGO" CF_ERR=1 CF_ERR_PATH=docs/WORKFLOW.md; GE)"; rc=$?; ok "gerbang privat: WORKFLOW 500 di cabang tujuan -> GAGAL cve (fail-closed), nama tidak terkirim" "$rc|$(grep -c '^GAGAL: cve: .*WORKFLOW' <<<"$out")" '1|1'
 rm -f "$CF/main/docs/WORKFLOW.md"; : > "$CVE_FIX/calls"; out="$(export DIFF="$DNPM"; GE)"; rc=$?
 ok "gerbang privat: .npmrc dan WORKFLOW 404 = tanpa pola -> normal (BLOK, nama dikueri)" "$rc|$(grep -c '^BLOK: cve (web/package-lock.json)' <<<"$out")|$(grep -c '@acme/x' "$CVE_FIX/calls")" '1|1|1'
-printf -- '- Pemeriksaan CVE: tidak. uji\n- Paket privat: git.corp.com/team\n' > "$CF/main/docs/WORKFLOW.md"; out="$(export DIFF="$DGO"; GE)"; rc=$?
+printf -- '- CVE check: tidak. uji\n- Paket privat: git.corp.com/team\n' > "$CF/main/docs/WORKFLOW.md"; out="$(export DIFF="$DGO"; GE)"; rc=$?
 ok "gerbang privat: opt-out WORKFLOW tetap menang bersama pola" "$rc|$(grep -c 'dimatikan' <<<"$out")" '0|1'
 rm -rf "$CF/main" "$CF/abc1234567"; mkdir -p "$CF/main" "$CF/abc1234567"
 
@@ -1112,25 +1112,25 @@ rm -f "$AUD/.npmrc"
 jq -n '{lockfileVersion:3,packages:{"":{},"node_modules/@acme/x":{version:"1.0.0"},"node_modules/aa":{version:"1.0.0"}}}' > "$AUD/priv/package-lock.json"; printf -- '- Paket privat: @acme/*\n' > "$AUD/docs/WORKFLOW.md"; : > "$CFA/calls"; : > "$CFA/last-body"
 out="$(AU priv/package-lock.json)"; ok "audit privat: issue untuk paket publik tidak memuat nama privat (judul, badan, keluaran)" "$(grep -c '^api -X POST' "$CFA/calls")|$(grep -c '@acme' "$CFA/calls")|$(grep -c '@acme' "$CFA/last-body")|$(grep -c '@acme' <<<"$out")" '1|0|0|0'
 rm -f "$AUD/docs/WORKFLOW.md"
-grep -q 'Paket privat:' templates/WORKFLOW.md; ok "templat WORKFLOW memuat 'Paket privat:'" $? 0
-grep -q 'Paket privat:' PRIVACY.md && grep -q '~/.npmrc' PRIVACY.md; ok "PRIVACY: sumber pola dan ~/.npmrc tidak dibaca" $? 0
-grep -q 'Paket privat:' README.md; ok "README menyebut 'Paket privat:'" $? 0
+grep -q 'Private packages:' templates/WORKFLOW.md; ok "templat WORKFLOW memuat 'Private packages:'" $? 0
+grep -q 'Private packages:' PRIVACY.md && grep -q '~/.npmrc' PRIVACY.md; ok "PRIVACY: sumber pola dan ~/.npmrc tidak dibaca" $? 0
+grep -q 'Private packages:' README.md; ok "README menyebut 'Private packages:'" $? 0
 grep -q 'Paket privat' skills/cve-audit/SKILL.md; ok "skill cve-audit menyebut paket privat" $? 0
 grep -q '"version": "1.0.0"' .claude-plugin/plugin.json; ok "plugin.json versi 1.0.0" $? 0
 # 0.12.0: watchdog idle autopilot terdokumentasi (#48, #17)
 grep -q 'Mode tanpa pengawasan (autopilot)' skills/orchestrate/SKILL.md && grep -q 'exec claude' skills/orchestrate/SKILL.md; ok "orchestrate: subbagian Mode tanpa pengawasan (autopilot) memuat aturan exec claude" $? 0
 grep -q 'Idle watchdog' README.md && grep -q -- '--idle-limit' README.md; ok "README: Idle watchdog menyebut --idle-limit" $? 0
 grep -q 'AICREW_IDLE_LIMIT' scripts/autopilot.sh && grep -q 'AICREW_TERM_GRACE' scripts/autopilot.sh && grep -q 'AICREW_TRANSCRIPT_DIR' scripts/autopilot.sh; ok "autopilot.sh: komentar kepala mendokumentasikan variabel watchdog" $? 0
-grep -q 'file yang di-ignore' templates/WORKFLOW.md; ok "templat WORKFLOW: Bersihkan setelah merge menyebut file yang di-ignore ikut terhapus (#44)" $? 0
+grep -q 'file yang di-ignore' templates/WORKFLOW.md; ok "templat WORKFLOW: Clean up after merge menyebut file yang di-ignore ikut terhapus (#44)" $? 0
 # 0.10.0: skill orchestrate, templat WORKFLOW, README memuat integrasi terverifikasi dan menunggu-rilis (#28, #32)
-for k in 'terintegrasi.sh' 'periksa-rilis' 'menunggu-rilis.sh --tandai' 'alur-terjadwal.sh'; do grep -qF -- "$k" skills/orchestrate/SKILL.md; ok "orchestrate memuat '$k'" $? 0; done
-grep -q 'Label menunggu rilis' templates/WORKFLOW.md; ok "templat WORKFLOW: Label menunggu rilis" $? 0
-grep -q 'Integration is verified' README.md; ok "README: integrasi terverifikasi (terintegrasi.sh)" $? 0
+for k in 'integrated.sh' 'periksa-rilis' 'awaiting-release.sh --mark' 'scheduled-workflow.sh'; do grep -qF -- "$k" skills/orchestrate/SKILL.md; ok "orchestrate memuat '$k'" $? 0; done
+grep -q 'Awaiting-release label' templates/WORKFLOW.md; ok "templat WORKFLOW: Awaiting-release label" $? 0
+grep -q 'Integration is verified' README.md; ok "README: integrasi terverifikasi (integrated.sh)" $? 0
 
 # 3l-5. perbaikan hasil review akhir #25
 printf -- '- Paket privat: @acme/*, git.corp.com/tim. Penjelasan, panjang.\n' > "$Q/wfa.md"
 ok "final: kalimat penjelas sesudah '. ' tidak jadi pola" "$(CQ --workflow "$Q/wfa.md")" '*:@acme/*|*:git.corp.com/tim'
-sed -n 's/^\(- Paket privat: \).*/\1@a\/*, git.x.com\/t. x/p' templates/WORKFLOW.md > "$Q/wft.md"; ok "final: templat WORKFLOW terisi contoh tetap terurai bersih" "$(CQ --workflow "$Q/wft.md")" '*:@a/*|*:git.x.com/t'
+sed -n 's/^\(- Private packages: \).*/\1@a\/*, git.x.com\/t. x/p' templates/WORKFLOW.md > "$Q/wft.md"; ok "final: templat WORKFLOW terisi contoh tetap terurai bersih" "$(CQ --workflow "$Q/wft.md")" '*:@a/*|*:git.x.com/t'
 printf '@acme:registry=https://npm.corp.com/' > "$Q/nonl.npmrc"; ok "final: baris .npmrc terakhir tanpa newline tetap dibaca" "$(CQ --npmrc "$Q/nonl.npmrc")" 'npm:@acme/*'
 printf '@acme:registry=//npm.corp.com/\n' > "$Q/pr.npmrc"; ok "final: URL protokol-relatif (//host/) dianggap privat" "$(CQ --npmrc "$Q/pr.npmrc")" 'npm:@acme/*'
 printf -- '- Paket privat: a-lib\n- Paket privat: b-lib\n' > "$Q/wf2.md"; ok "final: beberapa baris Paket privat semuanya berlaku" "$(CQ --workflow "$Q/wf2.md")" '*:a-lib|*:b-lib'
@@ -1203,21 +1203,21 @@ ok "cleanup apply: cabang remote yang sudah dihapus GitHub -> dihapus (idempoten
 MK; G remote set-url origin "$CL/tidak-ada.git"; OUT="$(CLN --no-fetch --apply)"; rc=$?
 ok "cleanup apply: push gagal (bukan 'sudah terhapus') -> lewati:gagal dan exit 1, lokal tetap diproses" "$rc|$(grep -c $'^cabang-remote.*lewati:gagal' <<<"$OUT" | awk '{print ($1>0)?"ada":"nol"}')|$(LB | tr ' ' '\n' | grep -cx issue-1)" '1|ada|0'
 
-# 3k-3. cleanup.sh --setelah-merge: opsi WORKFLOW "Bersihkan setelah merge", langkah 8 orchestrate, izin update-ref
+# 3k-3. cleanup.sh --after-merge: opsi WORKFLOW "Clean up after merge", langkah 8 orchestrate, izin update-ref
 WFO() { printf -- '- Backend: github — repo: o/r\n%s' "$1" > "$CL/w/docs/WORKFLOW.md"; }   # tanpa baris Cabang integrasi: workflow.sh memakai berkas lokal
-MK; WFO '- Bersihkan setelah merge: ya\n'; CLN --no-fetch --setelah-merge --issue 1 >/dev/null
+MK; WFO '- Clean up after merge: ya\n'; CLN --no-fetch --after-merge --issue 1 >/dev/null
 ok "setelah-merge: opsi ya -> issue-1 terhapus (lokal dan remote), issue-3 tidak disentuh" "$(LB | tr ' ' '\n' | grep -cx issue-1)|$(RB | tr ' ' '\n' | grep -cx issue-1)|$(LB | tr ' ' '\n' | grep -cx issue-3)" '0|0|1'
-MK; WFO ''; CLN --no-fetch --setelah-merge --issue 1 >/dev/null; ok "setelah-merge: baris hilang = bawaan ya -> terhapus" "$(LB | tr ' ' '\n' | grep -cx issue-1)" 0
-MK; WFO '- Bersihkan setelah merge: laporkan\n'; out="$(CLN --no-fetch --setelah-merge --issue 1)"; rc=$?
+MK; WFO ''; CLN --no-fetch --after-merge --issue 1 >/dev/null; ok "setelah-merge: baris hilang = bawaan ya -> terhapus" "$(LB | tr ' ' '\n' | grep -cx issue-1)" 0
+MK; WFO '- Clean up after merge: laporkan\n'; out="$(CLN --no-fetch --after-merge --issue 1)"; rc=$?
 ok "setelah-merge: opsi laporkan -> hanya melaporkan, tidak ada yang terhapus" "$rc|$(LB | tr ' ' '\n' | grep -cx issue-1)|$(grep -c $'\thapus$' <<<"$out")" '0|1|2'
-MK; WFO '- Bersihkan setelah merge: tidak\n'; out="$(CLN --no-fetch --setelah-merge --issue 1)"; rc=$?
+MK; WFO '- Clean up after merge: tidak\n'; out="$(CLN --no-fetch --after-merge --issue 1)"; rc=$?
 ok "setelah-merge: opsi tidak -> tanpa keluaran, tidak terhapus, exit 0" "$rc|$(grep -c . <<<"$out")|$(LB | tr ' ' '\n' | grep -cx issue-1)" '0|0|1'
-MK; WFO '- Bersihkan setelah merge: mungkin\n'; CLN --no-fetch --setelah-merge --issue 1 >/dev/null; ok "setelah-merge: nilai tak dikenal diperlakukan laporkan (aman)" "$(LB | tr ' ' '\n' | grep -cx issue-1)" 1
-CLN --setelah-merge >/dev/null 2>&1; ok "setelah-merge tanpa --issue -> exit 64" $? 64
-MK; WFO '- Bersihkan setelah merge: ya\n'; CLN --no-fetch --setelah-merge --issue 5 >/dev/null
+MK; WFO '- Clean up after merge: mungkin\n'; CLN --no-fetch --after-merge --issue 1 >/dev/null; ok "setelah-merge: nilai tak dikenal diperlakukan laporkan (aman)" "$(LB | tr ' ' '\n' | grep -cx issue-1)" 1
+CLN --after-merge >/dev/null 2>&1; ok "setelah-merge tanpa --issue -> exit 64" $? 64
+MK; WFO '- Clean up after merge: ya\n'; CLN --no-fetch --after-merge --issue 5 >/dev/null
 ok "setelah-merge --issue 5: worktree w-wt-5 dan cabang issue-5 terhapus dalam satu putaran" "$([ -d "$CL/w-wt-5" ] && echo ada || echo hilang)|$(LB | tr ' ' '\n' | grep -cx issue-5)" 'hilang|0'
-grep -q 'Bersihkan setelah merge:' templates/WORKFLOW.md; ok "templat WORKFLOW memuat 'Bersihkan setelah merge:'" $? 0
-grep -q 'cleanup.sh --setelah-merge' skills/orchestrate/SKILL.md && grep -q 'tidak pernah menghentikan' skills/orchestrate/SKILL.md; ok "orchestrate langkah 8 memanggil cleanup.sh --setelah-merge dan 'tidak pernah menghentikan'" $? 0
+grep -q 'Clean up after merge:' templates/WORKFLOW.md; ok "templat WORKFLOW memuat 'Clean up after merge:'" $? 0
+grep -q 'cleanup.sh --after-merge' skills/orchestrate/SKILL.md && grep -q 'tidak pernah menghentikan' skills/orchestrate/SKILL.md; ok "orchestrate langkah 8 memanggil cleanup.sh --after-merge dan 'tidak pernah menghentikan'" $? 0
 jq -e '.permissions.allow|index("Bash(git update-ref:*)")' templates/autopilot-permissions.json >/dev/null; ok "autopilot-permissions.json memuat git update-ref" $? 0
 
 # 3k-4. preflight.sh: setelan GitHub hapus-cabang-saat-merge dan jumlah cabang ter-merge (bukti offline)
@@ -1229,16 +1229,16 @@ rm -f "$CL/ghlog"; DBM=true GHLOG="$CL/ghlog" PF >/dev/null; ok "preflight: tida
 G remote remove origin; ok "preflight: tanpa remote -> tanpa baris info jumlah" "$(DBM=true PF | grep -c 'cabang ter-merge')" 0
 
 # 3k-5. README menjelaskan pembersihan cabang/worktree dan perubahan perilaku bawaan
-grep -q 'cleanup.sh' README.md && grep -q 'Bersihkan setelah merge' README.md && grep -q 'default `ya`' README.md && grep -q 'delete_branch_on_merge' README.md; ok "README: cleanup.sh, Bersihkan setelah merge, bawaan ya, delete_branch_on_merge" $? 0
+grep -q 'cleanup.sh' README.md && grep -q 'Clean up after merge' README.md && grep -q 'default `yes`' README.md && grep -q 'delete_branch_on_merge' README.md; ok "README: cleanup.sh, Clean up after merge, bawaan ya, delete_branch_on_merge" $? 0
 
 # 3k-6. perbaikan hasil review akhir (keselamatan data)
 RG="$(command -v git)"; mkdir -p "$CL/gbin"; printf '#!/usr/bin/env bash\nif [ "$1" = worktree ] && [ "$2" = remove ]; then echo "fatal: simulasi gagal" >&2; exit 1; fi\nexec "$REAL_GIT" "$@"\n' > "$CL/gbin/git"; chmod +x "$CL/gbin/git"
 # opsi WORKFLOW: huruf kapital, markup, baris ada tapi tak terbaca, dan WORKFLOW.md tak terbaca -> tidak menghapus
-for wv in '- Bersihkan setelah merge: Tidak' '- **Bersihkan setelah merge:** tidak' '- Bersihkan setelah merge: `Laporkan`' '- Bersihkan setelah merge: {{ya (bawaan) | laporkan | tidak}}'; do
-  MK; WFO "$wv"$'\n'; CLN --no-fetch --setelah-merge --issue 1 >/dev/null; ok "setelah-merge: '$wv' -> tidak menghapus" "$(LB | tr ' ' '\n' | grep -cx issue-1)" 1
+for wv in '- Clean up after merge: Tidak' '- **Clean up after merge:** tidak' '- Clean up after merge: `Laporkan`' '- Clean up after merge: {{ya (bawaan) | laporkan | tidak}}'; do
+  MK; WFO "$wv"$'\n'; CLN --no-fetch --after-merge --issue 1 >/dev/null; ok "setelah-merge: '$wv' -> tidak menghapus" "$(LB | tr ' ' '\n' | grep -cx issue-1)" 1
 done
-MK; WFO '- Bersihkan setelah merge: YA\n'; CLN --no-fetch --setelah-merge --issue 1 >/dev/null; ok "setelah-merge: 'YA' (kapital) dibaca sebagai ya -> menghapus" "$(LB | tr ' ' '\n' | grep -cx issue-1)" 0
-MK; rm -f "$CL/w/docs/WORKFLOW.md"; CLN --no-fetch --setelah-merge --issue 1 >/dev/null; ok "setelah-merge: WORKFLOW.md tak terbaca -> tidak menghapus" "$(LB | tr ' ' '\n' | grep -cx issue-1)" 1
+MK; WFO '- Clean up after merge: YA\n'; CLN --no-fetch --after-merge --issue 1 >/dev/null; ok "setelah-merge: 'YA' (kapital) dibaca sebagai ya -> menghapus" "$(LB | tr ' ' '\n' | grep -cx issue-1)" 0
+MK; rm -f "$CL/w/docs/WORKFLOW.md"; CLN --no-fetch --after-merge --issue 1 >/dev/null; ok "setelah-merge: WORKFLOW.md tak terbaca -> tidak menghapus" "$(LB | tr ' ' '\n' | grep -cx issue-1)" 1
 # hapus remote dengan CAS: teman mendorong commit setelah fetch -> tidak boleh hilang
 MK; rm -rf "$CL/mate"; git clone -q "$CL/remote.git" "$CL/mate" 2>/dev/null; git -C "$CL/mate" checkout -q issue-1; echo more > "$CL/mate/more.txt"; git -C "$CL/mate" add -A; git -C "$CL/mate" commit -q -m more; git -C "$CL/mate" push -q origin issue-1
 OUT="$(CLN --no-fetch --apply)"; rc=$?; ok "apply: remote didorong orang lain setelah fetch -> tidak dihapus (CAS), exit 1" "$rc|$(RB | tr ' ' '\n' | grep -cx issue-1)|$(grep -c $'^cabang-remote\tissue-1\t.*lewati:gagal' <<<"$OUT")" '1|1|1'
@@ -1285,7 +1285,7 @@ git checkout -q -b induk main; echo x > x; git add x; git commit -q -m X; X1="$(
 mkdir -p docs; printf -- '- Cabang integrasi: integrasi\n' > docs/WORKFLOW.md
 MIPR() { printf '{"merged_at":%s,"merge_commit_sha":"%s","head":{"sha":"%s"},"base":{"ref":"%s"}}' "$2" "$3" "$4" "$5" > "$MI/fx/repos_o_r_pulls_$1"; } # n merged_at merge_sha head_sha base
 echo '{"default_branch":"main"}' > "$MI/fx/repos_o_r"
-TI() { (cd "$MI/w" && GH_REPO=o/r MI_FX="$MI/fx" PATH="$MI/bin:$PATH" bash "$root/scripts/terintegrasi.sh" "$@" 2>&1); }
+TI() { (cd "$MI/w" && GH_REPO=o/r MI_FX="$MI/fx" PATH="$MI/bin:$PATH" bash "$root/scripts/integrated.sh" "$@" 2>&1); }
 MIPR 1 '"2026-11-01T00:00:00Z"' "$X1" "$X1" integrasi; out="$(TI 1)"; ok "terintegrasi: base = integrasi dan merged -> 0" "$?" 0
 MIPR 2 '"2026-11-01T00:00:00Z"' "$I1" "$X1" induk; out="$(TI 2)"; ok "terintegrasi: base induk, merge_commit_sha leluhur integrasi -> 0" "$?" 0
 MIPR 3 '"2026-11-01T00:00:00Z"' "$X1" "$I1" induk; out="$(TI 3)"; ok "terintegrasi: base induk, head.sha leluhur integrasi -> 0" "$?" 0
@@ -1293,14 +1293,14 @@ MIPR 4 '"2026-11-01T00:00:00Z"' "$X1" "$X1" induk; out="$(TI 4)"; rc=$?; ok "ter
 MIPR 5 null "$X1" "$X1" integrasi; out="$(TI 5)"; rc=$?; ok "terintegrasi: merged_at kosong walau base = integrasi -> 1" "$rc|$(grep -c 'belum merged' <<<"$out")" '1|1'
 mv "$MI/w/docs/WORKFLOW.md" "$MI/w/docs/WF.bak"; out="$(TI 4)"; ok "terintegrasi: WORKFLOW tak terbaca dan base bukan bawaan -> 2 (bukan 'tanpa integrasi')" "$?" 2
 MIPR 6 '"2026-11-01T00:00:00Z"' "$X1" "$X1" main; out="$(TI 6)"; ok "terintegrasi: WORKFLOW tak terbaca tetapi base = bawaan -> 0" "$?" 0
-mv "$MI/w/docs/WF.bak" "$MI/w/docs/WORKFLOW.md"; printf -- '- Pemeriksaan CVE: ya\n' > "$MI/w/docs/WORKFLOW.md"; out="$(TI 6)"; ok "terintegrasi: WORKFLOW terbaca tanpa baris Cabang integrasi, PR ke cabang bawaan -> 0" "$?" 0
+mv "$MI/w/docs/WF.bak" "$MI/w/docs/WORKFLOW.md"; printf -- '- CVE check: ya\n' > "$MI/w/docs/WORKFLOW.md"; out="$(TI 6)"; ok "terintegrasi: WORKFLOW terbaca tanpa baris Cabang integrasi, PR ke cabang bawaan -> 0" "$?" 0
 out="$(TI 4)"; ok "terintegrasi: tanpa baris Cabang integrasi, PR ke cabang induk (bukan bawaan) -> 2 (tidak lolos diam-diam)" "$?" 2
 printf -- '- Cabang integrasi: tidak ada\n' > "$MI/w/docs/WORKFLOW.md"; out="$(TI 6)"; ok "terintegrasi: 'Cabang integrasi: tidak ada' bukan nama cabang -> PR ke bawaan 0" "$?" 0
 out="$(TI 4)"; ok "terintegrasi: 'Cabang integrasi: tidak ada' dan PR ke induk -> 2 (bukan fetch 'tidak')" "$?|$(grep -c 'origin/tidak' <<<"$out")" '2|0'
 printf -- '- Cabang integrasi: integrasi\n' > "$MI/w/docs/WORKFLOW.md"; out="$(MI_FAIL=1 TI 4)"; ok "terintegrasi: REST gagal -> 2" "$?" 2
 
-# 3m-2. alur-terjadwal.sh dan peringatan gerbang (#32)
-AT() { (cd "$MI/w" && GH_REPO=o/r MI_FX="$MI/fx" PATH="$MI/bin:$PATH" bash "$root/scripts/alur-terjadwal.sh" "$@" 2>&1); }
+# 3m-2. scheduled-workflow.sh dan peringatan gerbang (#32)
+AT() { (cd "$MI/w" && GH_REPO=o/r MI_FX="$MI/fx" PATH="$MI/bin:$PATH" bash "$root/scripts/scheduled-workflow.sh" "$@" 2>&1); }
 WF=".github_workflows"; pf() { printf '%s' "$2" > "$MI/fx/repos_o_r_contents_.github_workflows_$1_ref_H1"; }
 pf v.yml $'on:\n  schedule:\n    - cron: "0 3 * * *"\njobs: {}\n'; pf d.yml $'on:\n  workflow_dispatch:\njobs: {}\n'; pf inline.yml $'on: [push, workflow_dispatch]\n'; pf ci.yml $'on:\n  push:\njobs: {}\n'
 echo '[{"filename":".github/workflows/v.yml","status":"added"},{"filename":".github/workflows/ci.yml","status":"modified"},{"filename":".github/workflows/gone.yml","status":"removed"},{"filename":".github/workflows/d.yml","status":"renamed"},{"filename":".github/dependabot.yml","status":"added"},{"filename":"README.md","status":"modified"}]' > "$MI/fx/repos_o_r_pulls_7_files"
@@ -1318,26 +1318,26 @@ out="$(export DIFF="$DCI" CF_DEFAULT=trunk; GE)"; rc=$?; ok "gerbang alur: workf
 out="$(export DIFF="$DWF" CF_DEFAULT=trunk CF_ERR=1 CF_ERR_PATH=.github/workflows/v.yml; GE)"; rc=$?; ok "gerbang alur: isi workflow tak terbaca -> PERINGATAN 'tidak dapat diperiksa', tetap exit 0 (bukan penghalang)" "$rc|$(grep -c '^PERINGATAN: alur terjadwal tidak dapat diperiksa' <<<"$out")" '0|1'
 rm -rf "$CF/abc1234567/.github"
 
-# 3m-3. label menunggu-rilis, menunggu-rilis.sh --tandai/--cek, resume.sh periksa-rilis (#32)
+# 3m-3. label menunggu-rilis, awaiting-release.sh --mark/--cek, resume.sh periksa-rilis (#32)
 LB() { (cd "$MI/w" && env -u AICREW_LABEL_WAITING "$@" bash "$root/scripts/label.sh" waiting 2>&1); }
-ok "label waiting: bawaan menunggu-rilis" "$(LB)" menunggu-rilis
+ok "label waiting: bawaan awaiting-release" "$(LB)" awaiting-release
 ok "label waiting: env AICREW_LABEL_WAITING" "$(AICREW_LABEL_WAITING=tunggu-x; cd "$MI/w" && AICREW_LABEL_WAITING=tunggu-x bash "$root/scripts/label.sh" waiting)" tunggu-x
-printf -- '- Cabang integrasi: integrasi\n- Label menunggu rilis: tunggu-rilis\n' > "$MI/w/docs/WORKFLOW.md"; ok "label waiting: baris 'Label menunggu rilis' di WORKFLOW" "$(LB)" tunggu-rilis
+printf -- '- Cabang integrasi: integrasi\n- Awaiting-release label: tunggu-rilis\n' > "$MI/w/docs/WORKFLOW.md"; ok "label waiting: baris 'Awaiting-release label' di WORKFLOW" "$(LB)" tunggu-rilis
 printf -- '- Cabang integrasi: integrasi\n' > "$MI/w/docs/WORKFLOW.md"
-MR() { (cd "$MI/w" && GH_REPO=o/r MI_FX="$MI/fx" PATH="$MI/bin:$PATH" bash "$root/scripts/menunggu-rilis.sh" "$@" 2>&1); }
+MR() { (cd "$MI/w" && GH_REPO=o/r MI_FX="$MI/fx" PATH="$MI/bin:$PATH" bash "$root/scripts/awaiting-release.sh" "$@" 2>&1); }
 MIPR 7 '"2026-11-01T00:00:00Z"' "$I1" H1 integrasi; : > "$MI/fx/calls"
-out="$(MR --tandai 55 7)"; rc=$?
-ok "menunggu-rilis --tandai: komentar berpenanda memuat jalur berkas, label dipasang" "$rc|$(grep -c '^POST repos/o/r/issues/55/comments' "$MI/fx/calls")|$(grep -c 'aicrew-menunggu-rilis' "$MI/fx/calls")|$(grep -c -- '- .github/workflows/v.yml' "$MI/fx/calls")|$(grep -c '^POST repos/o/r/issues/55/labels .*menunggu-rilis' "$MI/fx/calls")" '0|1|1|1|1'
-MIPR 9 '"2026-11-01T00:00:00Z"' "$I1" H1 integrasi; : > "$MI/fx/calls"; out="$(MR --tandai 56 9)"; ok "menunggu-rilis --tandai: PR tanpa berkas pemicu -> tidak menulis apa pun, exit 0" "$?|$(wc -l < "$MI/fx/calls" | tr -d ' ')" '0|0'
-out="$(MI_FAIL=1 MR --tandai 55 7)"; ok "menunggu-rilis --tandai: REST gagal -> exit 2" "$?" 2
+out="$(MR --mark 55 7)"; rc=$?
+ok "menunggu-rilis --mark: komentar berpenanda memuat jalur berkas, label dipasang" "$rc|$(grep -c '^POST repos/o/r/issues/55/comments' "$MI/fx/calls")|$(grep -c 'aicrew-menunggu-rilis' "$MI/fx/calls")|$(grep -c -- '- .github/workflows/v.yml' "$MI/fx/calls")|$(grep -c '^POST repos/o/r/issues/55/labels .*awaiting-release' "$MI/fx/calls")" '0|1|1|1|1'
+MIPR 9 '"2026-11-01T00:00:00Z"' "$I1" H1 integrasi; : > "$MI/fx/calls"; out="$(MR --mark 56 9)"; ok "menunggu-rilis --mark: PR tanpa berkas pemicu -> tidak menulis apa pun, exit 0" "$?|$(wc -l < "$MI/fx/calls" | tr -d ' ')" '0|0'
+out="$(MI_FAIL=1 MR --mark 55 7)"; ok "menunggu-rilis --mark: REST gagal -> exit 2" "$?" 2
 printf '[{"body":"komentar lain"},{"body":"<!-- aicrew-menunggu-rilis -->\\nMenunggu rilis.\\n- .github/workflows/v.yml\\n- .github/dependabot.yml"}]' > "$MI/fx/repos_o_r_issues_55_comments"
 printf 'x' > "$MI/fx/repos_o_r_contents_.github_workflows_v.yml_ref_main"
-out="$(MR --cek 55)"; rc=$?; ok "menunggu-rilis --cek: dependabot.yml belum ada di cabang bawaan -> exit 1, menyebut jalur yang belum" "$rc|$(grep -c '.github/dependabot.yml' <<<"$out")|$(grep -c 'siap' <<<"$out")" '1|1|0'
-printf 'x' > "$MI/fx/repos_o_r_contents_.github_dependabot.yml_ref_main"; out="$(MR --cek 55)"; ok "menunggu-rilis --cek: semua berkas ada di cabang bawaan -> exit 0 'siap'" "$?|$out" '0|siap'
-printf '[{"body":"komentar lain"}]' > "$MI/fx/repos_o_r_issues_57_comments"; out="$(MR --cek 57)"; ok "menunggu-rilis --cek: tanpa komentar berpenanda -> exit 2" "$?" 2
-out="$(MI_FAIL=1 MR --cek 55)"; ok "menunggu-rilis --cek: REST gagal -> exit 2" "$?" 2
+out="$(MR --check 55)"; rc=$?; ok "menunggu-rilis --check: dependabot.yml belum ada di cabang bawaan -> exit 1, menyebut jalur yang belum" "$rc|$(grep -c '.github/dependabot.yml' <<<"$out")|$(grep -c 'siap' <<<"$out")" '1|1|0'
+printf 'x' > "$MI/fx/repos_o_r_contents_.github_dependabot.yml_ref_main"; out="$(MR --check 55)"; ok "menunggu-rilis --check: semua berkas ada di cabang bawaan -> exit 0 'siap'" "$?|$out" '0|siap'
+printf '[{"body":"komentar lain"}]' > "$MI/fx/repos_o_r_issues_57_comments"; out="$(MR --check 57)"; ok "menunggu-rilis --check: tanpa komentar berpenanda -> exit 2" "$?" 2
+out="$(MI_FAIL=1 MR --check 55)"; ok "menunggu-rilis --check: REST gagal -> exit 2" "$?" 2
 printf '[{"body":"<!-- aicrew-menunggu-rilis -->\\nPR lama.\\n- .github/workflows/old.yml"},{"body":"<!-- aicrew-menunggu-rilis -->\\nPR baru.\\n- .github/workflows/v.yml"}]' > "$MI/fx/repos_o_r_issues_58_comments"
-out="$(MR --cek 58)"; rc=$?; ok "menunggu-rilis --cek: jalur dari SEMUA komentar berpenanda dihitung (old.yml belum ada -> exit 1)" "$rc|$(grep -c 'old.yml' <<<"$out")" '1|1'
+out="$(MR --check 58)"; rc=$?; ok "menunggu-rilis --check: jalur dari SEMUA komentar berpenanda dihitung (old.yml belum ada -> exit 1)" "$rc|$(grep -c 'old.yml' <<<"$out")" '1|1'
 # resume.sh: issue terbuka berlabel menunggu-rilis -> aksi periksa-rilis
 echo '[{"number":55,"labels":[{"name":"di-integrasi"},{"name":"menunggu-rilis"}]},{"number":56,"pull_request":{},"labels":[{"name":"menunggu-rilis"}]}]' > "$MI/fx/repos_o_r_issues_state_open_labels_menunggu-rilis_per_page_100"
 out="$(cd "$MI/w" && GH_REPO=o/r MI_FX="$MI/fx" PATH="$MI/bin:$PATH" bash "$root/scripts/resume.sh" 2>&1 | cut -f1,2 | tr '\t\n' '::')"; ok "resume: issue berlabel menunggu-rilis -> periksa-rilis (PR diabaikan)" "$out" "55:periksa-rilis:"
@@ -1346,7 +1346,7 @@ out="$(cd "$MI/w" && GH_REPO=o/r MI_FX="$MI/fx" PATH="$MI/bin:$PATH" bash "$root
 CAU() { (cd "$MI/w" && PATH="$MI/bin:$PATH" GH_REPO=o/r bash "$root/scripts/cve-audit.sh" 2>&1); }
 (cd "$MI/w" && git checkout -q integrasi && mkdir -p .github/workflows && printf 'on:\n  schedule:\n    - cron: "0 3 * * *"\n' > .github/workflows/v.yml && printf 'on:\n  push:\n' > .github/workflows/ci.yml && printf 'version: 2\n' > .github/dependabot.yml && git add .github && git commit -q -m alur && git push -q origin integrasi && git checkout -q main)
 ok "cve-audit: schedule + dependabot hanya di integrasi (ci biasa tidak dihitung) -> '2 alur terjadwal belum aktif'" "$(grep -c '^2 alur terjadwal belum aktif (hanya di integrasi)$' <<<"$(CAU)")" 1
-printf -- '- Pemeriksaan CVE: ya\n' > "$MI/w/docs/WORKFLOW.md"; ok "cve-audit: tanpa cabang integrasi -> tanpa baris alur" "$(grep -c 'alur terjadwal' <<<"$(CAU)")" 0
+printf -- '- CVE check: ya\n' > "$MI/w/docs/WORKFLOW.md"; ok "cve-audit: tanpa cabang integrasi -> tanpa baris alur" "$(grep -c 'alur terjadwal' <<<"$(CAU)")" 0
 printf -- '- Cabang integrasi: integrasi\n' > "$MI/w/docs/WORKFLOW.md"
 (cd "$MI/w" && git merge -q --no-edit integrasi && git push -q origin main)
 ok "cve-audit: alur sudah ada di cabang bawaan -> tanpa baris" "$(grep -c 'alur terjadwal' <<<"$(CAU)")" 0
@@ -1359,7 +1359,7 @@ for k in 'version: 2' 'groups' 'github-actions' 'target-branch' 'needs-principal
 if python3 -c 'import yaml' 2>/dev/null; then python3 -c 'import sys,yaml; yaml.safe_load(open(sys.argv[1]))' "$DB" 2>/dev/null; ok "dependabot.yml: YAML valid" $? 0; else ok "dependabot.yml: YAML dilewati (PyYAML tak ada)" 0 0; fi
 
 # 3m-5. skill cve-audit: pola jembatan untuk repo yang dirilis dari cabang non-bawaan (#42)
-grep -q 'Repo yang dirilis dari cabang non-bawaan' skills/cve-audit/SKILL.md && grep -q 'target-branch' skills/cve-audit/SKILL.md && grep -q 'ref:' skills/cve-audit/SKILL.md && grep -q 'add/add' skills/cve-audit/SKILL.md && grep -q 'menunggu-rilis' skills/cve-audit/SKILL.md; ok "skill cve-audit: pola jembatan (target-branch, ref:, add/add, menunggu-rilis)" $? 0
+grep -q 'Repo yang dirilis dari cabang non-bawaan' skills/cve-audit/SKILL.md && grep -q 'target-branch' skills/cve-audit/SKILL.md && grep -q 'ref:' skills/cve-audit/SKILL.md && grep -q 'add/add' skills/cve-audit/SKILL.md && grep -q 'awaiting-release' skills/cve-audit/SKILL.md; ok "skill cve-audit: pola jembatan (target-branch, ref:, add/add, menunggu-rilis)" $? 0
 
 # 3n-1. release-notes.sh: bagian catatan rilis dari baris bertanda di badan PR (#30)
 RN="$tmp/rn"; mkdir -p "$RN/fx" "$RN/w/docs"; git init -q --bare "$RN/o.git"; git init -q "$RN/w"
@@ -1391,7 +1391,7 @@ ok "release-notes: tanpa \\r, tanpa isi blok kode/komentar HTML di keluaran" "$(
 ok "release-notes: PERINGATAN untuk PR tanpa baris (#14), kategori tak dikenal (#15), needs-security tanpa Security (#16); PR internal (#13) tanpa peringatan" "$(grep -c '^PERINGATAN: PR #14 ' "$RN/err")|$(grep -c '^PERINGATAN: PR #15 .*kategori tak dikenal' "$RN/err")|$(grep -c '^PERINGATAN: PR #16 .*needs-security' "$RN/err")|$(grep -c '#13' "$RN/err")" '1|1|1|0'
 out2="$(RNS --versi 0.3.0 --tanggal 2026-11-02 2>/dev/null)"; ok "release-notes: dijalankan ulang -> keluaran sama" "$([ "$out" = "$out2" ] && echo sama || echo beda)" sama
 out="$(RNS --versi 0.2.0 --tanggal 2026-11-02 2>/dev/null)"; ok "release-notes: versi yang sudah bertag memakai tag di bawahnya dan batas atas tag itu (hanya PR #10)" "$(grep -c 'fitur lama (#10)' <<<"$out")|$(grep -c 'fitur satu' <<<"$out")|$(grep -c 'sangat lama' <<<"$out")" '1|0|0'
-out="$(RNS --versi 0.1.0 2>"$RN/err")"; rc=$?; ok "release-notes: tanpa tag sebelumnya dan tanpa --sejak -> exit 2, stdout kosong, petunjuk --sejak" "$rc|$out|$(grep -c -- '--sejak' "$RN/err")" '2||1'
+out="$(RNS --versi 0.1.0 2>"$RN/err")"; rc=$?; ok "release-notes: tanpa tag sebelumnya dan tanpa --since -> exit 2, stdout kosong, petunjuk --since" "$rc|$out|$(grep -c -- '--since' "$RN/err")" '2||1'
 out="$(RNS --versi 0.9.0 --sejak "$(SH v0.1.0)" --tanggal 2026-11-02 2>/dev/null)"; ok "release-notes: --sejak <ref> menggantikan tag sebelumnya (v0.9.0 belum bertag: #10 dan #11 ikut, #7 tidak)" "$(grep -c 'fitur lama (#10)' <<<"$out")|$(grep -c 'fitur satu (#11)' <<<"$out")|$(grep -c 'sangat lama' <<<"$out")" '1|1|0'
 out="$(MI_FAIL=1 RNS --versi 0.3.0 2>/dev/null)"; rc=$?; ok "release-notes: REST gagal -> exit 2, stdout kosong" "$rc|$out" '2|'
 printf -- '- Release notes: CHANGELOG.md\n- Cabang integrasi: integrasi\n' > "$RN/w/docs/WORKFLOW.md"
@@ -1433,13 +1433,13 @@ printf -- '- Release notes: none\n' > "$CF/main/docs/WORKFLOW.md"; out="$(export
 rm -f "$CF/main/docs/WORKFLOW.md"; out="$(export DIFF="$DRM" GBODY="Closes #1"; GE2)"; ok "gerbang catatan: WORKFLOW 404 -> tanpa peringatan, exit 0" "$?|$(grep -c "baris 'Release note:'" <<<"$out")" '0|0'
 printf -- '- Release notes: CHANGELOG.md\n' > "$CF/main/docs/WORKFLOW.md"; out="$(export DIFF="$DRM" GBODY="Closes #1" CF_ERR=1 CF_ERR_PATH=docs/WORKFLOW.md; GE2)"; ok "gerbang catatan: WORKFLOW galat 500 -> tidak memblokir, tanpa peringatan palsu" "$?|$(grep -c "baris 'Release note:'" <<<"$out")" '0|0'
 rm -rf "$CF/main/docs"
-CV="$tmp/cv"; mkdir -p "$CV/.claude-plugin" "$CV/scripts" "$CV/docs"; cp "$root/scripts/check-version.sh" "$root/scripts/workflow.sh" "$CV/scripts/"; echo '{"version":"0.3.0"}' > "$CV/.claude-plugin/plugin.json"
+CV="$tmp/cv"; mkdir -p "$CV/.claude-plugin" "$CV/scripts" "$CV/docs"; cp "$root/scripts/check-version.sh" "$root/scripts/workflow.sh" "$CV/scripts/"; cp -r "$root/scripts/lib" "$CV/scripts/"; echo '{"version":"0.3.0"}' > "$CV/.claude-plugin/plugin.json"
 CVR() { (cd "$CV" && bash scripts/check-version.sh v0.3.0 2>&1); }
 printf -- '- Release notes: CHANGELOG.md\n' > "$CV/docs/WORKFLOW.md"; out="$(CVR)"; rc=$?; ok "check-version: opsi CHANGELOG.md tanpa berkas -> ::warning:: dan exit 0" "$rc|$(grep -c '^::warning::' <<<"$out")" '0|1'
 printf '# Changelog\n\n## [0.3.0] - 2026-11-02\n' > "$CV/CHANGELOG.md"; out="$(CVR)"; ok "check-version: bagian [0.3.0] ada -> tanpa peringatan" "$(grep -c '::warning::' <<<"$out")" 0
 printf '# Changelog\n\n## [0.2.0] - 2026-10-01\n' > "$CV/CHANGELOG.md"; out="$(CVR)"; ok "check-version: bagian versi hilang -> ::warning::" "$(grep -c '^::warning::' <<<"$out")" 1
 printf -- '- Release notes: none\n' > "$CV/docs/WORKFLOW.md"; out="$(CVR)"; ok "check-version: opsi tidak ada -> tanpa peringatan" "$(grep -c '::warning::' <<<"$out")" 0
-for k in 'release-notes.sh' '--ekstrak' '--notes-file' '--generate-notes'; do grep -qF -- "$k" .github/workflows/release.yml; ok "release.yml memuat '$k'" $? 0; done
+for k in 'release-notes.sh' '--extract' '--notes-file' '--generate-notes'; do grep -qF -- "$k" .github/workflows/release.yml; ok "release.yml memuat '$k'" $? 0; done
 
 # 3n-4. agen, templat, kickoff, README, dogfooding, laporan rilis (#30)
 cd "$root" || exit 1
@@ -1462,7 +1462,7 @@ echo "3. Cabang integrasi: integ." > "$tmp/rr/docs/WORKFLOW.md"; RR2 --versi 0.3
 cd "$root" || exit 1
 
 # 3n-5. perbaikan hasil review akhir #30
-grep -q '^- Bersihkan setelah merge: tidak' docs/WORKFLOW.md; ok "docs/WORKFLOW.md aicrew: Bersihkan setelah merge: tidak (berkas baru tak mengaktifkan hapus otomatis)" $? 0
+grep -q '^- Clean up after merge: no' docs/WORKFLOW.md; ok "docs/WORKFLOW.md aicrew: Clean up after merge: tidak (berkas baru tak mengaktifkan hapus otomatis)" $? 0
 mkdir -p "$CF/main/docs"; printf -- '- Release notes: CHANGELOG.md\n' > "$CF/main/docs/WORKFLOW.md"
 out="$(export DIFF="$DRM" GBODY=$'Closes #1\n<!--\nRelease note: Added - contoh templat\n-->'; GE2)"; ok "gerbang catatan: contoh di komentar HTML (templat tak diisi) tetap diperingatkan" "$(grep -c "baris 'Release note:'" <<<"$out")" 1
 out="$(export DIFF="$DRM" GBODY=$'Closes #1\n```\nRelease note: Added - dalam blok kode\n```'; GE2)"; ok "gerbang catatan: contoh di blok kode tetap diperingatkan" "$(grep -c "baris 'Release note:'" <<<"$out")" 1
@@ -1664,14 +1664,14 @@ ok "README: tanpa judul atau paragraf bertanda versi (0.x.y)" "$(grep -cE '\(0\.
 for f in README.md PRIVACY.md CHANGELOG.md; do ok "bahasa publik: $f tanpa kata fungsi/judul Indonesia di luar kode" "$(idn_hits "$f")" 0; done
 txt="$(jq -r '[.description, (.userConfig[]? | .title, .description)] | .[] | select(. != null)' .claude-plugin/plugin.json | tr '\n' ' ')"; ok "bahasa publik: plugin.json (description, userConfig) Inggris" "$(printf ' %s ' "$txt" | grep -ciE "$IDN" || true)" 0
 txt="$(jq -r '.description, (.plugins[]?.description)' .claude-plugin/marketplace.json | tr '\n' ' ')"; ok "bahasa publik: marketplace.json Inggris" "$(printf ' %s ' "$txt" | grep -ciE "$IDN" || true)" 0
-for sc in autopilot autostart board-init board cleanup cve-audit cve-check ensure-gitignore epic-link install-permissions lock menunggu-rilis notify release-notes release-report terintegrasi workflow; do grep -qF "scripts/$sc.sh" README.md; ok "README tetap menyebut scripts/$sc.sh" $? 0; done
+for sc in autopilot autostart board-init board cleanup cve-audit cve-check ensure-gitignore epic-link install-permissions lock awaiting-release notify release-notes release-report integrated workflow; do grep -qF "scripts/$sc.sh" README.md; ok "README tetap menyebut scripts/$sc.sh" $? 0; done
 grep -qE '^#+ +[^A-Za-z]*Stability' README.md; ok "README: bagian Stability" $? 0
 # perbaikan hasil review akhir v1.0 (#34)
 nsk="$(ls skills | wc -l | tr -d ' ')"; nag="$(ls agents | wc -l | tr -d ' ')"; nhk="$(jq '[.hooks[]|length]|add' hooks/hooks.json)"
 grep -qF "Installed: $nsk skills, $nag agents, $nhk hooks" README.md; ok "README: jumlah skill/agen/hook sesuai isi repo ($nsk/$nag/$nhk)" $? 0
 ! grep -q '380 tokens' README.md; ok "README: tanpa klaim ~380 token yang tak bersumber" $? 0
 for v in 0.1.2 0.2.0 0.3.0 0.4.0 0.7.0 0.8.0 0.9.0 0.10.0 0.11.1 0.12.0; do awk -v h="## [$v]" 'index($0,h)==1{p=1;next} /^## \[/{p=0} p' CHANGELOG.md | grep -q '^### Behavior changes'; ok "CHANGELOG [$v] memuat Behavior changes" $? 0; done
-grep -q 'none yet' README.md && grep -q 'Most keys' README.md; ok "README: 'Merge into main' = none yet; kunci WORKFLOW 'Most keys' Indonesia" $? 0
+grep -q 'none yet' README.md && grep -q 'Deprecated aliases' README.md; ok "README: 'Merge into main' = none yet; bagian Deprecated aliases" $? 0
 for k in 'does not reject' 'is never deleted' 'report-only' 'response headers' 'not yet proven' 'through chat'; do grep -qF -- "$k" README.md; ok "README mempertahankan rincian: '$k'" $? 0; done
 
 # 3r. rilis 1.0.0 (#34): bagian [1.0.0] hasil release-notes.sh, heading pertama, versi sinkron
@@ -1679,5 +1679,52 @@ cd "$root" || exit 1
 ok "CHANGELOG.md: bagian pertama adalah [1.0.0] bertanggal" "$(grep -m1 '^## \[' CHANGELOG.md | grep -cE '^## \[1\.0\.0\] - [0-9]{4}-[0-9]{2}-[0-9]{2}$')" 1
 ok "CHANGELOG.md: [1.0.0] memuat entri dari PR #53 (Added dan Changed)" "$(awk '/^## \[1\.0\.0\]/{p=1;next} /^## \[/{p=0} p' CHANGELOG.md | grep -c '(#53)')" 2
 cv="$(bash scripts/check-version.sh v1.0.0 2>&1)"; ok "check-version v1.0.0: lolos tanpa ::warning:: (versi sinkron, bagian CHANGELOG ada)" "$(printf '%s\n' "$cv" | grep -c '^ok:')|$(printf '%s\n' "$cv" | grep -c '::warning::')" '1|0'
+
+# 3s. nama teknis Inggris (#55): pemeta alias WORKFLOW (kunci, nilai, idempoten)
+cd "$root" || exit 1
+n() { printf '%s\n' "$1" | bash scripts/lib/wf-normalize.sh; }
+ok "normalize: Cabang integrasi" "$(n '- Cabang integrasi: fitur-x')" '- Integration branch: fitur-x'
+ok "normalize: kunci di tengah baris" "$(n '- Label integrasi: a. Label keputusan otomatis: b.')" '- Integrated label: a. Auto-decision label: b.'
+ok "normalize: Bersihkan setelah merge ya" "$(n '- Bersihkan setelah merge: ya (bawaan)')" '- Clean up after merge: yes (bawaan)'
+ok "normalize: Bersihkan laporkan" "$(n '- Bersihkan setelah merge: laporkan')" '- Clean up after merge: report'
+ok "normalize: mode agen-setelah-QA" "$(n 'Merge PR ke cabang integrasi: agen-setelah-QA.')" 'Merge PR to integration branch: agent-after-qa.'
+ok "normalize: Kartu Done agen-setelah-merge" "$(n '- Kartu Done: agen-setelah-merge')" '- Done card: agent-after-merge'
+ok "normalize: Integration branch tidak ada -> none" "$(n '- Cabang integrasi: tidak ada')" '- Integration branch: none'
+ok "normalize: Pemeriksaan CVE tidak" "$(n '- Pemeriksaan CVE: tidak')" '- CVE check: no'
+ok "normalize: Profil standar" "$(n '- Profil: standar')" '- Profile: standard'
+ok "normalize: prosa sesudah nilai tak berubah" "$(n '- Pemeriksaan CVE: ya, tidak untuk repo privat')" '- CVE check: yes, tidak untuk repo privat'
+ok "normalize: baris tanpa kunci tak berubah" "$(n 'ya tidak ringan laporkan')" 'ya tidak ringan laporkan'
+ok "normalize: idempoten (Inggris tetap)" "$(n '- Clean up after merge: yes')" '- Clean up after merge: yes'
+for pair in 'Role aktif|Active roles' 'Kode ada|Existing code' 'Basis worktree|Worktree base' 'Board kanban|Kanban board' 'Label discovery|Discovery label' 'Label epic belum dipecah|Unsplit epic label' 'Label menunggu rilis|Awaiting-release label' 'Label tanpa induk|No-parent label' 'Tutup issue setelah merge integrasi|Close issues after integration merge' 'Paket privat|Private packages' 'Bahasa artefak|Artifact language' 'Berkas docs/ dilacak git|Track docs/ in git'; do
+  ok "normalize: kunci ${pair%%|*}" "$(n "- ${pair%%|*}: x")" "- ${pair##*|}: x"
+done
+
+# 3s-2. alias usang tetap jalan (#55)
+for pair in 'terintegrasi:integrated' 'menunggu-rilis:awaiting-release' 'alur-terjadwal:scheduled-workflow'; do
+  o="${pair%%:*}"; nw="${pair##*:}"
+  ok "alias skrip: $o.sh = $nw.sh (keluaran dan exit sama)" "$(bash scripts/$o.sh 2>&1; echo "rc=$?")" "$(bash scripts/$nw.sh 2>&1; echo "rc=$?")"
+done
+ok "alias opsi: release-notes --versi dan --version memberi exit 64 untuk versi buruk" "$(bash scripts/release-notes.sh --versi abc >/dev/null 2>&1; echo $?)|$(bash scripts/release-notes.sh --version abc >/dev/null 2>&1; echo $?)" '64|64'
+ok "label.sh --all: nama baru lalu alias lama" "$(cd "$tmp/plain" && bash "$root/scripts/label.sh" integrated --all | tr '\n' ' ')" 'integrated di-integrasi '
+ok "label.sh --all: label dari WORKFLOW lama tetap efektif, bawaan baru ikut" "$(cd "$tmp/plain" && AICREW_LABEL_INTEGRATED=di-integrasi bash "$root/scripts/label.sh" integrated --all | tr '\n' ' ')" 'di-integrasi integrated '
+mkdir -p "$tmp/legacy/docs"; git init -q "$tmp/legacy" 2>/dev/null; printf -- '- Cabang integrasi: fitur-x\n- Bersihkan setelah merge: ya\n' > "$tmp/legacy/docs/WORKFLOW.md"
+ok "workflow.sh: WORKFLOW.md lama (kunci Indonesia) dibaca sebagai kunci Inggris" "$(cd "$tmp/legacy" && AICREW_INTEG_BRANCH= bash "$root/scripts/workflow.sh" | tr '\n' '|')" '- Integration branch: fitur-x|- Clean up after merge: yes|'
+
+# 3s-2b. perbaikan hasil review (#55)
+ok "alias opsi: awaiting-release --tandai/--cek tak dianggap argumen asing" "$(bash scripts/menunggu-rilis.sh --tandai 1 2 2>&1 </dev/null | grep -c '^pakai'):$(bash scripts/menunggu-rilis.sh --cek 1 2>&1 </dev/null | grep -c '^pakai')" '0:0'
+ok "normalize: nilai bermarkup (**Kunci:** ya) tetap dipetakan" "$(printf -- '- **Bersihkan setelah merge:** ya\n' | bash scripts/lib/wf-normalize.sh)" '- **Clean up after merge:** yes'
+ok "normalize: nilai bermarkup tidak" "$(printf -- '- **Bersihkan setelah merge:** tidak\n' | bash scripts/lib/wf-normalize.sh)" '- **Clean up after merge:** no'
+mkdir -p "$tmp/nowf" && git init -q "$tmp/nowf" 2>/dev/null
+ok "workflow.sh: tanpa docs/WORKFLOW.md tidak menulis ke stderr" "$(cd "$tmp/nowf" && bash "$root/scripts/workflow.sh" 2>&1 | wc -c | tr -d ' ')" 0
+ok "label.sh --all: label kustom tidak diperluas dengan bawaan/lama" "$(cd "$tmp/plain" && AICREW_LABEL_INTEGRATED=shipped bash "$root/scripts/label.sh" integrated --all | tr '\n' ' ')" 'shipped '
+ok "label.sh --json: array JSON nama efektif + alias" "$(cd "$tmp/plain" && bash "$root/scripts/label.sh" integrated --json)" '["integrated","di-integrasi"]'
+ok "preflight: pesan menyebut agent-after-qa, bukan agen-setelah-QA" "$(grep -c 'agen-setelah' scripts/preflight.sh)" 0
+
+# 3s-3. penjaga: tidak ada kunci/nilai/skrip/opsi Indonesia di permukaan teknis (kecuali bagian Deprecated aliases)
+IDTOK='Bahasa artefak|Cabang integrasi|Bersihkan setelah merge|Pemeriksaan CVE|Paket privat:|Kartu Done|Board kanban|Basis worktree|Role aktif|Kode ada|Tutup issue setelah|Label (integrasi|discovery|menunggu|tanpa|keputusan|epic belum)|Profil:|agen-setelah-|di-integrasi|keputusan-otomatis|belum-dipecah|tanpa-induk|menunggu-rilis|alur-terjadwal|terintegrasi\.sh|--(versi|sejak|tanggal|tulis|ekstrak|buka-pr|cek|hitung|parse-badan|setelah-merge|tandai)([^a-z-]|$)'
+for f in templates/WORKFLOW.md templates/*.md skills/*/SKILL.md agents/*.md .github/workflows/release.yml; do
+  ok "penjaga: tanpa nama teknis Indonesia di $f" "$(grep -vE '^\*\*Deprecated aliases' "$f" | grep -cE "$IDTOK")" 0
+done
+ok "penjaga: README tanpa nama teknis Indonesia di luar Deprecated aliases" "$(grep -vE '^\*\*Deprecated aliases' README.md | grep -cE "$IDTOK")" 0
 
 [ "$fails" = 0 ] && echo "SEMUA LULUS" || { echo "$fails GAGAL"; exit 1; }

@@ -20,7 +20,7 @@ while [ $# -gt 0 ]; do case "$1" in
   --sleep) sleep_s="$2"; shift 2 ;; --max-rounds) max_rounds="$2"; shift 2 ;; --stuck) stuck_max="$2"; shift 2 ;; --wait) wait_s="$2"; shift 2 ;; --wait-max) wait_max="$2"; shift 2 ;;
   --idle-limit) idle_limit="$2"; shift 2 ;; --round-timeout) round_timeout="$2"; shift 2 ;;
   --max-total) max_total="$2"; shift 2 ;; --reset-total) reset_total=1; shift ;; --prompt) prompt="$2"; shift 2 ;; *) echo "argumen tak dikenal: $1" >&2; exit 64 ;; esac; done
-claude="${AICREW_CLAUDE:-claude}"; L_INT="$(bash "$here/label.sh" integrated)"
+claude="${AICREW_CLAUDE:-claude}"; L_INT="$(bash "$here/label.sh" integrated --json)"
 g="$(git rev-parse --git-common-dir)" && d="$(cd "$g/.." && pwd)/.aicrew"; mkdir -p "$d"; run="$(date +%Y%m%d-%H%M%S)"   # nama unik per jalan untuk arsip keluaran putaran (round-N.log ditimpa tiap jalan)
 [ "$reset_total" = 1 ] && rm -f "$d/total"
 log() { printf '%s %s\n' "$(date '+%F %T')" "$*" | tee -a "$d/autopilot.log"; printf '%s\n' "$*" > "$d/autopilot.status"; }
@@ -105,8 +105,8 @@ errs=0; same=0; was_limit=0; last="$(fingerprint)"
 [ "$(cat "$d/last-round-fp" 2>/dev/null)" = "$last" ] && same=1
 for ((i=1; i<=max_rounds; i++)); do
   cur_round=$i
-  # issue berlabel integrasi ($L_INT, bawaan di-integrasi) sudah selesai (menunggu merge ke main oleh owner): bukan pekerjaan tersisa
-  open="$(gh issue list --state open --limit 200 --json number,labels,body | jq --arg l "$L_INT" '[.[]|select(.labels|map(.name)|(index($l) or index("epic"))|not)]')"  # epic = pengelompokan journey, bukan pekerjaan
+  # issue berlabel integrasi ($L_INT, bawaan integrated; nama lama di-integrasi tetap dikenali) sudah selesai (menunggu merge ke main oleh owner): bukan pekerjaan tersisa
+  open="$(gh issue list --state open --limit 200 --json number,labels,body | jq --argjson ls "$L_INT" '[.[]|select((.labels|map(.name)) as $n|(any($ls[]; . as $x|$n|index($x)) or ($n|index("epic")))|not)]')"  # epic = pengelompokan journey, bukan pekerjaan
   n_open="$(jq length <<<"$open")"
   n_wait="$(jq '[.[]|select(.labels|map(.name)|index("needs-principal"))]|length' <<<"$open")"
   [ "$n_open" = 0 ] && { set_phase selesai "$((i-1))"; note "autopilot: semua issue selesai (putaran $((i-1)))"; exit 0; }

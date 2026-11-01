@@ -2,7 +2,7 @@
 # aicrew cleanup: laporkan cabang dan worktree yang TERBUKTI ter-merge dan aman dihapus. Pakai:
 #   cleanup.sh [--apply] [--no-fetch] [--only orkestrator] [--issue <n>]    (tanpa --apply hanya melaporkan)
 #   cleanup.sh --hitung                      dipakai preflight: cetak jumlah cabang ter-merge (bukti leluhur saja), TANPA fetch/REST/GraphQL
-#   cleanup.sh --setelah-merge --issue <n>   dipakai orchestrate langkah 8: = --only orkestrator --issue <n>; opsi WORKFLOW.md "Bersihkan setelah merge:" ya (bawaan,
+#   cleanup.sh --setelah-merge --issue <n>   dipakai orchestrate langkah 8: = --only orkestrator --issue <n>; opsi WORKFLOW.md "Clean up after merge:" yes (bawaan,
 #                                            juga bila baris hilang) = --apply; laporkan (dan nilai tak dikenal) = hanya laporan; tidak = keluar 0 tanpa apa pun.
 # Keluaran TSV: jenis  nama  sha  bukti  aksi   (jenis worktree|cabang-lokal|cabang-remote; bukti leluhur|pr-merged|-; aksi hapus|dihapus|lewati:<alasan>).
 # --apply menghapus berurutan: worktree (tanpa --force), cabang lokal (git branch -d, cadangan update-ref -d <ref> <sha> yang hanya berhasil bila ujung belum berubah), remote
@@ -13,13 +13,13 @@
 # worktree kotor/terkunci/terlepas/di ~/orca/workspaces/. Hanya git dan REST (gh api), tanpa GraphQL. GitHub saja (backend lain: keluar 0).
 set -u
 here="$(dirname "$0")"; source "$here/ghx.sh"
-usage() { echo "pakai: cleanup.sh [--apply] [--no-fetch] [--only orkestrator] [--issue <n>] | --setelah-merge --issue <n>" >&2; exit 64; }
+usage() { echo "pakai: cleanup.sh [--apply] [--no-fetch] [--only orkestrator] [--issue <n>] | --after-merge --issue <n>" >&2; exit 64; }
 only=""; issue=""; fetch=1; apply=0; aftermerge=0; count=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --apply) apply=1 ;;
-    --hitung) count=1; fetch=0 ;;
-    --setelah-merge) aftermerge=1 ;;
+    --count|--hitung) count=1; fetch=0 ;;
+    --after-merge|--setelah-merge) aftermerge=1 ;;
     --no-fetch) fetch=0 ;;
     --only) only="${2:-}"; [ "$only" = orkestrator ] || usage; shift ;;
     --issue) issue="${2:-}"; [[ "$issue" =~ ^[0-9]+$ ]] || usage; shift ;;
@@ -32,12 +32,12 @@ tab="$(printf '\t')"; T="$(mktemp -d)"; trap 'rm -rf "$T"' EXIT; reponame="${top
 
 wf="$(bash "$here/workflow.sh" 2>/dev/null)"
 if [ "$aftermerge" = 1 ]; then
-  only=orkestrator; ol="$(grep -m1 'Bersihkan setelah merge' <<<"$wf")"
+  only=orkestrator; ol="$(grep -m1 'Clean up after merge' <<<"$wf")"
   if [ -z "$wf" ]; then apply=0                 # WORKFLOW.md tak terbaca: pilihan owner tak diketahui, jangan menghapus
   elif [ -z "$ol" ]; then apply=1               # baris hilang (pemasangan lama) = bawaan ya
   else                                          # baris ada: huruf kapital/markup (**..:**, `..`) ditoleransi; nilai tak terbaca = laporkan
-    opt="$(sed -E 's/.*Bersihkan setelah merge:?[*` ]*([A-Za-z]*).*/\1/' <<<"$ol" | tr 'A-Z' 'a-z')"
-    case "$opt" in ya) apply=1 ;; tidak) exit 0 ;; *) apply=0 ;; esac
+    opt="$(sed -E 's/.*Clean up after merge:?[*` ]*([A-Za-z]*).*/\1/' <<<"$ol" | tr 'A-Z' 'a-z')"
+    case "$opt" in yes) apply=1 ;; no) exit 0 ;; *) apply=0 ;; esac
   fi
 fi
 bk="$(sed -n 's/^[- ]*Backend: *\([A-Za-z]*\).*/\1/p' <<<"$wf" | head -1)"
@@ -52,7 +52,7 @@ if [ -z "$def" ]; then   # tanpa cabang bawaan, main bisa terbaca "ter-merge" ke
   [ "$count" = 0 ] || { echo 0; exit 0; }
   echo "cleanup: cabang bawaan tak dapat ditentukan (origin/HEAD kosong dan REST gagal); perbaiki: git remote set-head origin -a" >&2; exit 1
 fi
-integ="$(sed -n 's/^[- ]*.*Cabang integrasi: *\([A-Za-z0-9._\/-]*\).*/\1/p' <<<"$wf" | head -1 | sed 's/[.,;:]*$//')"
+integ="$(sed -n 's/^[- ]*.*Integration branch: *\([A-Za-z0-9._\/-]*\).*/\1/p' <<<"$wf" | head -1 | sed 's/[.,;:]*$//')"
 git show-ref --verify --quiet "refs/remotes/origin/${integ:-_}" || integ=""
 bases=""; for b in "$def" "$integ"; do [ -z "$b" ] || git show-ref --verify --quiet "refs/remotes/origin/$b" && bases="$bases $b"; done
 is_protected() { [ "$1" = "$def" ] || { [ -n "$integ" ] && [ "$1" = "$integ" ]; }; }

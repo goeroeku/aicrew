@@ -1,25 +1,25 @@
 #!/usr/bin/env bash
 # aicrew release-report: laporan calon rilis (cabang integrasi -> main) dari FAKTA GitHub + suite tes di salinan segar. GitHub/gh saja.
-#   release-report.sh [--integ CABANG] [--test-cmd "node --test"] [--out BERKAS] [--base main] [--buka-pr] [--dry-run] [--versi X.Y.Z]
-# Cabang integrasi default dibaca dari docs/WORKFLOW.md ("Cabang integrasi: <nama>"). Laporan ditulis ke --out (default .aicrew/release-report.md).
+#   release-report.sh [--integ CABANG] [--test-cmd "node --test"] [--out BERKAS] [--base main] [--open-pr] [--dry-run] [--version X.Y.Z]
+# Cabang integrasi default dibaca dari docs/WORKFLOW.md ("Integration branch: <nama>"). Laporan ditulis ke --out (default .aicrew/release-report.md).
 # PR integrasi -> base HANYA dibuka bila --buka-pr, vonis SIAP, dan tanpa --dry-run. Tidak pernah merge. Item daftar periksa yang butuh
 # penilaian (keamanan, smoke test, runbook) dicetak sebagai kotak kosong untuk diisi agen; skrip hanya memvonis fakta.
 # Exit: 0 SIAP, 1 BELUM SIAP, 64 argumen/cabang tidak diketahui.
 set -u
-here="$(cd "$(dirname "$0")" && pwd)"; L_INT="$(bash "$here/label.sh" integrated)"; L_AUTO="$(bash "$here/label.sh" auto)"
+here="$(cd "$(dirname "$0")" && pwd)"; L_INT="$(bash "$here/label.sh" integrated --json)"; L_AUTO="$(bash "$here/label.sh" auto --json)"
 integ=""; testcmd=""; out=""; base=main; open_pr=0; dry=0; versi=""; wf=docs/WORKFLOW.md
 while [ $# -gt 0 ]; do case "$1" in
   --integ) integ="$2"; shift 2 ;; --test-cmd) testcmd="$2"; shift 2 ;; --out) out="$2"; shift 2 ;; --base) base="$2"; shift 2 ;;
-  --buka-pr) open_pr=1; shift ;; --dry-run) dry=1; shift ;; --versi) versi="$2"; shift 2 ;; *) echo "argumen tak dikenal: $1" >&2; exit 64 ;; esac; done
-[ -n "$integ" ] || integ="$(grep -oE 'Cabang integrasi: [A-Za-z0-9._/-]+' "$wf" 2>/dev/null | head -1 | awk '{print $3}' | sed 's/[.]*$//')"
+  --open-pr|--buka-pr) open_pr=1; shift ;; --dry-run) dry=1; shift ;; --version|--versi) versi="$2"; shift 2 ;; *) echo "argumen tak dikenal: $1" >&2; exit 64 ;; esac; done
+[ -n "$integ" ] || integ="$({ bash "$here/lib/wf-normalize.sh" < "$wf"; } 2>/dev/null | grep -oE 'Integration branch: [A-Za-z0-9._/-]+' | head -1 | awk '{print $3}' | sed 's/[.]*$//')"
 [ -n "$integ" ] || { echo "release-report: cabang integrasi tidak diketahui (pakai --integ)" >&2; exit 64; }
 g="$(git rev-parse --git-common-dir)" && d="$(cd "$g/.." && pwd)/.aicrew"; mkdir -p "$d"; [ -n "$out" ] || out="$d/release-report.md"
 
 issues="$(gh issue list --state all --limit 200 --json number,title,state,labels)" || { echo "release-report: gagal membaca issue (BELUM SIAP)" >&2; exit 1; }
 prs="$(gh pr list --state all --limit 200 --json number,title,state,baseRefName,comments,body,labels,closingIssuesReferences)" || { echo "release-report: gagal membaca PR (BELUM SIAP)" >&2; exit 1; }
 merged="$(jq --arg b "$integ" '[.[]|select(.state=="MERGED" and .baseRefName==$b)]' <<<"$prs")"
-has() { jq --arg l "$1" 'map(select(.labels|map(.name)|index($l)))' <<<"$2"; }
-blocking="$(jq --arg l "$L_INT" '[.[]|select(.state=="OPEN" and ((.labels|map(.name)|(index($l) or index("epic")))|not))]' <<<"$issues")"
+has() { jq --argjson ls "$1" 'map(select((.labels|map(.name)) as $n|any($ls[]; . as $x|$n|index($x))))' <<<"$2"; }
+blocking="$(jq --argjson ls "$L_INT" '[.[]|select(.state=="OPEN" and (((.labels|map(.name)) as $n|(any($ls[]; . as $x|$n|index($x)) or ($n|index("epic"))))|not))]' <<<"$issues")"
 needs="$(jq '[.[]|select(.state=="OPEN" and ((.labels|map(.name)|index("epic"))|not))]' <<<"$issues" | jq 'map(select(.labels|map(.name)|index("needs-principal")))')"
 auto="$(has "$L_AUTO" "$issues")"
 noevid="$(jq '[.[]|select((.comments|map(.body)|map(contains("Bukti selesai"))|any)|not)]' <<<"$merged")"
@@ -83,7 +83,7 @@ fi
   echo; echo "## PR ter-merge ke $integ"; jq -r '.[]|"- #\(.number) \(.title)"' <<<"$merged"
   if [ -n "$versi" ] && grep -Eq '^[- 0-9.]*Release notes: *CHANGELOG\.md' "$wf" 2>/dev/null; then
     echo; echo "## Catatan rilis (draf)"
-    if draft="$(bash "$here/release-notes.sh" --versi "$versi" 2>"$d/release-notes.err")"; then printf '%s\n' "$draft"; else echo "(draf tidak dapat disusun: $(tail -n 1 "$d/release-notes.err" 2>/dev/null))"; fi
+    if draft="$(bash "$here/release-notes.sh" --version "$versi" 2>"$d/release-notes.err")"; then printf '%s\n' "$draft"; else echo "(draf tidak dapat disusun: $(tail -n 1 "$d/release-notes.err" 2>/dev/null))"; fi
     [ ! -s "$d/release-notes.err" ] || { echo; sed 's/^/> /' "$d/release-notes.err" | head -n 20; }
   fi
   echo; echo "## Issue"; jq -r '.[]|"- #\(.number) [\(.state)] \(.title)"' <<<"$issues"

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # aicrew board: pindahkan kartu issue di GitHub Project. Pakai: board.sh <owner> <nomor-project> <issue> <nama-status>
 # Contoh: board.sh goeroeku 2 3 "In review" (nama status tanpa beda huruf besar/kecil; bawaan GitHub: Backlog, Ready, In progress, In review, Done). Butuh scope gh 'project'. Kartu belum ada -> ditambahkan.
-# --sync (board.sh <owner> <nomor> --sync): status + progres epic, issue yang ditutup tanpa PR dipindah ke Done bila "Kartu Done: agen-setelah-merge", dan (opsional) menutup issue di-integrasi.
+# --sync (board.sh <owner> <nomor> --sync): status + progres epic, issue yang ditutup tanpa PR dipindah ke Done bila "Done card: agent-after-merge", dan (opsional) menutup issue di-integrasi.
 # Gagal tidak fatal bagi alur: label tetap sumber status; skrip ini hanya cermin kanban (exit != 0 = laporkan, lanjut).
 set -euo pipefail
 source "$(dirname "$0")/ghx.sh"  # cadangan REST saat GraphQL kena batas
@@ -22,7 +22,7 @@ if [ "${3:-}" = "--sync" ]; then
   repo="$(ghx_repo)"
   # WORKFLOW terbaru (bisa di cabang integrasi, bukan checkout aktif)
   wfc="$(bash "$(dirname "$0")/workflow.sh")"
-  disc="$(bash "$(dirname "$0")/label.sh" discovery)"; nsl="$(bash "$(dirname "$0")/label.sh" notsplit)"
+  disc="$(bash "$(dirname "$0")/label.sh" discovery)"; nsl="$(bash "$(dirname "$0")/label.sh" notsplit --json)"
   while read -r e; do
     [ -n "$e" ] || continue
     en="$(jq .number <<<"$e")"; kids="$(gh api "repos/$repo/issues/$en/sub_issues" --jq '.[].number' 2>/dev/null || true)"
@@ -38,7 +38,7 @@ if [ "${3:-}" = "--sync" ]; then
       [ "$ks" = OPEN ] && case "$ks_board" in "In progress"|"In review") active=$((active+1)) ;; esac
       is_disc=0; for dl in $disc; do grep -qwF -- "$dl" <<<"$kl" && is_disc=1; done; [ "$is_disc" = 1 ] || real=1
     done
-    notsplit=0; jq -e --arg l "$nsl" '(.labels // [])|map(.name)|index($l)' <<<"$e" >/dev/null 2>&1 && notsplit=1
+    notsplit=0; jq -e --argjson ls "$nsl" '(.labels // [])|map(.name) as $n|any($ls[]; . as $x|$n|index($x))' <<<"$e" >/dev/null 2>&1 && notsplit=1
     if [ "$unfinished" = 0 ] && [ "$real" = 1 ] && [ "$notsplit" = 0 ]; then want="In review"
     elif [ "$active" -gt 0 ] || [ "$done_n" -gt 0 ]; then want="In progress"; else want=Backlog; fi
     [ "$cards" = 0 ] || [ "$(st_of "$en")" = "$want" ] || bash "$0" "$owner" "$num" "$en" "$want" || true
@@ -51,19 +51,19 @@ if [ "${3:-}" = "--sync" ]; then
     elif [ "${cid#*$'\t'}" != "$cbody" ]; then gh api -X PATCH "repos/$repo/issues/comments/${cid%%$'\t'*}" -f body="$cbody" >/dev/null 2>&1 || true; fi
   done < <(ghx_issues open epic 100 number,body,labels | jq -c '.[]')
   # opsional: tutup issue anak yang sudah masuk cabang integrasi (GitHub hanya menutup issue lewat merge ke cabang bawaan,
-  # jadi progres sub-issue tertahan 0%); WORKFLOW.md: "Tutup issue setelah merge integrasi: ya"
-  if grep -qE '^[- ]*Tutup issue setelah merge integrasi: *ya' <<<"$wfc"; then
-    wl="$(bash "$(dirname "$0")/label.sh" waiting)"
-    for n in $(ghx_issues open "$(bash "$(dirname "$0")/label.sh" integrated)" 200 number,labels | jq -r --arg w "$wl" '.[]|select((.labels|map(.name)|index("epic"))|not)|select((.labels|map(.name)|index($w))|not)|.number'); do
+  # jadi progres sub-issue tertahan 0%); WORKFLOW.md: "Close issues after integration merge: yes"
+  if grep -qE '^[- ]*Close issues after integration merge: *yes' <<<"$wfc"; then
+    wl="$(bash "$(dirname "$0")/label.sh" waiting --json)"
+    for n in $(for il in $(bash "$(dirname "$0")/label.sh" integrated --all); do ghx_issues open "$il" 200 number,labels; done | jq -r --argjson w "$wl" '.[]|select((.labels|map(.name)|index("epic"))|not)|select(((.labels|map(.name)) as $n|any($w[]; . as $x|$n|index($x)))|not)|.number' | sort -un); do
       # hanya bila tepat satu PR merged dari issue-<n> dan terbukti masuk cabang integrasi (#28); selain itu tidak ditutup dan dilaporkan
       prs="$(gh api "repos/$repo/pulls?state=all&head=${repo%%/*}:issue-$n&per_page=100" 2>/dev/null | jq -r '[.[]|select(.merged_at!=null)|.number]|join(" ")' 2>/dev/null)" || prs=""
       case "$prs" in ""|*" "*) echo "board --sync: #$n tidak ditutup (butuh tepat satu PR merged dari issue-$n; ditemukan: ${prs:-tidak ada})"; continue ;; esac
-      if why="$(bash "$(dirname "$0")/terintegrasi.sh" "$prs" 2>&1)"; then ghx_issue_close "$n" "Sudah masuk cabang integrasi; ditutup sesuai WORKFLOW.md." || true
+      if why="$(bash "$(dirname "$0")/integrated.sh" "$prs" 2>&1)"; then ghx_issue_close "$n" "Sudah masuk cabang integrasi; ditutup sesuai WORKFLOW.md." || true
       else echo "board --sync: #$n tidak ditutup ($why)"; fi
     done
   fi
-  # cerminkan issue yang ditutup TANPA PR ke Done, hanya bila WORKFLOW.md menulis "Kartu Done: agen-setelah-merge"
-  grep -qE '^[- ]*Kartu Done: *agen-setelah-merge' <<<"$wfc" || { echo "board --sync: Kartu Done bukan agen-setelah-merge; tidak ada yang diubah"; finish; }
+  # cerminkan issue yang ditutup TANPA PR ke Done, hanya bila WORKFLOW.md menulis "Done card: agent-after-merge"
+  grep -qE '^[- ]*Done card: *agent-after-merge' <<<"$wfc" || { echo "board --sync: Done card bukan agent-after-merge; tidak ada yang diubah"; finish; }
   [ "$cards" = 1 ] || { skipped=$((skipped+1)); finish; }
   done_items="$(ghx_items "$owner" "$num")" || { skipped=$((skipped+1)); finish; }
   done_n="$(jq -r '.items[]|select(.status=="Done" and .content.type=="Issue")|.content.number' <<<"$done_items")"

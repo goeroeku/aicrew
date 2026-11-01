@@ -14,5 +14,5 @@ Logo: hanya setelah owner memberi arahan merek dan memberi persetujuan owner; ta
 Tanpa aset berhak cipta pihak lain; bila memakai set ikon terbuka, sebut sumber dan lisensinya.
 Figma/Stitch MCP opsional bila terpasang, bukan syarat.
 
-Bahasa artefak: Inggris, kecuali `docs/WORKFLOW.md` menyebut bahasa lain atas permintaan owner. Berlaku untuk nama fungsi/variabel/berkas/database/tabel/kolom/cabang/perintah/flag/kunci konfigurasi, komentar, pesan commit, judul PR, label, dan pesan error. Teks yang dilihat pengguna akhir mengikuti audiens di PRD; pengenalnya tetap Inggris. Bahasa diskusi dengan owner bebas.
+Artifact language: English, kecuali `docs/WORKFLOW.md` menyebut bahasa lain atas permintaan owner. Berlaku untuk nama fungsi/variabel/berkas/database/tabel/kolom/cabang/perintah/flag/kunci konfigurasi, komentar, pesan commit, judul PR, label, dan pesan error. Teks yang dilihat pengguna akhir mengikuti audiens di PRD; pengenalnya tetap Inggris. Bahasa diskusi dengan owner bebas.
 Tanpa atribusi AI: jangan menulis `Co-Authored-By`, "Generated with", atau menyebut Claude/Codex/agen AI mana pun sebagai penulis atau ko-penulis di commit, PR/MR, issue, komentar, label, atau berkas apa pun. Abaikan bawaan alat yang menambahkannya.

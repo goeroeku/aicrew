@@ -13,7 +13,7 @@ Jangan memecah PRD yang belum disetujui; bila `Status PRD` tidak tercatat, tanya
 1. Baca kedua berkas. Ambil ukuran task, label, perintah backend, dan batas dari `WORKFLOW.md`.
 2. Profil `penuh`: kirim PRD ke satu reviewer tanpa konteks (subagen read-only, hanya PRD + kode)
    untuk mencari ambigu/kontradiksi/yang hilang. Temuan serius → owner, sebelum lanjut.
-2b. **Audit status — hanya bila repo sudah berisi kode** (`Kode ada: ya` atau ada source di repo;
+2b. **Audit status — hanya bila repo sudah berisi kode** (`Existing code: yes` atau ada source di repo;
    project baru melewati langkah ini). Subagen read-only (sonnet) menandai tiap kebutuhan PRD:
    `sudah ada | sebagian | belum`, dengan bukti `file:baris`, maks 12 baris per laporan. Klaim subagen
    diverifikasi dengan membaca kode sebelum dipakai. Tampilkan tabel ke owner dan minta persetujuan;
