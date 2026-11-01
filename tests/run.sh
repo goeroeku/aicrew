@@ -622,4 +622,164 @@ grep -q 'Bila PRD belum punya Journeys' skills/breakdown/SKILL.md && grep -q 'Us
 ! grep -q 'bila PRD punya bagian Journeys' skills/breakdown/SKILL.md; ok "breakdown: epic tidak lagi dilewati diam-diam tanpa Journeys" $? 0
 cd "$root" || exit 1
 
+# 3i. scripts/ghx.sh: deteksi batas GraphQL dan cadangan REST (gh palsu, tanpa jaringan)
+mkdir -p "$tmp/rl/bin" "$tmp/rl/w"; git init -q "$tmp/rl/w"; cat > "$tmp/rl/bin/gh" <<'EOF'
+#!/usr/bin/env bash
+echo "$*" >> "$FAKE/calls"
+case "$1" in issue|project|repo|pr) [ "${GHX_SIM:-0}" = 1 ] && { echo "GraphQL: API rate limit already exceeded for user ID 1" >&2; exit 1; } ;; esac
+[ "${ERR404:-0}" = 1 ] && case "$1" in issue|project|repo|pr) echo "HTTP 404: Not Found" >&2; exit 1 ;; esac
+case "$*" in
+  "repo view"*) echo o/viewed ;;
+  "api users/o -q"*) echo "${OWNER_TYPE:-User}" ;;
+  "api graphql"*) printf 'HTTP/2.0 200 OK\nX-Ratelimit-Remaining: %s\n' "${REMAINING:-0}"; [ "${NORESET:-0}" = 1 ] || echo 'X-Ratelimit-Reset: 1793490517' ;;
+  "issue list"*) echo '[]' ;;
+  "api repos/o/r/issues?"*) [ "${RESTFAIL:-0}" = 1 ] && { echo "HTTP 500" >&2; exit 1; }
+    a="$*"; p="${a##*page=}"; p="${p%%&*}"; f="$FAKE/issues.json"; case "$a" in *labels=epic*) [ -f "$FAKE/issues-epic.json" ] && f="$FAKE/issues-epic.json" ;; esac
+    jq -c ".[$(((p-1)*100)):$((p*100))]" "$f" ;;
+  "api repos/o/r/issues/"*"/parent"*) echo "HTTP 404: Not Found" >&2; exit 1 ;;
+  "api repos/o/r/issues/7") cat "$FAKE/issue7.json" ;;
+  "api repos/o/r/issues/"[59]) a="$*"; n="${a##*/}"; echo "{\"id\":${n}000,\"body\":\"\"}" ;;
+  "project item-list"*) echo '{"items":[]}' ;;
+  "project view"*) echo PID ;;
+  "project field-list"*) echo '{"fields":[{"name":"Status","id":"F1","options":[{"name":"Done","id":"OD"}]}]}' ;;
+  "project item-add"*) echo '{"id":"PVTI_new"}' ;;
+  "api "*"/projectsV2/3/"*) [ -n "${PROJ_ERR:-}" ] && { echo "gh: Not Found (HTTP $PROJ_ERR)" >&2; echo '{"message":"Not Found"}'; exit 1; }
+    case "$*" in
+      *"/fields"*) cat "$FAKE/fields.json" ;;
+      *"/items?"*) a="$*"; p="${a##*page=}"; p="${p%%&*}"; jq -c ".[$(((p-1)*100)):$((p*100))]" "$FAKE/pitems.json" ;;
+      "api -X POST "*) case "$(cat "$FAKE/postmode" 2>/dev/null)" in
+        exists) echo "gh: Content already exists in this project (HTTP 422)" >&2; echo '{"message":"Content already exists in this project"}'; exit 1 ;;
+        other) echo "gh: Validation Failed (HTTP 422)" >&2; echo '{"message":"Validation Failed"}'; exit 1 ;;
+        *) echo '{"id":555}' ;; esac ;;
+      "api -X PATCH "*) cat > "$FAKE/patch.json"; echo '{}' ;;
+    esac ;;
+  "api -X "*) for a in "$@"; do case "$a" in body=*) printf '%s' "${a#body=}" > "$FAKE/body.out"
+    case "$*" in "api -X PATCH repos/o/r/issues/7"*) jq -n --arg b "${a#body=}" '{body:$b}' > "$FAKE/issue7.json" ;; esac ;; esac; done ;;
+esac
+EOF
+chmod +x "$tmp/rl/bin/gh"; export FAKE="$tmp/rl"; : > "$FAKE/calls"
+RL() { (cd "$tmp/rl/w" && PATH="$tmp/rl/bin:$PATH" bash -c 'source "$1/scripts/ghx.sh" || exit 99; shift; "$@"' _ "$root" "$@"); }
+r=""; for t in "GraphQL: API rate limit already exceeded" "RATE_LIMIT" "graphql_rate_limit" "Unknown owner type"; do RL ghx_is_limit "$t" 2>/dev/null; r="$r$?"; done
+ok "ghx_is_limit: 4 teks pemicu" "$r" 0000
+RL ghx_is_limit "HTTP 404: Not Found" 2>/dev/null; ok "ghx_is_limit: 404 bukan batas" $? 1
+ok "ghx_repo: GH_REPO menang" "$(export GH_REPO=x/y; RL ghx_repo 2>/dev/null)" x/y
+git -C "$tmp/rl/w" remote add origin git@github.com:a/b.git; ok "ghx_repo: batas -> remote ssh" "$(export GHX_SIM=1; RL ghx_repo 2>/dev/null)" a/b
+git -C "$tmp/rl/w" remote set-url origin https://github.com/a/b; ok "ghx_repo: batas -> remote https" "$(export GHX_SIM=1; RL ghx_repo 2>/dev/null)" a/b
+git -C "$tmp/rl/w" remote set-url origin https://github.com/a/b.git; ok "ghx_repo: batas -> remote https .git" "$(export GHX_SIM=1; RL ghx_repo 2>/dev/null)" a/b
+ok "ghx_repo: tanpa batas -> gh repo view (perilaku lama), remote origin diabaikan" "$(RL ghx_repo 2>/dev/null)" o/viewed
+git -C "$tmp/rl/w" remote set-url origin git@github.com-work:a/b.git; ok "ghx_repo: batas -> remote dengan alias host" "$(export GHX_SIM=1; RL ghx_repo 2>/dev/null)" a/b
+git -C "$tmp/rl/w" remote remove origin; ok "ghx_repo: tanpa remote -> gh repo view" "$(RL ghx_repo 2>/dev/null)" o/viewed
+(export GHX_SIM=1; RL ghx_repo >/dev/null 2>&1); ok "ghx_repo: batas tanpa remote -> exit non-0" $? 1
+ok "ghx_gql: sukses meneruskan stdout" "$(RL ghx_gql gh issue list --json number 2>/dev/null)" '[]'
+ok "ghx_gql: batas -> exit 75 dan GHX_REST=1" "$(export GHX_SIM=1; RL eval 'ghx_gql gh issue list; echo "rc=$? rest=${GHX_REST:-0}"' 2>/dev/null)" "rc=75 rest=1"
+(export GHX_SIM=1; RL ghx_gql gh issue list >/dev/null 2>"$tmp/rl/err"); ok "ghx_gql: satu baris pengumuman" "$(grep -c 'mode cadangan REST' "$tmp/rl/err")" 1
+ok "ghx_gql: 404 -> exit asli, GHX_REST tidak diset" "$(export ERR404=1; RL eval 'ghx_gql gh issue list; echo "rc=$? rest=${GHX_REST:-0}"' 2>/dev/null)" "rc=1 rest=0"
+ok "ghx_reset_time: epoch 1793490517 -> 23:48:37" "$(RL ghx_reset_time 2>/dev/null)" 23:48:37
+ok "ghx_owner_base: User" "$(RL ghx_owner_base o 2>/dev/null)" users/o
+ok "ghx_owner_base: Organization" "$(export OWNER_TYPE=Organization; RL ghx_owner_base o 2>/dev/null)" orgs/o
+ok "ghx_explain_limit: Remaining 0 -> penyebab dan jam reset" "$(RL ghx_explain_limit 2>/dev/null | grep -c 'batas GraphQL GitHub habis; reset 23:48:37 UTC')" 1
+ok "ghx_explain_limit: Remaining > 0 -> diam" "$(export REMAINING=7; RL ghx_explain_limit 2>/dev/null)" ""
+
+# 3i-2. ghx: operasi issue (GraphQL identik; batas -> REST sekali)
+git -C "$tmp/rl/w" remote add origin https://github.com/o/r.git
+jq -n '[range(1;151)|{number:.,title:"t\(.)",body:(if .%7==0 then null else "b" end),state:"open",labels:[{name:"epic"}]}+(if .%5==0 then {pull_request:{url:"x"}} else {} end)]' > "$FAKE/issues.json"
+echo '{"body":null}' > "$FAKE/issue7.json"
+: > "$FAKE/calls"; RL ghx_issues open epic 100 number,body >/dev/null 2>&1
+ok "ghx_issues: tanpa batas = panggilan identik" "$(grep -c '^issue list --state open --label epic --limit 100 --json number,body$' "$FAKE/calls")" 1
+R="$(export GHX_SIM=1; RL ghx_issues open epic 100 number,body 2>/dev/null)"
+ok "ghx_issues: batas -> REST tepat limit, tanpa PR" "$(jq 'length' <<<"$R")/$(jq '[.[]|select(.number%5==0)]|length' <<<"$R")" 100/0
+ok "ghx_issues: REST state huruf besar" "$(jq -r '.[0].state' <<<"$R")" OPEN
+ok "ghx_issues: REST body null -> teks kosong" "$(jq -c '[.[]|select(.number==7)|.body]' <<<"$R")" '[""]'
+: > "$FAKE/calls"; (export GHX_SIM=1; RL eval 'set -euo pipefail; a="$(ghx_issues open epic 100 number,body)"; b="$(ghx_issues open epic 100 number,body)"; :' >/dev/null 2>&1)
+ok "ghx_issues: setelah batas (di bawah set -e), panggilan berikutnya tidak memanggil 'issue list'" "$(grep -c '^issue list' "$FAKE/calls")" 1
+: > "$FAKE/calls"; (export GHX_SIM=1 RESTFAIL=1; RL ghx_issues open epic 100 number,body >/dev/null 2>&1); rc=$?
+ok "ghx_issues: REST juga gagal -> exit non-0 tanpa loop" "$([ $rc != 0 ] && echo gagal)/$(grep -c '^api repos/o/r/issues?' "$FAKE/calls")" gagal/1
+: > "$FAKE/calls"; (export ERR404=1; RL ghx_issues open epic 100 number,body >/dev/null 2>&1); rc=$?
+ok "ghx_issues: 404 bukan batas -> tanpa fallback REST" "$([ $rc != 0 ] && echo gagal)/$(grep -c '^api repos' "$FAKE/calls")" gagal/0
+ok "ghx_issue_body: REST body null -> teks kosong, bukan 'null'" "$(export GHX_SIM=1; RL ghx_issue_body 7 2>/dev/null)" ""
+echo '{"body":"abc"}' > "$FAKE/issue7.json"; ok "ghx_issue_body: REST teks" "$(export GHX_SIM=1; RL ghx_issue_body 7 2>/dev/null)" abc
+B='a "q" $HOME `x`'$'\n''- [ ] #5'
+(export GHX_SIM=1; RL ghx_issue_set_body 7 "$B" >/dev/null 2>&1); ok "ghx_issue_set_body: badan utuh via REST" "$(cat "$FAKE/body.out")" "$B"
+: > "$FAKE/calls"; (export GHX_SIM=1; RL ghx_issue_close 7 "Sudah masuk" >/dev/null 2>&1)
+ok "ghx_issue_close: REST = komentar lalu tutup" "$(grep -E '^api -X (POST|PATCH) repos/o/r/issues/7' "$FAKE/calls" | awk '{print $3}' | tr '\n' ' ')" "POST PATCH "
+
+# 3i-3. epic-link.sh memakai pustaka: GraphQL diblokir -> REST
+jq -n '[{number:1,title:"E",body:"- [ ] #3",state:"open",labels:[{name:"epic"}]},{number:2,title:"orfan",body:"",state:"open",labels:[]},{number:3,title:"anak",body:"",state:"open",labels:[]}]' > "$FAKE/issues.json"; jq -c '[.[0]]' "$FAKE/issues.json" > "$FAKE/issues-epic.json"
+out="$(cd "$tmp/rl/w" && GHX_SIM=1 PATH="$tmp/rl/bin:$PATH" bash "$root/scripts/epic-link.sh" --check 2>/dev/null)"; rc=$?
+ok "epic-link --check: GraphQL diblokir -> yatim lewat REST, exit 3" "$rc|$out" "3|yatim: #2 orfan"
+echo '{"body":"- [ ] #4"}' > "$FAKE/issue7.json"
+out="$(cd "$tmp/rl/w" && GHX_SIM=1 PATH="$tmp/rl/bin:$PATH" bash "$root/scripts/epic-link.sh" 7 9 2>/dev/null)"
+ok "epic-link <epic> <anak>: GraphQL diblokir -> daftar centang lewat REST" "$out|$(jq -r .body "$FAKE/issue7.json" | tail -1)" "epic-link: #9 -> epic #7|- [ ] #9"
+
+# 3i-4. ghx: operasi kartu project (GraphQL identik; batas -> REST; id GraphQL string vs REST angka)
+FU='[{"id":434173138,"name":"Title","data_type":"title"},{"id":434173140,"name":"Status","data_type":"single_select","options":[{"id":"f75ad846","name":"Backlog"},{"id":"df73e18b","name":"In review"},{"id":"98236657","name":"Done"}]}]'
+FO='[{"id":434173138,"name":{"html":"Title","raw":"Title"}},{"id":434173140,"name":{"html":"Status","raw":"Status"},"options":[{"id":"f75ad846","name":{"html":"Backlog","raw":"Backlog"}},{"id":"df73e18b","name":{"html":"In review","raw":"In review"}},{"id":"98236657","name":{"html":"Done","raw":"Done"}}]}]'
+echo "$FU" > "$FAKE/fields.json"
+echo '[{"id":285528753,"node_id":"PVTI_x","content_type":"Issue","content":{"number":5},"fields":[{"id":434173140,"value":{"id":"df73e18b","name":{"html":"In review","raw":"In review"}}}]},{"id":285528754,"node_id":"PVTI_y","content_type":"Issue","content":{"number":6},"fields":[]}]' > "$FAKE/pitems.json"
+: > "$FAKE/calls"; ok "ghx_items: tanpa batas = panggilan identik" "$(RL ghx_items o 3 2>/dev/null)|$(grep -c '^project item-list 3 --owner o --limit 200 --format json$' "$FAKE/calls")" '{"items":[]}|1'
+ok "ghx_items: REST user (nama kolom string)" "$(export GHX_SIM=1; RL ghx_items o 3 2>/dev/null | jq -c '[.items[]|[.content.number,.content.type,.status]]')" '[[5,"Issue","In review"],[6,"Issue",null]]'
+echo "$FO" > "$FAKE/fields.json"
+ok "ghx_items: REST org (nama kolom {raw})" "$(export GHX_SIM=1 OWNER_TYPE=Organization; RL ghx_items o 3 2>/dev/null | jq -c '[.items[]|[.content.number,.status]]')" '[[5,"In review"],[6,null]]'
+ok "ghx_status_field: REST org, opsi dinormalkan" "$(export GHX_SIM=1 OWNER_TYPE=Organization; RL ghx_status_field o 3 2>/dev/null | jq -c '[.id,(.options|map(.name))]')" '[434173140,["Backlog","In review","Done"]]'
+echo "$FU" > "$FAKE/fields.json"
+ok "ghx_status_field: REST user, opsi dinormalkan" "$(export GHX_SIM=1; RL ghx_status_field o 3 2>/dev/null | jq -c '[.id,(.options|map(.name))]')" '[434173140,["Backlog","In review","Done"]]'
+ok "ghx_status_field: GraphQL = panggilan identik" "$(RL ghx_status_field o 3 2>/dev/null | jq -r .id)" F1
+: > "$FAKE/calls"; ok "ghx_card_add: GraphQL = item-add identik" "$(RL ghx_card_add o 3 5 2>/dev/null)|$(grep -c '^project item-add 3 --owner o --url https://github.com/o/viewed/issues/5 --format json$' "$FAKE/calls")" 'PVTI_new|1'
+: > "$FAKE/calls"; rm -f "$FAKE/postmode"
+ok "ghx_card_add: REST sukses, id kartu dari respons" "$(export GHX_SIM=1; RL ghx_card_add o 3 9 2>/dev/null)" 555
+ok "ghx_card_add: REST memakai id NUMERIK issue" "$(grep -c -- '-X POST users/o/projectsV2/3/items -f type=Issue -F id=9000' "$FAKE/calls")" 1
+echo exists > "$FAKE/postmode"
+ok "ghx_card_add: 422 already exists = sukses, id dari daftar" "$(export GHX_SIM=1; RL ghx_card_add o 3 5 2>/dev/null)" 285528753
+echo other > "$FAKE/postmode"; (export GHX_SIM=1; RL ghx_card_add o 3 5 >/dev/null 2>&1); rc=$?
+ok "ghx_card_add: 422 selain already exists -> exit non-0" "$([ $rc != 0 ] && [ $rc != 78 ] && echo gagal)" gagal
+rm -f "$FAKE/postmode"
+(export GHX_SIM=1; RL ghx_card_set o 3 285528753 434173140 df73e18b >/dev/null 2>&1)
+ok "ghx_card_set: REST body PATCH persis" "$(jq -c . "$FAKE/patch.json")" '{"fields":[{"id":434173140,"value":"df73e18b"}]}'
+: > "$FAKE/calls"; rm -f "$FAKE/patch.json"; (export GHX_SIM=1; RL ghx_card_set o 3 PVTI_x PVTSSF_abc df73e18b >/dev/null 2>&1)
+ok "ghx_card_set: id GraphQL (string) diterjemahkan ke id REST" "$(grep -c -- '-X PATCH users/o/projectsV2/3/items/285528753' "$FAKE/calls")|$(jq -c '.fields[0].id' "$FAKE/patch.json")" '1|434173140'
+: > "$FAKE/calls"; ok "ghx_card_set: GraphQL = project view lalu item-edit" "$(RL ghx_card_set o 3 PVTI_x F1 OD >/dev/null 2>&1; grep -cE '^project (view 3 --owner o --format json -q .id|item-edit --id PVTI_x --project-id PID --field-id F1 --single-select-option-id OD)$' "$FAKE/calls")" 2
+(export GHX_SIM=1 PROJ_ERR=404; RL ghx_items o 3 >/dev/null 2>"$tmp/rl/err"); rc=$?
+ok "ghx_items: REST kartu 404 -> exit 77 dengan petunjuk scope project" "$rc|$(grep -c "scope 'project'" "$tmp/rl/err")" '77|1'
+
+# 3i-5. board.sh memakai pustaka: batas -> REST; langkah khusus GraphQL dilewati dengan PERINGATAN
+mkdir -p "$tmp/rl/w/docs"; BD() { (cd "$tmp/rl/w" && PATH="$tmp/rl/bin:$PATH" bash "$root/scripts/board.sh" "$@"); }
+printf -- '- Kartu Done: agen-setelah-merge.\n' > "$tmp/rl/w/docs/WORKFLOW.md"
+: > "$FAKE/calls"; rm -f "$FAKE/patch.json" "$FAKE/body.out"
+(export GHX_SIM=1; BD o 3 --sync >"$tmp/rl/out" 2>"$tmp/rl/err"); rc=$?
+ok "board --sync: batas -> exit 0, status epic dipindah lewat REST (Backlog)" "$rc|$(jq -c '.fields[0].value' "$FAKE/patch.json" 2>/dev/null)" '0|"f75ad846"'
+ok "board --sync: batas -> PERINGATAN 1 langkah dilewati" "$(grep -c 'PERINGATAN: 1 langkah dilewati (batas GraphQL), jalankan --sync lagi setelah reset' "$tmp/rl/err")" 1
+ok "board --sync: anak proses tidak memanggil GraphQL lagi (hanya satu percobaan 'project')" "$(grep -c '^project ' "$FAKE/calls")" 1
+ok "board --sync: komentar progres epic tetap ditulis" "$(cat "$FAKE/body.out")" $'<!-- aicrew-progress -->\naicrew-progress: 0/1 Done'
+: > "$FAKE/calls"; (BD o 3 --sync >"$tmp/rl/out" 2>"$tmp/rl/err"); rc=$?
+ok "board --sync: tanpa batas -> exit 0 tanpa PERINGATAN" "$rc|$(grep -c PERINGATAN "$tmp/rl/err")" '0|0'
+printf -- '- Kartu Done: agen-setelah-merge.\n- Tutup issue setelah merge integrasi: ya\n' > "$tmp/rl/w/docs/WORKFLOW.md"
+: > "$FAKE/calls"; rm -f "$FAKE/patch.json"
+(export GHX_SIM=1 PROJ_ERR=404; BD o 3 --sync >"$tmp/rl/out" 2>"$tmp/rl/err"); rc=$?
+ok "board --sync: REST kartu 404 -> exit 0, 2 langkah dilewati, tidak ada PATCH kartu, tutup issue di-integrasi tetap jalan" "$rc|$(grep -c 'PERINGATAN: 2 langkah dilewati' "$tmp/rl/err")|$([ -e "$FAKE/patch.json" ] && echo patch || echo nopatch)|$(grep -c 'PATCH repos/o/r/issues/[23] -f state=closed' "$FAKE/calls")|$(grep -c -- '-X POST repos/o/r/issues/1/comments' "$FAKE/calls")" '0|1|nopatch|2|0'
+ok "board <owner> <n> <issue> Done: batas -> PATCH opsi Done via REST" "$(export GHX_SIM=1; BD o 3 5 Done 2>/dev/null)|$(jq -c '.fields[0].value' "$FAKE/patch.json")" 'board: #5 -> Done|"98236657"'
+(export GHX_SIM=1 PROJ_ERR=403; BD o 3 5 Done >/dev/null 2>"$tmp/rl/err"); rc=$?
+ok "board <owner> <n> <issue> Done: REST kartu 403 -> exit non-0 dengan petunjuk scope" "$([ $rc != 0 ] && echo gagal)|$(grep -c "scope 'project'" "$tmp/rl/err")" 'gagal|1'
+
+# 3i-6. pr-merge-check.sh: tetap menolak saat GraphQL habis, tetapi menjelaskan penyebab dan jam reset
+PM() { (cd "$tmp/rl/w" && PATH="$tmp/rl/bin:$PATH" bash "$root/scripts/pr-merge-check.sh" 15 main 2>&1); }
+out="$(export GHX_SIM=1; PM)"; rc=$?
+ok "pr-merge-check: GraphQL habis -> exit 1, GAGAL, batas GraphQL, jam reset" "$rc|$(grep -c '^GAGAL' <<<"$out")|$(grep -c 'batas GraphQL GitHub habis; reset 23:48:37 UTC' <<<"$out")" '1|1|1'
+out="$(export GHX_SIM=1 NORESET=1; PM)"; rc=$?
+ok "pr-merge-check: header reset hilang -> tetap menolak, pesan batas tanpa jam" "$rc|$(grep -c 'batas GraphQL GitHub habis\. Tunggu' <<<"$out")|$(grep -c 'reset 23' <<<"$out")" '1|1|0'
+out="$(export REMAINING=7; PM)"; rc=$?
+ok "pr-merge-check: kegagalan biasa (basis salah) -> tanpa baris Penyebab" "$rc|$(grep -c '^GAGAL: basis' <<<"$out")|$(grep -c '^Penyebab' <<<"$out")" '1|1|0'
+
+# 3i-7. README menjelaskan mode cadangan REST dan perilakunya
+grep -q 'mode cadangan REST' README.md && grep -q 'langkah dilewati' README.md; ok "README: mode cadangan REST dan PERINGATAN langkah dilewati" $? 0
+
+# 3i-8. perbaikan hasil review akhir
+jq -n '[range(1;101)|{number:.,title:"t",body:("x"*12000),state:"open",labels:[]}]' > "$FAKE/issues.json"
+R="$(export GHX_SIM=1; RL ghx_issues open - 100 number,body 2>/dev/null)"
+ok "ghx_issues: halaman REST >1 MB tidak melewati batas argumen" "$(jq 'length' <<<"$R" 2>/dev/null)" 100
+jq -n '[range(1;101)|{id:.,node_id:"n\(.)",content_type:"Issue",content:{number:.},fields:[{id:434173140,value:{name:{raw:"Done"}}}],pad:("x"*12000)}]' > "$FAKE/pitems.json"; echo "$FU" > "$FAKE/fields.json"
+ok "ghx_items: halaman REST >1 MB" "$(export GHX_SIM=1; RL ghx_items o 3 2>/dev/null | jq '.items|length')" 100
+ok "ghx: GHX_STATE tidak berbasis PID" "$(RL eval 'case "$GHX_STATE" in *.$$) echo pid ;; *) echo acak ;; esac')" acak
+D="$(mktemp -d)"; (export TMPDIR="$D" GHX_SIM=1; RL ghx_gql gh issue list >/dev/null 2>&1; PM >/dev/null 2>&1)
+ok "ghx: tidak ada berkas status tersisa" "$(ls "$D" | wc -l | tr -d ' ')" 0; rm -rf "$D"
+
 [ "$fails" = 0 ] && echo "SEMUA LULUS" || { echo "$fails GAGAL"; exit 1; }
