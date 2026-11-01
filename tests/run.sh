@@ -782,4 +782,20 @@ ok "ghx: GHX_STATE tidak berbasis PID" "$(RL eval 'case "$GHX_STATE" in *.$$) ec
 D="$(mktemp -d)"; (export TMPDIR="$D" GHX_SIM=1; RL ghx_gql gh issue list >/dev/null 2>&1; PM >/dev/null 2>&1)
 ok "ghx: tidak ada berkas status tersisa" "$(ls "$D" | wc -l | tr -d ' ')" 0; rm -rf "$D"
 
+# 3j-1. cve-check.sh --list: pengurai lockfile (tanpa jaringan)
+mkdir -p "$tmp/cve"; CV="bash $root/scripts/cve-check.sh"
+cat > "$tmp/cve/package-lock.json" <<'EOF'
+{"lockfileVersion":3,"packages":{"":{"name":"x"},"node_modules/lodash":{"version":"4.17.15"},"node_modules/@scope/pkg":{"version":"1.2.3"},"node_modules/a/node_modules/lodash":{"version":"3.0.0"},"node_modules/jest":{"version":"29.0.0","dev":true},"node_modules/ln":{"link":true}}}
+EOF
+L() { $CV --list "$1" 2>"$tmp/cve/err" | tr '\t' ':' | paste -sd'|' -; }
+ok "cve --list npm: nama dari node_modules terdalam, dev:true -> dev, link dilewati" "$(L "$tmp/cve/package-lock.json")" 'npm:@scope/pkg:1.2.3:prod|npm:jest:29.0.0:dev|npm:lodash:3.0.0:prod|npm:lodash:4.17.15:prod'
+echo '{"lockfileVersion":1,"dependencies":{"a":{"version":"1.0.0"}}}' > "$tmp/cve/v1/package-lock.json" 2>/dev/null || { mkdir -p "$tmp/cve/v1"; echo '{"lockfileVersion":1,"dependencies":{"a":{"version":"1.0.0"}}}' > "$tmp/cve/v1/package-lock.json"; }
+ok "cve --list npm lockfileVersion 1 -> kosong + 'tidak lengkap'" "$(L "$tmp/cve/v1/package-lock.json")|$(grep -c 'tidak lengkap' "$tmp/cve/err")" '|1'
+mkdir -p "$tmp/cve/go"; printf 'module example.com/m\n\ngo 1.21\n\nrequire (\n\tgolang.org/x/net v0.7.0\n\t// komentar\n\tgithub.com/pkg/errors v0.9.1 // indirect\n)\n\nrequire github.com/google/uuid v1.3.0\n' > "$tmp/cve/go/go.mod"
+ok "cve --list go.mod: blok dan baris tunggal, awalan v dibuang, indirect tetap prod" "$(L "$tmp/cve/go/go.mod")" 'Go:github.com/google/uuid:1.3.0:prod|Go:github.com/pkg/errors:0.9.1:prod|Go:golang.org/x/net:0.7.0:prod'
+mkdir -p "$tmp/cve/py"; printf '# komentar\nDjango==3.0\nrequests[security]==2.0.0 --hash=sha256:abc\nFlask_Login==0.5.0 ; python_version > "3"\nnumpy>=1.0\n-r other.txt\ngit+https://example.com/x.git#egg=x\n' > "$tmp/cve/py/requirements.txt"
+ok "cve --list requirements: nama==versi, extras/hash dibuang, bentuk lain dilewati dan dihitung" "$(L "$tmp/cve/py/requirements.txt")|$(grep -c 'tidak lengkap: 3 baris' "$tmp/cve/err")" 'PyPI:django:3.0:prod|PyPI:flask-login:0.5.0:prod|PyPI:requests:2.0.0:prod|1'
+printf 'pytest==7.0.0\n' > "$tmp/cve/py/requirements-dev.txt"; ok "cve --list requirements-dev.txt -> lingkup dev" "$(L "$tmp/cve/py/requirements-dev.txt")" 'PyPI:pytest:7.0.0:dev'
+echo "gem 'rails'" > "$tmp/cve/Gemfile"; $CV --list "$tmp/cve/Gemfile" >/dev/null 2>&1; ok "cve --list Gemfile -> exit 64" $? 64
+
 [ "$fails" = 0 ] && echo "SEMUA LULUS" || { echo "$fails GAGAL"; exit 1; }
