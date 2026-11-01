@@ -1357,4 +1357,45 @@ if python3 -c 'import yaml' 2>/dev/null; then python3 -c 'import sys,yaml; yaml.
 # 3m-5. skill cve-audit: pola jembatan untuk repo yang dirilis dari cabang non-bawaan (#42)
 grep -q 'Repo yang dirilis dari cabang non-bawaan' skills/cve-audit/SKILL.md && grep -q 'target-branch' skills/cve-audit/SKILL.md && grep -q 'ref:' skills/cve-audit/SKILL.md && grep -q 'add/add' skills/cve-audit/SKILL.md && grep -q 'menunggu-rilis' skills/cve-audit/SKILL.md; ok "skill cve-audit: pola jembatan (target-branch, ref:, add/add, menunggu-rilis)" $? 0
 
+# 3n-1. release-notes.sh: bagian catatan rilis dari baris bertanda di badan PR (#30)
+RN="$tmp/rn"; mkdir -p "$RN/fx" "$RN/w/docs"; git init -q --bare "$RN/o.git"; git init -q "$RN/w"
+(cd "$RN/w" && git remote add origin "$RN/o.git" && git checkout -q -b main && git commit -q --allow-empty -m A && git tag v0.1.0 && git commit -q --allow-empty -m PR10 && git tag v0.2.0 \
+  && for n in 11 12 13 14 15 16 17; do git commit -q --allow-empty -m "PR$n"; git tag "p$n"; done \
+  && git checkout -q -b integrasi v0.2.0 && git commit -q --allow-empty -m PR30 && git tag p30 && git checkout -q main && git push -q origin main integrasi --tags)
+SH() { git -C "$RN/w" rev-parse "$1"; }
+NP() { jq -nc --argjson n "$1" --arg base "$2" --arg sha "$3" --arg body "$4" --arg lab "$5" --argjson merged "${6:-true}" '{number:$n,title:("PR "+($n|tostring)),merged_at:(if $merged then "2026-11-01T00:00:00Z" else null end),merge_commit_sha:$sha,base:{ref:$base},body:$body,labels:($lab|split(",")|map(select(.!="")|{name:.}))}'; }
+PG="$RN/fx/repos_o_r_pulls_state_closed_per_page_100_page"
+{ NP 12 main "$(SH p12)" $'Catatan rilis: Fixed - bug dua\r\nPerubahan perilaku: bawaan x berubah\r' ""
+  NP 13 main "$(SH p13)" $'intro\n```\nCatatan rilis: Added - dalam blok kode\n```\n<!--\nCatatan rilis: Changed - dalam komentar\n-->\nCatatan rilis: -' ""
+  NP 14 main "$(SH p14)" 'tidak ada baris bertanda' ""
+  NP 15 main "$(SH p15)" 'Catatan rilis: Secuirty - typo kategori' ""
+  NP 16 main "$(SH p16)" 'Catatan rilis: Changed - perbaikan auth' "needs-security"
+  NP 17 main "$(SH p17)" '- Catatan rilis: Security - perbaiki sesi' ""
+  NP 30 integrasi "$(SH p30)" 'Catatan rilis: Added - fitur integrasi' ""; } | jq -sc . > "${PG}_1"
+{ NP 11 main "$(SH p11)" 'Catatan rilis: Added - fitur satu' ""
+  NP 10 main "$(SH v0.2.0)" 'Catatan rilis: Added - fitur lama' ""
+  NP 7 main "$(SH v0.1.0)" 'Catatan rilis: Added - sangat lama' ""
+  NP 18 main "$(SH p18 2>/dev/null || SH p17)" 'Catatan rilis: Added - tidak di-merge' "" false
+  NP 19 fitur "$(SH p17)" 'Catatan rilis: Added - basis lain' ""; } | jq -sc . > "${PG}_2"
+echo '[]' > "${PG}_3"; echo '{"default_branch":"main"}' > "$RN/fx/repos_o_r"
+printf -- '- Catatan rilis: CHANGELOG.md\n' > "$RN/w/docs/WORKFLOW.md"
+RNS() { (cd "$RN/w" && GH_REPO=o/r MI_FX="$RN/fx" PATH="$MI/bin:$PATH" bash "$root/scripts/release-notes.sh" "$@"); }
+EXP=$'## [0.3.0] - 2026-11-02\n\n### Added\n\n- fitur satu (#11)\n\n### Changed\n\n- perbaikan auth (#16)\n\n### Fixed\n\n- bug dua (#12)\n\n### Security\n\n- perbaiki sesi (#17)\n\n### Behavior changes\n\n- bawaan x berubah (#12)'
+out="$(RNS --versi 0.3.0 --tanggal 2026-11-02 2>"$RN/err")"; rc=$?
+ok "release-notes: bagian tersusun urut kategori dan nomor PR (halaman 2, CRLF, '- ' di depan baris, tag lama dan PR basis lain/tak ter-merge tidak ikut)" "$rc|$([ "$out" = "$EXP" ] && echo sama || echo beda)" '0|sama'
+ok "release-notes: tanpa \\r, tanpa isi blok kode/komentar HTML di keluaran" "$(printf '%s' "$out" | grep -c $'\r')|$(grep -c 'dalam blok kode\|dalam komentar' <<<"$out")" '0|0'
+ok "release-notes: PERINGATAN untuk PR tanpa baris (#14), kategori tak dikenal (#15), needs-security tanpa Security (#16); PR internal (#13) tanpa peringatan" "$(grep -c '^PERINGATAN: PR #14 ' "$RN/err")|$(grep -c '^PERINGATAN: PR #15 .*kategori tak dikenal' "$RN/err")|$(grep -c '^PERINGATAN: PR #16 .*needs-security' "$RN/err")|$(grep -c '#13' "$RN/err")" '1|1|1|0'
+out2="$(RNS --versi 0.3.0 --tanggal 2026-11-02 2>/dev/null)"; ok "release-notes: dijalankan ulang -> keluaran sama" "$([ "$out" = "$out2" ] && echo sama || echo beda)" sama
+out="$(RNS --versi 0.2.0 --tanggal 2026-11-02 2>/dev/null)"; ok "release-notes: versi yang sudah bertag memakai tag di bawahnya dan batas atas tag itu (hanya PR #10)" "$(grep -c 'fitur lama (#10)' <<<"$out")|$(grep -c 'fitur satu' <<<"$out")|$(grep -c 'sangat lama' <<<"$out")" '1|0|0'
+out="$(RNS --versi 0.1.0 2>"$RN/err")"; rc=$?; ok "release-notes: tanpa tag sebelumnya dan tanpa --sejak -> exit 2, stdout kosong, petunjuk --sejak" "$rc|$out|$(grep -c -- '--sejak' "$RN/err")" '2||1'
+out="$(RNS --versi 0.9.0 --sejak "$(SH v0.1.0)" --tanggal 2026-11-02 2>/dev/null)"; ok "release-notes: --sejak <ref> menggantikan tag sebelumnya (v0.9.0 belum bertag: #10 dan #11 ikut, #7 tidak)" "$(grep -c 'fitur lama (#10)' <<<"$out")|$(grep -c 'fitur satu (#11)' <<<"$out")|$(grep -c 'sangat lama' <<<"$out")" '1|1|0'
+out="$(MI_FAIL=1 RNS --versi 0.3.0 2>/dev/null)"; rc=$?; ok "release-notes: REST gagal -> exit 2, stdout kosong" "$rc|$out" '2|'
+printf -- '- Catatan rilis: CHANGELOG.md\n- Cabang integrasi: integrasi\n' > "$RN/w/docs/WORKFLOW.md"
+out="$(RNS --versi 0.3.0 --tanggal 2026-11-02 2>/dev/null)"; ok "release-notes: PR ke cabang integrasi ikut bila WORKFLOW menyebut integrasi" "$(grep -c 'fitur integrasi (#30)' <<<"$out")" 1
+for v in 'tidak ada' 'dikelola alat lain' ; do printf -- "- Catatan rilis: $v\n" > "$RN/w/docs/WORKFLOW.md"; out="$(RNS --versi 0.3.0 2>/dev/null)"; ok "release-notes: opsi '$v' -> stdout kosong, exit 0" "$?|$out" '0|'; done
+printf -- '- Catatan rilis: {{CHANGELOG.md (bawaan) | tidak ada}}\n' > "$RN/w/docs/WORKFLOW.md"; out="$(RNS --versi 0.3.0 2>/dev/null)"; ok "release-notes: placeholder belum diisi = tidak ada" "$?|$out" '0|'
+rm "$RN/w/docs/WORKFLOW.md"; out="$(RNS --versi 0.3.0 2>/dev/null)"; ok "release-notes: tanpa WORKFLOW.md = tidak ada" "$?|$out" '0|'
+printf -- '- Catatan rilis: CHANGELOG.md\n' > "$RN/w/docs/WORKFLOW.md"
+RNS --versi bukan-semver >/dev/null 2>&1; ok "release-notes: --versi bukan semver -> exit 64" "$?" 64
+
 [ "$fails" = 0 ] && echo "SEMUA LULUS" || { echo "$fails GAGAL"; exit 1; }
