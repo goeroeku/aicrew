@@ -1,0 +1,31 @@
+# Templat .github/dependabot.yml untuk proyek yang memakai aicrew.
+# Salin ke .github/dependabot.yml di repo proyek, lalu sesuaikan.
+#
+# Tujuan: update GitHub Actions tidak membanjiri repo dengan satu PR per action.
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    # Dependabot membuat PR terhadap cabang bawaan repo. Bila rilis dilakukan
+    # dari cabang non-bawaan (mis. cabang integrasi di docs/WORKFLOW.md),
+    # buka komentar di bawah dan isi nama cabangnya.
+    # target-branch: "integrasi"
+    groups:
+      # Satu PR gabungan untuk update minor dan patch semua action.
+      actions-rutin:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+      # Bump major sengaja tidak dikelompokkan: tiap action tetap mendapat PR
+      # sendiri supaya perubahan yang berpotensi mematahkan bisa ditinjau satu per satu.
+
+# ATURAN TOOLCHAIN (berlaku untuk ekosistem apa pun, mis. "docker" atau "gomod"):
+# bump image builder atau toolchain (mis. versi Go di Dockerfile) yang TIDAK
+# cocok dengan go.mod dan toolchain yang dipakai audit CVE adalah KEPUTUSAN
+# toolchain, bukan bump rutin. Jangan merge PR-nya begitu saja: buat issue
+# berlabel `needs-principal` agar principal memutuskan, lalu tutup PR Dependabot
+# atau selaraskan go.mod dan toolchain audit di issue itu.
