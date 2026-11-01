@@ -1519,7 +1519,7 @@ chmod +x "$AP3/bin/gh" "$AP3/bin/sleep" "$AP3/bin/claude"
 AP3OPEN='[{"number":1,"state":"OPEN","labels":[{"name":"role:qa"}]}]'
 # SIGINT: suite sering dijalankan sebagai pekerjaan latar (SIGINT diabaikan, aturan POSIX); perl mengembalikannya ke bawaan agar tes watchdog menguji SIGINT sungguhan
 # ap3 <issues-json> <skrip-per-putaran> [argumen autopilot...]; env tambahan lewat variabel AP3ENV (string "K=V ...")
-ap3() { printf '%s\n' "$2" > "$AP3FX/script"; rm -f "$AP3FX/n" "$AP3FX/sleeps" "$AP3FX/peek.json" "$AP3FX/peek.status" "$AP3FX/calls" "$AP3FX/pr.json"; echo "$1" > "$AP3FX/issues.json"; rm -rf "$AP3/w/.aicrew"
+ap3() { printf '%s\n' "$2" > "$AP3FX/script"; [ -n "${AP3KEEP:-}" ] || rm -f "$AP3FX/n"; rm -f "$AP3FX/sleeps" "$AP3FX/peek.json" "$AP3FX/peek.status" "$AP3FX/calls" "$AP3FX/pr.json"; echo "$1" > "$AP3FX/issues.json"; [ -n "${AP3KEEP:-}" ] || rm -rf "$AP3/w/.aicrew"
   (cd "$AP3/w" && env PATH="$AP3/bin:$PATH" AP3FX="$AP3FX" AICREW_CAFF="${AP3CAFF-1}" AICREW_ERR_SLEEP=0 AICREW_CLAUDE=claude AICREW_TRANSCRIPT_DIR="$AP3/tr" $AP3ENV perl -e '$SIG{INT}="DEFAULT"; exec @ARGV' bash "$root/scripts/autopilot.sh" --sleep 0 "${@:3}" >"$AP3/out" 2>&1); }
 ap3 "$AP3OPEN" close --idle-limit 5 --round-timeout 9; ok "autopilot: --idle-limit dan --round-timeout diterima (bukan exit 64)" $? 0
 AP3ENV="AICREW_IDLE_LIMIT=7 AICREW_ROUND_TIMEOUT=11" ap3 "$AP3OPEN" close; ok "autopilot: AICREW_IDLE_LIMIT/AICREW_ROUND_TIMEOUT dibaca dari lingkungan" $? 0
@@ -1531,6 +1531,19 @@ ap3 '[{"number":1,"state":"OPEN","labels":[{"name":"needs-principal"}]}]' close;
 ok "autopilot status: hanya needs-principal -> exit 3 dan fase menunggu-owner" "$rc|$(jq -r .fase "$AP3/w/.aicrew/autopilot.json")" '3|menunggu-owner'
 ap3 "$AP3OPEN" $'limit\nclose'; rc=$?
 ok "autopilot status: tidur karena limit -> fase tidur-limit tercatat saat tidur" "$rc|$(grep -c '"fase":"tidur-limit"' "$AP3FX/sleeps")" '0|1'
+AP3ENV="AICREW_IDLE_LIMIT=100 AICREW_IDLE_POLL=30" ap3 "$AP3OPEN" close
+ok "autopilot: pemantau yang dihentikan tidak mencetak 'Terminated' (#63)" "$(grep -c 'Terminated' "$AP3/out")" 0
+
+# 3p-4. buntu berulang (#56): sidik jari buntu disimpan; start ulang dengan keadaan sama tidak menjalankan putaran (exit 5)
+ap3 "$AP3OPEN" $'noop\nnoop\nnoop\nnoop' --stuck 3; rc=$?
+ok "buntu: tiga putaran sama -> exit 2, penanda .aicrew/stuck = sidik jari terakhir" "$rc|$(cat "$AP3FX/n")|$([ "$(cat "$AP3/w/.aicrew/stuck" 2>/dev/null)" = "$(cat "$AP3/w/.aicrew/last-round-fp")" ] && echo sama || echo beda)" '2|3|sama'
+AP3KEEP=1 ap3 "$AP3OPEN" $'noop\nnoop\nnoop\nnoop' --stuck 3; rc=$?
+ok "buntu: start ulang dengan keadaan sama -> exit 5 tanpa memanggil claude (tetap 3 panggilan)" "$rc|$(cat "$AP3FX/n")|$(cat "$AP3/w/.aicrew/autopilot.log" | grep -c 'masih buntu')" '5|3|1'
+ok "buntu: fase autopilot.json = stuck" "$(jq -r .fase "$AP3/w/.aicrew/autopilot.json")" stuck
+AP3KEEP=1 ap3 "$AP3OPEN" $'noop\nnoop\nnoop\nnoop' --stuck 3 --retry-stuck; rc=$?
+ok "buntu: --retry-stuck menghapus penanda dan menjalankan putaran lagi (exit 2 lagi)" "$rc|$([ "$(cat "$AP3FX/n")" -gt 3 ] && echo jalan || echo diam)" '2|jalan'
+AP3KEEP=1 ap3 '[{"number":1,"state":"OPEN","labels":[{"name":"role:qa"}]},{"number":2,"state":"OPEN","labels":[{"name":"role:qa"}]}]' $'noop\nnoop\nnoop\nnoop' --stuck 3; rc=$?
+ok "buntu: keadaan berubah (issue baru) -> penanda diabaikan, putaran jalan" "$([ "$rc" != 5 ] && echo jalan || echo diam)" jalan
 
 # 3p-2. watchdog idle: SIGINT, penanda, normalisasi rc, trap Ctrl-C (#48)
 APLOG() { cat "$AP3/w/.aicrew/autopilot.log" 2>/dev/null; }
