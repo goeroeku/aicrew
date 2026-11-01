@@ -31,25 +31,29 @@ note() { log "$*"; command -v jq >/dev/null && jq -n --arg m "$*" '{message:$m}'
 fingerprint() { { gh issue list --state all --limit 200 --json number,state,labels; gh pr list --state all --limit 200 --json number,state; } | shasum | cut -d' ' -f1; }
 
 # semua issue terbuka hanya menunggu manusia: needs-principal, atau punya PR terbuka (cabang issue-N, konvensi yang sama dengan resume.sh)
+has_open_pr() { [ "$(gh pr list --head "issue-$1" --state open --json number,state -q '[.[]|select(.state=="OPEN")]|length' 2>/dev/null)" -ge 1 ] 2>/dev/null; }
+is_principal() { jq -e --argjson n "$2" '.[]|select(.number==$n)|.labels|map(.name)|index("needs-principal")' <<<"$1" >/dev/null 2>&1; }
+# blocker yang masih terbuka (ada di $nums) dari bagian "## Blocked by" di badan issue; "owner/repo#n" (lintas repo) diabaikan; blocker ditutup/berlabel integrasi terpenuhi (tak ada di $nums)
+unsat_blockers() { local b; for b in $(jq -r --argjson n "$2" '.[]|select(.number==$n)|.body // ""' <<<"$1" | awk 'tolower($0) ~ /^##[ \t]+blocked by/{f=1;next} /^##/{f=0} f' | grep -oE '(^|[^A-Za-z0-9_./-])#[0-9]+' | grep -oE '[0-9]+' | sort -u); do [ "$b" != "$2" ] || continue; case " $nums " in *" $b "*) echo "$b" ;; esac; done; }
+# semua issue terbuka hanya menunggu manusia (#17): needs-principal, PR terbuka, atau semua blocker yang masih terbuka sendiri menunggu (dihitung berulang sampai tetap).
+# Hemat kuota GraphQL: issue tanpa blocker terbuka yang bukan needs-principal harus punya PR, selain itu langsung "bukan menunggu" (berhenti di sana, seperti semula); PR issue terblokir dicek belakangan.
 waiting_on_owner() {
-  # menunggu = needs-principal, atau punya PR terbuka, atau semua blocker yang belum terpenuhi (bagian "## Blocked by" di badan issue; blocker terpenuhi bila tak ada di $1:
-  # ditutup atau berlabel integrasi) sendiri menunggu (dihitung berulang sampai tetap). Blocker berupa pekerjaan Ready berarti BUKAN menunggu. #17
-  local open="$1" n b w="" ch=1 all blk nums
-  nums="$(jq -r '.[].number' <<<"$open")"
+  local open="$1" n b w="" bl="" ch all nums
+  nums=" $(jq -r '.[].number' <<<"$open" | tr '\n' ' ')"
   for n in $nums; do
-    if jq -e --argjson n "$n" '.[]|select(.number==$n)|.labels|map(.name)|index("needs-principal")' <<<"$open" >/dev/null 2>&1; then w="$w $n"
-    elif [ "$(gh pr list --head "issue-$n" --state open --json number,state -q '[.[]|select(.state=="OPEN")]|length' 2>/dev/null)" -ge 1 ] 2>/dev/null; then w="$w $n"; fi
+    if [ -n "$(unsat_blockers "$open" "$n")" ]; then if is_principal "$open" "$n"; then w="$w $n"; else bl="$bl $n"; fi; continue; fi
+    if is_principal "$open" "$n" || has_open_pr "$n"; then w="$w $n"; else return 1; fi
   done
-  while [ "$ch" = 1 ]; do ch=0
-    for n in $nums; do
-      case " $w " in *" $n "*) continue ;; esac
-      # nomor #n pada bagian Blocked by; "owner/repo#n" (lintas repo) diabaikan; hanya yang masih terbuka (ada di $nums) yang belum terpenuhi
-      blk="$(jq -r --argjson n "$n" '.[]|select(.number==$n)|.body // ""' <<<"$open" | awk 'tolower($0) ~ /^##[ \t]+blocked by/{f=1;next} /^##/{f=0} f' | grep -oE '(^|[^A-Za-z0-9_./-])#[0-9]+' | grep -oE '[0-9]+' | sort -u)"
-      all=1; has=0
-      for b in $blk; do [ "$b" != "$n" ] || continue; case " $(echo $nums) " in *" $b "*) has=1; case " $w " in *" $b "*) ;; *) all=0 ;; esac ;; esac; done
-      if [ "$has" = 1 ] && [ "$all" = 1 ]; then w="$w $n"; ch=1; fi
-    done
-  done
+  fix() { ch=1; while [ "$ch" = 1 ]; do ch=0
+      for n in $bl; do
+        case " $w " in *" $n "*) continue ;; esac
+        all=1; for b in $(unsat_blockers "$open" "$n"); do case " $w " in *" $b "*) ;; *) all=0 ;; esac; done
+        [ "$all" = 0 ] || { w="$w $n"; ch=1; }
+      done
+    done; }
+  fix
+  for n in $bl; do case " $w " in *" $n "*) continue ;; esac; if has_open_pr "$n"; then w="$w $n"; else return 1; fi; done
+  fix
   for n in $nums; do case " $w " in *" $n "*) ;; *) return 1 ;; esac; done
   return 0
 }
@@ -61,11 +65,12 @@ descendants() { local c; for c in $(pgrep -P "$1" 2>/dev/null); do echo "$c"; de
 watch_round() { # <awal-epoch> <induk-pid>
   local start="$1" parent="$2" me tdir mark last now target c nm busy idle_ok=1 reason=""
   me="$(sh -c 'echo $PPID')"   # pid subshell ini ($BASHPID tidak ada di bash 3.2)
-  tdir="${AICREW_TRANSCRIPT_DIR:-$HOME/.claude/projects/$(pwd -P | sed 's/[^A-Za-z0-9]/-/g')}"
+  tdir="${AICREW_TRANSCRIPT_DIR:-${CLAUDE_CONFIG_DIR:-$HOME/.claude}/projects/$(pwd -P | sed 's/[^A-Za-z0-9]/-/g')}"
   mark="$d/idle-mark"; touch "$mark"; last="$start"
+  case " ${AICREW_CLAUDE_ARGS:-} " in *" --no-session-persistence "*) idle_ok=0; log "putaran $cur_round: --no-session-persistence di AICREW_CLAUDE_ARGS (transkrip tidak ditulis); watchdog idle tidak aktif untuk putaran ini, --round-timeout tetap berlaku" ;; esac
   [ -d "$tdir" ] || { idle_ok=0; log "putaran $cur_round: direktori transkrip tidak ditemukan ($tdir); watchdog idle tidak aktif untuk putaran ini"; }
   while :; do
-    sleep "$poll"; now="$(date +%s)"
+    sleep "$poll"; kill -0 "$parent" 2>/dev/null || return 0; now="$(date +%s)"   # induk mati (mis. SIGTERM) -> pemantau berhenti sendiri
     target="$(pgrep -P "$parent" 2>/dev/null | grep -vx "$me" | head -1)"; [ -n "$target" ] || continue
     if [ "$round_timeout" -gt 0 ] 2>/dev/null && [ $((now-start)) -ge "$round_timeout" ]; then reason="batas waktu putaran ($((now-start)) detik)"
     elif [ "$idle_ok" = 1 ] && [ "$idle_limit" -gt 0 ] 2>/dev/null; then
@@ -91,10 +96,10 @@ watch_round() { # <awal-epoch> <induk-pid>
 }
 wpid=""
 stop_watch() { [ -z "$wpid" ] || { pkill -P "$wpid" 2>/dev/null; kill "$wpid" 2>/dev/null; { wait "$wpid"; } 2>/dev/null; wpid=""; }; return 0; }
-trap 'stop_watch' EXIT
-trap 'stop_watch; exit 143' TERM
+trap 'stop_watch; rm -f "$d/idle-interrupt"' EXIT
 # INT dari pemantau (penanda ada) = putaran idle diakhiri, autopilot lanjut; selain itu Ctrl-C pemilik: matikan pemantau dan sesi, keluar 130
 trap 'if [ -f "$d/idle-interrupt" ]; then :; else stop_watch; pkill -INT -P $$ 2>/dev/null; exit 130; fi' INT
+rm -f "$d/idle-interrupt"   # penanda basi dari proses yang mati tidak boleh menelan Ctrl-C
 errs=0; same=0; was_limit=0; last="$(fingerprint)"
 # sidik jari akhir putaran terakhir tersimpan: setelah restart (laptop mati) tanpa perubahan, langsung menunggu, tidak membakar putaran claude
 [ "$(cat "$d/last-round-fp" 2>/dev/null)" = "$last" ] && same=1
@@ -133,12 +138,13 @@ for ((i=1; i<=max_rounds; i++)); do
   # shellcheck disable=SC2086
   "$claude" --plugin-dir "${AICREW_PLUGIN_DIR:-$here/..}" -p "$prompt" ${AICREW_CLAUDE_ARGS:-} </dev/null >"$out" 2>&1; rc=$?
   stop_watch
+  interrupted=0; if [ -f "$d/idle-interrupt" ]; then interrupted=1; rm -f "$d/idle-interrupt"; fi   # dibaca sekali lalu dihapus (trap INT sudah selesai memeriksanya)
 
   # rc tiap putaran dicatat; keluaran yang bergejala (menyebut limit, atau rc != 0) diarsipkan (20 terakhir) supaya limit sungguhan terekam utuh
   printf '%s putaran %s: rc=%s\n' "$(date '+%F %T')" "$i" "$rc" | tee -a "$d/autopilot.log"
   likely=0; tail -n 20 "$out" | grep -qiE 'usage limit|rate.?limit|limit (reached|will reset)|resets? (at|in)' && likely=1
   # putaran yang diakhiri watchdog idle (penanda ada): rc dinormalkan, bukan limit dan bukan gagal; sidik jari dibandingkan seperti biasa (--stuck menghentikan bila berulang)
-  if [ -f "$d/idle-interrupt" ]; then rc=0; likely=0; log "putaran $i: diakhiri watchdog idle (rc dinormalkan); daftar issue dimuat ulang di putaran berikut"; fi
+  if [ "$interrupted" = 1 ]; then rc=0; likely=0; log "putaran $i: diakhiri watchdog idle (rc dinormalkan); daftar issue dimuat ulang di putaran berikut"; fi
   if [ "$likely" = 1 ] || [ "$rc" != 0 ]; then
     mkdir -p "$d/archive"; cp "$out" "$d/archive/round-$run-$i-rc$rc.log"
     ls -1t "$d/archive" | tail -n +21 | while read -r af; do rm -f "$d/archive/$af"; done

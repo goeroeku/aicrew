@@ -1485,6 +1485,7 @@ grep -q 'nama cabang/database' templates/WORKFLOW.md; ok "templat WORKFLOW: Baha
 AP3="$tmp/ap3"; mkdir -p "$AP3/bin" "$AP3/w" "$AP3/fx" "$AP3/tr"; git init -q "$AP3/w"; export AP3FX="$AP3/fx"; mkfifo "$AP3/fx/fifo"
 cat > "$AP3/bin/gh" <<'GHEOF'
 #!/usr/bin/env bash
+echo "$*" >> "$AP3FX/calls"
 c="$1 $2"; q=""; head=""; st=""; prev=""
 for a in "$@"; do [ "$prev" = -q ] && q="$a"; [ "$prev" = --head ] && head="$a"; [ "$prev" = --state ] && st="$a"; prev="$a"; done
 if [ "$c" = "pr list" ]; then data="$(cat "$AP3FX/pr.json" 2>/dev/null || echo '[]')"
@@ -1518,7 +1519,7 @@ chmod +x "$AP3/bin/gh" "$AP3/bin/sleep" "$AP3/bin/claude"
 AP3OPEN='[{"number":1,"state":"OPEN","labels":[{"name":"role:qa"}]}]'
 # SIGINT: suite sering dijalankan sebagai pekerjaan latar (SIGINT diabaikan, aturan POSIX); perl mengembalikannya ke bawaan agar tes watchdog menguji SIGINT sungguhan
 # ap3 <issues-json> <skrip-per-putaran> [argumen autopilot...]; env tambahan lewat variabel AP3ENV (string "K=V ...")
-ap3() { printf '%s\n' "$2" > "$AP3FX/script"; rm -f "$AP3FX/n" "$AP3FX/sleeps" "$AP3FX/peek.json" "$AP3FX/peek.status"; echo "$1" > "$AP3FX/issues.json"; rm -rf "$AP3/w/.aicrew"
+ap3() { printf '%s\n' "$2" > "$AP3FX/script"; rm -f "$AP3FX/n" "$AP3FX/sleeps" "$AP3FX/peek.json" "$AP3FX/peek.status" "$AP3FX/calls" "$AP3FX/pr.json"; echo "$1" > "$AP3FX/issues.json"; rm -rf "$AP3/w/.aicrew"
   (cd "$AP3/w" && env PATH="$AP3/bin:$PATH" AP3FX="$AP3FX" AICREW_CAFF="${AP3CAFF-1}" AICREW_ERR_SLEEP=0 AICREW_CLAUDE=claude AICREW_TRANSCRIPT_DIR="$AP3/tr" $AP3ENV perl -e '$SIG{INT}="DEFAULT"; exec @ARGV' bash "$root/scripts/autopilot.sh" --sleep 0 "${@:3}" >"$AP3/out" 2>&1); }
 ap3 "$AP3OPEN" close --idle-limit 5 --round-timeout 9; ok "autopilot: --idle-limit dan --round-timeout diterima (bukan exit 64)" $? 0
 AP3ENV="AICREW_IDLE_LIMIT=7 AICREW_ROUND_TIMEOUT=11" ap3 "$AP3OPEN" close; ok "autopilot: AICREW_IDLE_LIMIT/AICREW_ROUND_TIMEOUT dibaca dari lingkungan" $? 0
@@ -1597,5 +1598,31 @@ ap3 "$(jq -sc . <(bj 1 role:qa "$(bl '- #2')") <(bj 2 role:qa "$(bl '- #3')") <(
 ok "blocked-by: rantai A->B->C(needs-principal) -> menunggu: exit 3" "$rc" 3
 ap3 "$(jq -sc . <(bj 1 role:qa "$(bl '- #2')") <(bj 2 role:qa "$(bl '- #1')"))" $'noop' $WO; rc=$?
 ok "blocked-by: siklus A<->B tanpa yang menunggu -> bukan menunggu, tidak berputar selamanya (exit 2)" "$rc" 2
+
+# 3p-5. perbaikan hasil review akhir autopilot idle (#48, #17)
+# (1) penanda idle-interrupt basi tidak boleh menelan Ctrl-C pemilik saat menunggu owner
+printf 'idle\n' > "$AP3FX/script"; rm -f "$AP3FX/n" "$AP3FX/calls"; echo "$AP3OPEN" > "$AP3FX/issues.json"; echo '[{"number":9,"state":"OPEN","head":"issue-1"}]' > "$AP3FX/pr.json"; rm -rf "$AP3/w/.aicrew"
+(cd "$AP3/w" && exec env PATH="$AP3/bin:$PATH" AP3FX="$AP3FX" AICREW_CAFF=1 AICREW_CLAUDE=claude AICREW_TRANSCRIPT_DIR="$AP3/tr" AICREW_IDLE_LIMIT=2 AICREW_IDLE_POLL=1 perl -e '$SIG{INT}="DEFAULT"; exec @ARGV' bash "$root/scripts/autopilot.sh" --sleep 0 --stuck 77 --wait 30 --wait-max 120 >"$AP3/out" 2>&1) &
+apid=$!; /bin/sleep 8
+for c in $(pgrep -P "$apid"); do kill -INT "$c" 2>/dev/null; done; kill -INT "$apid" 2>/dev/null; /bin/sleep 2
+if kill -0 "$apid" 2>/dev/null; then alive=ya; kill -9 "$apid" 2>/dev/null; else alive=tidak; fi; wait "$apid" 2>/dev/null
+ok "watchdog: Ctrl-C saat menunggu owner setelah putaran yang diinterupsi watchdog tetap mematikan autopilot (penanda tidak basi)" "$alive" tidak
+# (2) SIGTERM ke autopilot langsung mematikannya (tanpa menunggu anak), pemantau tidak yatim
+printf 'idle\n' > "$AP3FX/script"; rm -f "$AP3FX/n" "$AP3FX/calls" "$AP3FX/pr.json"; echo "$AP3OPEN" > "$AP3FX/issues.json"; rm -rf "$AP3/w/.aicrew"
+(cd "$AP3/w" && exec env PATH="$AP3/bin:$PATH" AP3FX="$AP3FX" AICREW_CAFF=1 AICREW_CLAUDE=claude AICREW_TRANSCRIPT_DIR="$AP3/tr" AICREW_IDLE_LIMIT=100 AICREW_IDLE_POLL=1 perl -e '$SIG{INT}="DEFAULT"; exec @ARGV' bash "$root/scripts/autopilot.sh" --sleep 0 --stuck 78 >"$AP3/out" 2>&1) &
+apid=$!; /bin/sleep 3; kill -TERM "$apid" 2>/dev/null; /bin/sleep 2
+if kill -0 "$apid" 2>/dev/null; then alive=ya; kill -9 "$apid" 2>/dev/null; else alive=tidak; fi; wait "$apid" 2>/dev/null
+ok "autopilot: SIGTERM mematikan autopilot segera (tidak menunggu claude selesai)" "$alive" tidak
+/bin/sleep 3
+ok "autopilot: pemantau berhenti sendiri setelah autopilot mati (tidak yatim)" "$(pgrep -f 'autopilot[.]sh --sleep 0 --stuck 78' | wc -l | tr -d ' ')" 0
+# (3) sinyal transkrip buta -> idle dimatikan (round-timeout tetap); CLAUDE_CONFIG_DIR dihormati
+AP3ENV="AICREW_IDLE_LIMIT=2 AICREW_IDLE_POLL=1 AICREW_CLAUDE_ARGS=--no-session-persistence" ap3 "$AP3OPEN" $'quiet'; rc=$?
+ok "watchdog: --no-session-persistence (transkrip tak ditulis) -> idle tidak aktif, tidak menginterupsi, tercatat" "$rc|$(APLOG | grep -c 'diinterupsi')|$(APLOG | grep -c 'no-session-persistence')" '0|0|1'
+AP3ENV="AICREW_IDLE_LIMIT=2 AICREW_IDLE_POLL=1 AICREW_TRANSCRIPT_DIR= CLAUDE_CONFIG_DIR=$AP3/cfg" ap3 "$AP3OPEN" $'quiet'; rc=$?
+ok "watchdog: CLAUDE_CONFIG_DIR dipakai untuk mencari direktori transkrip" "$rc|$(APLOG | grep -c "$AP3/cfg/projects/")" '0|1'
+# (7) waiting_on_owner tidak memanggil gh pr list untuk semua issue (hemat kuota GraphQL): berhenti di issue pertama yang jelas Ready
+AP6='[{"number":1,"state":"OPEN","labels":[{"name":"role:qa"}]},{"number":2,"state":"OPEN","labels":[{"name":"role:qa"}]},{"number":3,"state":"OPEN","labels":[{"name":"role:qa"}]},{"number":4,"state":"OPEN","labels":[{"name":"role:qa"}]},{"number":5,"state":"OPEN","labels":[{"name":"role:qa"}]},{"number":6,"state":"OPEN","labels":[{"name":"role:qa"}]}]'
+ap3 "$AP6" $'noop'; rc=$?
+ok "waiting_on_owner: 6 issue Ready tanpa PR -> satu panggilan gh pr list per evaluasi (bukan 6)" "$rc|$([ "$(grep -c '^pr list --head' "$AP3FX/calls")" -le 3 ] && echo hemat || echo boros)" '2|hemat'
 
 [ "$fails" = 0 ] && echo "SEMUA LULUS" || { echo "$fails GAGAL"; exit 1; }
