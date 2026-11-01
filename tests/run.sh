@@ -1477,4 +1477,51 @@ rm -rf "$CF/main/docs"
 for f in agents/senior-coder.md agents/devops.md agents/ui-ux.md templates/codex-prompt.md; do grep -q 'database/tabel/kolom/cabang/perintah/flag/kunci konfigurasi' "$f"; ok "aturan bahasa artefak di $f mencakup database, cabang, perintah, flag, kunci konfigurasi" $? 0; done
 grep -q 'nama cabang/database' templates/WORKFLOW.md; ok "templat WORKFLOW: Bahasa artefak menyebut nama cabang/database" $? 0
 
+# 3p. autopilot: watchdog idle dan status (#48, #17) — harness mandiri (gh, claude, sleep palsu)
+AP3="$tmp/ap3"; mkdir -p "$AP3/bin" "$AP3/w" "$AP3/fx" "$AP3/tr"; git init -q "$AP3/w"; export AP3FX="$AP3/fx"
+cat > "$AP3/bin/gh" <<'GHEOF'
+#!/usr/bin/env bash
+c="$1 $2"; q=""; head=""; st=""; prev=""
+for a in "$@"; do [ "$prev" = -q ] && q="$a"; [ "$prev" = --head ] && head="$a"; [ "$prev" = --state ] && st="$a"; prev="$a"; done
+if [ "$c" = "pr list" ]; then data="$(cat "$AP3FX/pr.json" 2>/dev/null || echo '[]')"
+  [ -n "$head" ] && data="$(jq --arg h "$head" '[.[]|select(.head==$h)]' <<<"$data")"
+else data="$(cat "$AP3FX/issues.json")"; [ "$st" = open ] && data="$(jq '[.[]|select(.state=="OPEN")]' <<<"$data")"; fi
+if [ -n "$q" ]; then jq -r "$q" <<<"$data"; else echo "$data"; fi
+GHEOF
+cat > "$AP3/bin/sleep" <<'SLEOF'
+#!/usr/bin/env bash
+[ -f .aicrew/autopilot.json ] && cat .aicrew/autopilot.json >> "$AP3FX/sleeps"; echo >> "$AP3FX/sleeps"; exit 0
+SLEOF
+cat > "$AP3/bin/claude" <<'CLEOF'
+#!/usr/bin/env bash
+n=$(( $(cat "$AP3FX/n" 2>/dev/null || echo 0) + 1 )); echo $n > "$AP3FX/n"
+closeall() { jq 'map(.state="CLOSED")' "$AP3FX/issues.json" > "$AP3FX/i2" && mv "$AP3FX/i2" "$AP3FX/issues.json"; }
+case "$(sed -n "${n}p" "$AP3FX/script")" in
+  close) closeall; echo ok ;;
+  peek) cp .aicrew/autopilot.json "$AP3FX/peek.json"; head -1 .aicrew/autopilot.status > "$AP3FX/peek.status"; closeall; echo ok ;;
+  limit) echo "Claude usage limit reached. Your limit will reset at 5pm."; exit 1 ;;
+  noop) echo noop ;;
+  idle) echo "menunggu owner"; exec /bin/sleep 600 ;;
+  active) i=0; while [ "$i" -lt 6 ]; do touch "$AICREW_TRANSCRIPT_DIR/t.jsonl"; /bin/sleep 1; i=$((i+1)); done; closeall; echo ok ;;
+  child) /bin/sleep 5 & wait; closeall; echo ok ;;
+  ignore) trap '' INT; while :; do /bin/sleep 1; done ;;
+  *) echo noop ;;
+esac
+CLEOF
+chmod +x "$AP3/bin/gh" "$AP3/bin/sleep" "$AP3/bin/claude"
+AP3OPEN='[{"number":1,"state":"OPEN","labels":[{"name":"role:qa"}]}]'
+# ap3 <issues-json> <skrip-per-putaran> [argumen autopilot...]; env tambahan lewat variabel AP3ENV (string "K=V ...")
+ap3() { printf '%s\n' "$2" > "$AP3FX/script"; rm -f "$AP3FX/n" "$AP3FX/sleeps" "$AP3FX/peek.json" "$AP3FX/peek.status"; echo "$1" > "$AP3FX/issues.json"; rm -rf "$AP3/w/.aicrew"
+  (cd "$AP3/w" && env PATH="$AP3/bin:$PATH" AP3FX="$AP3FX" AICREW_CAFF=1 AICREW_ERR_SLEEP=0 AICREW_CLAUDE=claude AICREW_TRANSCRIPT_DIR="$AP3/tr" $AP3ENV bash "$root/scripts/autopilot.sh" --sleep 0 "${@:3}" >"$AP3/out" 2>&1); }
+ap3 "$AP3OPEN" close --idle-limit 5 --round-timeout 9; ok "autopilot: --idle-limit dan --round-timeout diterima (bukan exit 64)" $? 0
+AP3ENV="AICREW_IDLE_LIMIT=7 AICREW_ROUND_TIMEOUT=11" ap3 "$AP3OPEN" close; ok "autopilot: AICREW_IDLE_LIMIT/AICREW_ROUND_TIMEOUT dibaca dari lingkungan" $? 0
+ap3 "$AP3OPEN" peek; rc=$?
+ok "autopilot status: saat putaran, autopilot.json valid dengan fase putaran, nomor putaran, dan detak angka" "$rc|$(jq -r '.fase' "$AP3FX/peek.json")|$(jq -r '.putaran' "$AP3FX/peek.json")|$(jq -r '.detak|type' "$AP3FX/peek.json")" '0|putaran|1|number'
+ok "autopilot status: baris pertama autopilot.status tidak berubah (putaran 1: ...)" "$(grep -c '^putaran 1: 1 issue terbuka' "$AP3FX/peek.status")" 1
+ok "autopilot status: akhir sukses -> fase selesai" "$(jq -r .fase "$AP3/w/.aicrew/autopilot.json")" selesai
+ap3 '[{"number":1,"state":"OPEN","labels":[{"name":"needs-principal"}]}]' close; rc=$?
+ok "autopilot status: hanya needs-principal -> exit 3 dan fase menunggu-owner" "$rc|$(jq -r .fase "$AP3/w/.aicrew/autopilot.json")" '3|menunggu-owner'
+ap3 "$AP3OPEN" $'limit\nclose'; rc=$?
+ok "autopilot status: tidur karena limit -> fase tidur-limit tercatat saat tidur" "$rc|$(grep -c '"fase":"tidur-limit"' "$AP3FX/sleeps")" '0|1'
+
 [ "$fails" = 0 ] && echo "SEMUA LULUS" || { echo "$fails GAGAL"; exit 1; }
