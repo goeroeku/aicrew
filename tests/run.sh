@@ -908,6 +908,7 @@ case "$*" in
     if [ -f "$CF/$r/$p" ]; then cat "$CF/$r/$p"; else echo "gh: Not Found (HTTP 404)" >&2; exit 1; fi ;;
   *"/pulls/"*"/files"*) if [ -n "${FILES_JSON:-}" ]; then echo "$FILES_JSON"; else printf '%s\n' "${DIFF:-}" | sed -n 's#^diff --git a/.* b/\(.*\)$#\1#p' | jq -R '{filename:.,status:"modified"}' | jq -cs .; fi ;;
   *"/compare/"*) echo "{\"merge_base_commit\":{\"sha\":\"${MB:-main}\"}}" ;;
+  "api repos/o/r") echo "{\"default_branch\":\"${CF_DEFAULT:-main}\"}" ;;
   *) exec "$PMB/gh" "$@" ;;
 esac
 EOF
@@ -1267,6 +1268,25 @@ mv "$MI/w/docs/WORKFLOW.md" "$MI/w/docs/WF.bak"; out="$(TI 4)"; ok "terintegrasi
 MIPR 6 '"2026-11-01T00:00:00Z"' "$X1" "$X1" main; out="$(TI 6)"; ok "terintegrasi: WORKFLOW tak terbaca tetapi base = bawaan -> 0" "$?" 0
 mv "$MI/w/docs/WF.bak" "$MI/w/docs/WORKFLOW.md"; printf -- '- Pemeriksaan CVE: ya\n' > "$MI/w/docs/WORKFLOW.md"; out="$(TI 4)"; ok "terintegrasi: WORKFLOW terbaca tanpa baris Cabang integrasi -> 0 (perilaku lama)" "$?" 0
 printf -- '- Cabang integrasi: integrasi\n' > "$MI/w/docs/WORKFLOW.md"; out="$(MI_FAIL=1 TI 4)"; ok "terintegrasi: REST gagal -> 2" "$?" 2
+
+# 3m-2. alur-terjadwal.sh dan peringatan gerbang (#32)
+AT() { (cd "$MI/w" && GH_REPO=o/r MI_FX="$MI/fx" PATH="$MI/bin:$PATH" bash "$root/scripts/alur-terjadwal.sh" "$@" 2>&1); }
+WF=".github_workflows"; pf() { printf '%s' "$2" > "$MI/fx/repos_o_r_contents_.github_workflows_$1_ref_H1"; }
+pf v.yml $'on:\n  schedule:\n    - cron: "0 3 * * *"\njobs: {}\n'; pf d.yml $'on:\n  workflow_dispatch:\njobs: {}\n'; pf inline.yml $'on: [push, workflow_dispatch]\n'; pf ci.yml $'on:\n  push:\njobs: {}\n'
+echo '[{"filename":".github/workflows/v.yml","status":"added"},{"filename":".github/workflows/ci.yml","status":"modified"},{"filename":".github/workflows/gone.yml","status":"removed"},{"filename":".github/workflows/d.yml","status":"renamed"},{"filename":".github/dependabot.yml","status":"added"},{"filename":"README.md","status":"modified"}]' > "$MI/fx/repos_o_r_pulls_7_files"
+out="$(AT 7 H1)"; rc=$?; ok "alur-terjadwal: schedule, workflow_dispatch (rename), dependabot terdaftar; ci biasa, removed, README tidak" "$rc|$(sort <<<"$out" | tr '\n' ' ')" '0|.github/dependabot.yml .github/workflows/d.yml .github/workflows/v.yml '
+echo '[{"filename":".github/workflows/inline.yml","status":"added"}]' > "$MI/fx/repos_o_r_pulls_8_files"; out="$(AT 8 H1)"; ok "alur-terjadwal: workflow_dispatch bentuk inline (on: [push, workflow_dispatch]) terdaftar" "$out" ".github/workflows/inline.yml"
+echo '[{"filename":"README.md","status":"modified"}]' > "$MI/fx/repos_o_r_pulls_9_files"; out="$(AT 9 H1)"; ok "alur-terjadwal: PR tanpa berkas .github -> kosong, exit 0" "$?|$out" '0|'
+echo '[{"filename":".github/workflows/missing.yml","status":"added"}]' > "$MI/fx/repos_o_r_pulls_10_files"; out="$(AT 10 H1)"; ok "alur-terjadwal: isi workflow tak terbaca -> exit 2" "$?" 2
+out="$(MI_FAIL=1 AT 7 H1)"; ok "alur-terjadwal: daftar berkas gagal (REST) -> exit 2" "$?" 2
+# gerbang: berkas workflow terjadwal di PR ke cabang non-bawaan -> PERINGATAN (tidak memblokir); ke cabang bawaan -> tanpa peringatan
+mkdir -p "$CF/abc1234567/.github/workflows"; printf 'on:\n  schedule:\n    - cron: "0 3 * * *"\n' > "$CF/abc1234567/.github/workflows/v.yml"; printf 'on:\n  push:\n' > "$CF/abc1234567/.github/workflows/ci.yml"
+DWF=$'diff --git a/.github/workflows/v.yml b/.github/workflows/v.yml\n+x'; DCI=$'diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml\n+x'
+out="$(export DIFF="$DWF" CF_DEFAULT=trunk; GE)"; rc=$?; ok "gerbang alur: workflow terjadwal, tujuan main bukan bawaan (trunk) -> PERINGATAN, exit 0" "$rc|$(grep -c '^PERINGATAN: alur terjadwal .github/workflows/v.yml tidak aktif sampai ada di cabang bawaan (trunk)' <<<"$out")" '0|1'
+out="$(export DIFF="$DWF" CF_DEFAULT=main; GE)"; rc=$?; ok "gerbang alur: tujuan = cabang bawaan -> tanpa peringatan" "$rc|$(grep -c 'alur terjadwal' <<<"$out")" '0|0'
+out="$(export DIFF="$DCI" CF_DEFAULT=trunk; GE)"; rc=$?; ok "gerbang alur: workflow tanpa pemicu terjadwal -> tanpa peringatan" "$rc|$(grep -c 'alur terjadwal' <<<"$out")" '0|0'
+out="$(export DIFF="$DWF" CF_DEFAULT=trunk CF_ERR=1 CF_ERR_PATH=.github/workflows/v.yml; GE)"; rc=$?; ok "gerbang alur: isi workflow tak terbaca -> PERINGATAN 'tidak dapat diperiksa', tetap exit 0 (bukan penghalang)" "$rc|$(grep -c '^PERINGATAN: alur terjadwal tidak dapat diperiksa' <<<"$out")" '0|1'
+rm -rf "$CF/abc1234567/.github"
 cd "$root" || exit 1
 
 [ "$fails" = 0 ] && echo "SEMUA LULUS" || { echo "$fails GAGAL"; exit 1; }
