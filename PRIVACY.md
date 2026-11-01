@@ -13,6 +13,7 @@ Berlaku untuk plugin aiCrew (`goeroeku/aicrew`). Terakhir diperbarui: 2026-11-01
 
 **2. Pemeriksaan CVE (OSV), sejak 0.7.0.** `scripts/cve-check.sh` dan `scripts/cve-audit.sh` bertanya ke layanan OSV (`api.osv.dev`) apakah versi dependensi Anda punya kerentanan yang diketahui. Aktif saat PR menyentuh `package-lock.json`, `go.mod`, atau `requirements*.txt` (gerbang `pr-merge-check.sh`) dan saat Anda menjalankan skill `cve-audit`.
 - Yang dikirim ke `api.osv.dev`: ekosistem (npm, Go, PyPI), nama paket, dan versi. Tidak ada isi kode, nama repositori, isi issue, atau token.
+- Nama paket privat atau internal (mis. `@perusahaan/x`, `git.perusahaan.com/...`) ikut terkirim bila ada di lockfile, begitu pula alamat IP mesin yang menjalankan. Matikan pemeriksaan (`Pemeriksaan CVE: tidak`) bila nama paket Anda rahasia.
 - OSV memproses permintaan itu menurut kebijakan layanan OSV sendiri. Tidak ada token atau akun.
 - Mematikan: baris `Pemeriksaan CVE: tidak` di `docs/WORKFLOW.md`. Memakai cermin sendiri: variabel lingkungan `OSV_API`.
 
