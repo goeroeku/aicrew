@@ -1344,4 +1344,7 @@ printf -- '- Cabang integrasi: integrasi\n' > "$MI/w/docs/WORKFLOW.md"
 ok "cve-audit: alur sudah ada di cabang bawaan -> tanpa baris" "$(grep -c 'alur terjadwal' <<<"$(CAU)")" 0
 cd "$root" || exit 1
 
+# 3m-5. skill cve-audit: pola jembatan untuk repo yang dirilis dari cabang non-bawaan (#42)
+grep -q 'Repo yang dirilis dari cabang non-bawaan' skills/cve-audit/SKILL.md && grep -q 'target-branch' skills/cve-audit/SKILL.md && grep -q 'ref:' skills/cve-audit/SKILL.md && grep -q 'add/add' skills/cve-audit/SKILL.md && grep -q 'menunggu-rilis' skills/cve-audit/SKILL.md; ok "skill cve-audit: pola jembatan (target-branch, ref:, add/add, menunggu-rilis)" $? 0
+
 [ "$fails" = 0 ] && echo "SEMUA LULUS" || { echo "$fails GAGAL"; exit 1; }
