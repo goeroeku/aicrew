@@ -28,7 +28,7 @@ case "$backend" in
     if rp="$(ghx_repo 2>/dev/null)" && [ -n "$rp" ]; then
       case "$(gh api "repos/$rp" 2>/dev/null | jq -r '.delete_branch_on_merge | if . == null then empty else tostring end' 2>/dev/null)" in
         true) say ok "GitHub: cabang dihapus otomatis saat merge" ;;
-        false) say AWAS "GitHub: delete_branch_on_merge=false, cabang ter-merge akan menumpuk. Perbaiki: gh api -X PATCH repos/$rp -F delete_branch_on_merge=true" ;;
+        false) say AWAS "GitHub: delete_branch_on_merge=false, cabang ter-merge menumpuk dan PR bertumpuk bisa berbasis cabang induk yang sudah ter-merge (isinya tak masuk integrasi). Perbaiki: gh api -X PATCH repos/$rp -F delete_branch_on_merge=true" ;;
       esac
     fi
     if git remote -v 2>/dev/null | grep -q .; then
