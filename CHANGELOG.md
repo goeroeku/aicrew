@@ -4,6 +4,17 @@ All notable changes to aiCrew are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Entries before 0.11.0 were reconstructed from tags, merged pull requests and commit history.
 
+## [1.1.0] - 2026-11-02
+
+### Changed
+
+- Commands, options, `WORKFLOW.md` keys and values, script names and default labels are now English; the Indonesian forms keep working as deprecated aliases. (#65)
+- README banner and social preview images are in English. (#65)
+
+### Behavior changes
+
+- default label names are now `integrated`, `auto-decision`, `unsplit`, `awaiting-release` and `no-parent`; issues that already carry the old default labels are still recognized. (#65)
+
 ## [1.0.0] - 2026-11-01
 
 ### Added
