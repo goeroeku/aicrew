@@ -85,6 +85,8 @@ else
     }
     cdir="$(mktemp -d)"; trap 'rm -f "$bf"; rm -rf "$cdir"' EXIT
     cve_fetch "$dst" docs/WORKFLOW.md "$cdir/wf"; fr=$?
+    # pola paket privat dibaca dari cabang tujuan; sumber yang gagal dibaca (selain 404) = tolak, karena nama privat bisa terkirim ke OSV
+    [ "$fr" = 0 ] || [ "$fr" = 4 ] || fail "cve: docs/WORKFLOW.md tak terbaca di cabang tujuan (REST); pola paket privat tak diketahui"
     if [ "$fr" = 0 ] && grep -qE '^[- ]*Pemeriksaan CVE: *tidak' "$cdir/wf"; then
       echo "PERINGATAN: pemeriksaan CVE dimatikan di WORKFLOW.md"
     else
@@ -96,8 +98,24 @@ else
         [ "$fr" = 0 ] || { [ "$fr" = 4 ] && fail "cve: $mp tidak ditemukan di head (REST) padahal tidak dihapus"; fail "cve: $mp tak terbaca di head (REST)"; }
         cve_fetch "$cbase" "$mp" "$cdir/$ci/b/$mn"; fr=$?
         if [ "$fr" = 4 ]; then : > "$cdir/$ci/b/$mn"; elif [ "$fr" != 0 ]; then fail "cve: $mp tak terbaca di merge-base (REST)"; fi   # berkas baru/dipindah: semua paket baru
-        cres="$(bash "$(dirname "$0")/cve-check.sh" "$cdir/$ci/h/$mn" --base "$cdir/$ci/b/$mn" 2>"$cdir/err")"; crc=$?
-        grep '^tidak lengkap' "$cdir/err" | sed "s#^#PERINGATAN: cve ($mp) #"; grep -v '^tidak lengkap' "$cdir/err" >&2
+        # .npmrc di direktori manifest dan akar repo (cabang tujuan, lalu head hanya untuk peringatan pola baru)
+        md="$(dirname "$mp")"; tn=""; hn=""; ni=0
+        npmrc_src() { # <jalur .npmrc>: tambah ke $tn (cabang tujuan; galat selain 404 = tolak) dan $hn (head, hanya untuk peringatan)
+          ni=$((ni+1)); cve_fetch "$dst" "$1" "$cdir/$ci/nt$ni"; fr=$?
+          if [ "$fr" = 0 ]; then tn="$tn --npmrc $cdir/$ci/nt$ni"; elif [ "$fr" != 4 ]; then fail "cve: $1 tak terbaca di cabang tujuan (REST); pola paket privat tak diketahui"; fi
+          if cve_fetch "$head" "$1" "$cdir/$ci/nh$ni"; then hn="$hn --npmrc $cdir/$ci/nh$ni"; fi
+        }
+        npmrc_src .npmrc; [ "$md" = . ] || npmrc_src "$md/.npmrc"
+        # shellcheck disable=SC2086
+        bash "$(dirname "$0")/cve-private.sh" --workflow "$cdir/wf" $tn --goprivate > "$cdir/$ci/pat"
+        : > "$cdir/$ci/wfh"; cve_fetch "$head" docs/WORKFLOW.md "$cdir/$ci/wfh" || : > "$cdir/$ci/wfh"
+        # shellcheck disable=SC2086
+        bash "$(dirname "$0")/cve-private.sh" --workflow "$cdir/$ci/wfh" $hn > "$cdir/$ci/pat.h"
+        if [ -n "$(LC_ALL=C comm -13 "$cdir/$ci/pat" "$cdir/$ci/pat.h")" ]; then echo "PERINGATAN: cve ($mp) pola privat baru baru berlaku setelah di-merge; paket yang cocok pada PR ini tetap dikirim"; fi
+        cres="$(bash "$(dirname "$0")/cve-check.sh" "$cdir/$ci/h/$mn" --base "$cdir/$ci/b/$mn" --private "$cdir/$ci/pat" 2>"$cdir/err")"; crc=$?
+        grep '^tidak lengkap' "$cdir/err" | sed "s#^#PERINGATAN: cve ($mp) #"
+        cn="$(grep -c '^dilewati (privat):' "$cdir/err")"; [ "$cn" = 0 ] || echo "PERINGATAN: cve ($mp) $cn paket privat tidak diperiksa"
+        grep -Ev '^(tidak lengkap|dilewati \(privat\):)' "$cdir/err" >&2
         [ -z "$cres" ] || printf '%s\n' "$cres" | awk -F'\t' -v p="$mp" '{k=($9=="baru" && $6=="prod" && ($5=="HIGH"||$5=="CRITICAL"||$5=="UNKNOWN"))?"BLOK":"PERINGATAN"; printf "%s: cve (%s) %s %s %s %s %s paparan=%s target=%s saran=%s\n",k,p,$1,$2,$3,$5,$6,$9,$7,$8}'
         case "$crc" in 0) ;; 1) cblock=1 ;; *) cdown=1 ;; esac
       done <<<"$mfs"

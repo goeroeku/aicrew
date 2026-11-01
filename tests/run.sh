@@ -883,14 +883,14 @@ cat > "$tmp/cve/gbin/gh" <<'EOF'
 #!/usr/bin/env bash
 case "$*" in
   *"/contents/"*) a="$*"; u="${a##*contents/}"; r="${u##*ref=}"; p="${u%%\?ref=*}"; p="$(printf '%b' "${p//%/\\x}")"
-    [ -n "${CF_ERR:-}" ] && { echo "gh: Server Error (HTTP 500)" >&2; exit 1; }
+    [ -n "${CF_ERR:-}" ] && { [ -z "${CF_ERR_PATH:-}" ] || [ "$p" = "$CF_ERR_PATH" ]; } && { echo "gh: Server Error (HTTP 500)" >&2; exit 1; }
     if [ -f "$CF/$r/$p" ]; then cat "$CF/$r/$p"; else echo "gh: Not Found (HTTP 404)" >&2; exit 1; fi ;;
   *"/pulls/"*"/files"*) if [ -n "${FILES_JSON:-}" ]; then echo "$FILES_JSON"; else printf '%s\n' "${DIFF:-}" | sed -n 's#^diff --git a/.* b/\(.*\)$#\1#p' | jq -R '{filename:.,status:"modified"}' | jq -cs .; fi ;;
   *"/compare/"*) echo "{\"merge_base_commit\":{\"sha\":\"${MB:-main}\"}}" ;;
   *) exec "$PMB/gh" "$@" ;;
 esac
 EOF
-chmod +x "$tmp/cve/gbin/gh"
+chmod +x "$tmp/cve/gbin/gh"; printf '#!/bin/sh\nexit 1\n' > "$tmp/cve/gbin/go"; chmod +x "$tmp/cve/gbin/go"
 GE() { (cd "$tmp/cve/gw" && BASE=main BODY=x GH_REPO=o/r PMB="$tmp/pmb" PATH="$tmp/cve/gbin:$tmp/cve/bin:$PATH" bash "$root/scripts/pr-merge-check.sh" 9 main 2>&1); }
 DGO=$'diff --git a/go.mod b/go.mod\n--- a/go.mod\n+++ b/go.mod\n@@ -1 +1 @@\n+require golang.org/x/net v0.7.0'
 printf 'module m\n\nrequire golang.org/x/net v0.7.0\n' > "$CF/abc1234567/go.mod"
@@ -1029,6 +1029,32 @@ ok "cve-private: GOPRIVATE env -> pola Go per koma" "$( (export GOPRIVATE='git.c
 ok "cve-private: GOPRIVATE kosong dan go gagal -> kosong" "$(CQ --goprivate)" ''
 ok "cve-private: berkas tak ada -> kosong, exit 0" "$(CQ --workflow "$Q/tidak.md" --npmrc "$Q/tidak")|$(bash "$CPV" --workflow "$Q/tidak.md" >/dev/null 2>&1; echo $?)" '|0'
 ok "cve-private: dua sumber digabung tanpa duplikat" "$(CQ --workflow "$Q/wf.md" --workflow "$Q/wf.md" | tr '|' '\n' | grep -c .)" 3
+
+# 3l-3. pr-merge-check.sh: pola privat dari cabang tujuan (#25)
+rm -rf "$CF/main" "$CF/abc1234567"; mkdir -p "$CF/main/docs" "$CF/abc1234567/docs" "$CF/abc1234567/web" "$CF/main/web"
+printf 'module m\n\nrequire git.corp.com/team/x v1.0.0\n' > "$CF/abc1234567/go.mod"
+FX Go git.corp.com/team/x 1.0.0 "{\"vulns\":[$(jq -nc '{id:"GHSA-priv-0000-gate",aliases:["CVE-2099-7"],database_specific:{severity:"HIGH"},affected:[]}')]}"
+printf -- '- Paket privat: git.corp.com/team\n' > "$CF/main/docs/WORKFLOW.md"; : > "$CVE_FIX/calls"
+out="$(export DIFF="$DGO"; GE)"; rc=$?
+ok "gerbang privat: pola WORKFLOW cabang tujuan -> exit 0, curl tanpa nama, PERINGATAN jumlah tanpa nama" "$rc|$(grep -c 'git.corp.com' "$CVE_FIX/calls")|$(grep -c '^PERINGATAN: cve (go.mod) 1 paket privat tidak diperiksa$' <<<"$out")|$(grep -c 'git.corp.com' <<<"$out")" '0|0|1|0'
+rm -f "$CF/main/docs/WORKFLOW.md"; printf -- '- Paket privat: git.corp.com/team\n' > "$CF/abc1234567/docs/WORKFLOW.md"
+out="$(export DIFF="$DGO"; GE)"; rc=$?
+ok "gerbang privat: pola hanya di PR (bukan cabang tujuan) -> tetap BLOK dan PERINGATAN pola baru" "$rc|$(grep -c '^BLOK: cve (go.mod)' <<<"$out")|$(grep -c '^PERINGATAN: cve (go.mod) pola privat baru' <<<"$out")" '1|1|1'
+rm -f "$CF/abc1234567/docs/WORKFLOW.md"
+DNPM=$'diff --git a/web/package-lock.json b/web/package-lock.json\n+x'
+jq -n '{lockfileVersion:3,packages:{"":{},"node_modules/@acme/x":{version:"1.0.0"}}}' > "$CF/abc1234567/web/package-lock.json"; FX npm @acme/x 1.0.0 "{\"vulns\":[$(V GHSA-priv-0000-npm CVE-2099-8 HIGH)]}"
+printf '@acme:registry=https://corp.example/\n//corp.example/:_authToken=SECRET123\n' > "$CF/main/web/.npmrc"; : > "$CVE_FIX/calls"
+out="$(export DIFF="$DNPM"; GE)"; rc=$?; ok "gerbang privat: .npmrc di direktori lockfile (cabang tujuan) -> exit 0, tanpa token di keluaran, curl tanpa nama" "$rc|$(grep -c '@acme' "$CVE_FIX/calls")|$(grep -c 'SECRET123' <<<"$out")" '0|0|0'
+rm -f "$CF/main/web/.npmrc"; printf '@acme:registry=https://corp.example/\n' > "$CF/main/.npmrc"; : > "$CVE_FIX/calls"
+out="$(export DIFF="$DNPM"; GE)"; rc=$?; ok "gerbang privat: .npmrc di akar repo juga dibaca -> exit 0" "$rc|$(grep -c '@acme' "$CVE_FIX/calls")" '0|0'
+out="$(export DIFF="$DNPM" CF_ERR=1 CF_ERR_PATH=.npmrc; GE)"; rc=$?; ok "gerbang privat: .npmrc 500 di cabang tujuan -> GAGAL cve (fail-closed)" "$rc|$(grep -c '^GAGAL: cve: .*npmrc' <<<"$out")" '1|1'
+rm -f "$CF/main/.npmrc"; printf -- '- Paket privat: git.corp.com/team\n' > "$CF/main/docs/WORKFLOW.md"
+out="$(export DIFF="$DGO" CF_ERR=1 CF_ERR_PATH=docs/WORKFLOW.md; GE)"; rc=$?; ok "gerbang privat: WORKFLOW 500 di cabang tujuan -> GAGAL cve (fail-closed), nama tidak terkirim" "$rc|$(grep -c '^GAGAL: cve: .*WORKFLOW' <<<"$out")" '1|1'
+rm -f "$CF/main/docs/WORKFLOW.md"; : > "$CVE_FIX/calls"; out="$(export DIFF="$DNPM"; GE)"; rc=$?
+ok "gerbang privat: .npmrc dan WORKFLOW 404 = tanpa pola -> normal (BLOK, nama dikueri)" "$rc|$(grep -c '^BLOK: cve (web/package-lock.json)' <<<"$out")|$(grep -c '@acme/x' "$CVE_FIX/calls")" '1|1|1'
+printf -- '- Pemeriksaan CVE: tidak. uji\n- Paket privat: git.corp.com/team\n' > "$CF/main/docs/WORKFLOW.md"; out="$(export DIFF="$DGO"; GE)"; rc=$?
+ok "gerbang privat: opt-out WORKFLOW tetap menang bersama pola" "$rc|$(grep -c 'dimatikan' <<<"$out")" '0|1'
+rm -rf "$CF/main" "$CF/abc1234567"; mkdir -p "$CF/main" "$CF/abc1234567"
 
 # 3k-1. cleanup.sh: laporan kandidat cabang/worktree ter-merge (repo git nyata + remote bare lokal; gh palsu untuk REST)
 CL="$tmp/cl"; mkdir -p "$CL/bin"; export CL
