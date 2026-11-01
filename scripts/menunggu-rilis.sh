@@ -20,7 +20,7 @@ case "$mode" in
     echo "issue #$issue menunggu rilis" ;;
   --cek)
     cj="$(gh api "repos/$repo/issues/$issue/comments" --paginate)" || cant "komentar issue #$issue tak terbaca"
-    paths="$(jq -rs --arg m "$marker" '[.[][]|select(.body|startswith($m))]|last|.body // empty' <<<"$cj" | sed -n 's/^- //p')"
+    paths="$(jq -rs --arg m "$marker" '[.[][]|select(.body|startswith($m))|.body]|join("\n")' <<<"$cj" | sed -n 's/^- //p')"
     [ -n "$paths" ] || cant "komentar berpenanda tidak ditemukan pada issue #$issue"
     dflt="$(gh api "repos/$repo" | jq -r '.default_branch // empty')" && [ -n "$dflt" ] || cant "cabang bawaan tak terbaca"
     missing=""

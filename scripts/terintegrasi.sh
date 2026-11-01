@@ -14,12 +14,12 @@ read -r merged msha hsha base < <(jq -r '[(.merged_at // "-"), (.merge_commit_sh
 [ "$merged" != "-" ] || { echo "PR #$pr belum merged"; exit 1; }
 wf="$(bash "$here/workflow.sh" 2>/dev/null)"
 integ="${AICREW_INTEG_BRANCH:-$(sed -n 's/^[- ]*.*Cabang integrasi: *\([A-Za-z0-9._\/-]*\).*/\1/p' <<<"$wf" | head -1 | sed 's/[.,;:]*$//')}"
+case "$integ" in tidak|none|nihil|-) integ="" ;; esac   # templat WORKFLOW: "Cabang integrasi: tidak ada"
 if [ -z "$integ" ]; then
-  if [ -n "$wf" ]; then echo "tanpa cabang integrasi; tidak ada yang diperiksa"; exit 0; fi
-  # WORKFLOW.md tak terbaca: hanya PR ke cabang bawaan yang pasti aman; selain itu tak bisa dinilai
+  # tanpa cabang integrasi yang diketahui (WORKFLOW.md tak terbaca, tanpa barisnya, atau "tidak ada"): hanya PR ke cabang bawaan yang pasti aman
   def="$(gh api "repos/$repo" | jq -r '.default_branch // empty')" || cant "cabang bawaan tak terbaca (REST)"
   [ -n "$def" ] && [ "$base" = "$def" ] && { echo "ke cabang bawaan $def"; exit 0; }
-  cant "docs/WORKFLOW.md tak terbaca; cabang integrasi tak diketahui (PR ter-merge ke $base)"
+  cant "cabang integrasi tak diketahui (docs/WORKFLOW.md tak terbaca, tanpa baris 'Cabang integrasi:', atau 'tidak ada'), PR ter-merge ke $base bukan cabang bawaan"
 fi
 [ "$base" != "$integ" ] || { echo "ke cabang integrasi $integ"; exit 0; }
 git fetch -q origin "$integ" 2>/dev/null || cant "origin/$integ tak dapat diambil"

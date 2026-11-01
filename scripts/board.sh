@@ -55,7 +55,7 @@ if [ "${3:-}" = "--sync" ]; then
     wl="$(bash "$(dirname "$0")/label.sh" waiting)"
     for n in $(ghx_issues open "$(bash "$(dirname "$0")/label.sh" integrated)" 200 number,labels | jq -r --arg w "$wl" '.[]|select((.labels|map(.name)|index("epic"))|not)|select((.labels|map(.name)|index($w))|not)|.number'); do
       # hanya bila tepat satu PR merged dari issue-<n> dan terbukti masuk cabang integrasi (#28); selain itu tidak ditutup dan dilaporkan
-      prs="$(gh api "repos/$repo/pulls?state=all&head=${repo%%/*}:issue-$n&per_page=100" 2>/dev/null | jq -r '[.[]|select(.merged_at!=null)|.number]|join(" ")' 2>/dev/null)"
+      prs="$(gh api "repos/$repo/pulls?state=all&head=${repo%%/*}:issue-$n&per_page=100" 2>/dev/null | jq -r '[.[]|select(.merged_at!=null)|.number]|join(" ")' 2>/dev/null)" || prs=""
       case "$prs" in ""|*" "*) echo "board --sync: #$n tidak ditutup (butuh tepat satu PR merged dari issue-$n; ditemukan: ${prs:-tidak ada})"; continue ;; esac
       if why="$(bash "$(dirname "$0")/terintegrasi.sh" "$prs" 2>&1)"; then ghx_issue_close "$n" "Sudah masuk cabang integrasi; ditutup sesuai WORKFLOW.md." || true
       else echo "board --sync: #$n tidak ditutup ($why)"; fi
