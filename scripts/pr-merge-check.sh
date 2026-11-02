@@ -37,11 +37,13 @@ else
     [[ "$dst" =~ ^[A-Za-z0-9._/-]+$ ]] || fail "cabang tujuan '$dst' berkarakter tidak sah"
     acr="$(ghx_repo)" && [ -n "$acr" ] || fail "repo tak dapat ditentukan"
     # PR yang menyentuh docs/WORKFLOW.md (termasuk rename) tidak di-merge otomatis: izin sementara hanya dimasukkan owner (#61)
-    pg=1
+    pg=1; nondoc=0
     while :; do
       pj="$(gh api "repos/$acr/pulls/$pr/files?per_page=100&page=$pg")" || fail "daftar file PR #$pr tak terbaca"
       jq -e 'type=="array"' <<<"$pj" >/dev/null 2>&1 || fail "daftar file PR #$pr tak terurai"
       jq -e 'any(.[]; (.filename|ascii_downcase)=="docs/workflow.md" or ((.previous_filename // "")|ascii_downcase)=="docs/workflow.md")' <<<"$pj" >/dev/null 2>&1 && fail "PR menyentuh docs/WORKFLOW.md; auto-merge ditolak (izin sementara hanya dari owner); minta owner merge"
+      # dokumentasi saja = semua berkas (dan nama lamanya) di docs/ atau berkas induk README/CHANGELOG/LICENSE/PRIVACY; selain itu butuh vonis QA (#86). Daftar kosong = tidak ada yang diubah.
+      jq -e 'any(.[]; ([.filename, (.previous_filename // empty)] | map(ascii_downcase) | any(.[]; (test("^docs/") or test("^(readme|changelog|license|privacy)[^/]*$")) | not)))' <<<"$pj" >/dev/null 2>&1 && nondoc=1
       [ "$(jq length <<<"$pj")" -ge 100 ] || break
       pg=$((pg+1)); [ "$pg" -le 30 ] || fail "PR punya lebih dari 3000 file; auto-merge ditolak"
     done
@@ -62,9 +64,12 @@ else
     res=1
     while IFS= read -r cj; do
       b="$(jq -r .body <<<"$cj")"
-      grep -Eq "^$1 (lulus|gagal)" <<<"$b" || continue
-      sha_ok "$(sed -n 's/^Commit: *\([0-9a-f]*\).*/\1/p' <<<"$b" | head -1)" || continue
-      if grep -q "^$1 gagal" <<<"$b"; then res=1; continue; fi
+      # label, vonis, dan "Commit" tak peka huruf; Commit boleh di baris sendiri atau di baris vonis yang sama (#86)
+      grep -Eiq "^$1 (lulus|gagal)" <<<"$b" || continue
+      cs="$(sed -nE 's/^[Cc][Oo][Mm][Mm][Ii][Tt]: *([0-9a-fA-F]+).*/\1/p' <<<"$b" | head -1)"
+      [ -n "$cs" ] || cs="$(grep -Ei "^$1 (lulus|gagal)" <<<"$b" | head -1 | sed -nE 's/.*[Cc][Oo][Mm][Mm][Ii][Tt]: *([0-9a-fA-F]+).*/\1/p')"
+      sha_ok "$(tr 'A-F' 'a-f' <<<"$cs")" || continue
+      if grep -Eiq "^$1 gagal" <<<"$b"; then res=1; continue; fi
       if [ "$2" != 0 ] && ! { grep -Eq '^Angka sebelum/sesudah:.*[0-9]' <<<"$b" && grep -Eq '^Tuning: *[^ ]' <<<"$b"; }; then res=1; continue; fi
       res=0
     done < <(jq -c '.comments[]' <<<"$comments")
@@ -78,10 +83,14 @@ else
     return 1
   }
   if grep -qix needs-security <<<"$labels" && ! verdict_ok "Laporan security:" 0; then
-    fail "needs-security: butuh komentar 'Laporan security: lulus' dengan 'Commit: <sha head>' dari aicrew-security"
+    fail "needs-security: butuh komentar 'Laporan security: lulus' dengan 'Commit: <sha head>' dari aicrew-security (dua baris, atau satu baris: 'Laporan security: lulus Commit: <sha head>'; huruf besar/kecil bebas)"
   fi
   if grep -qix needs-perf <<<"$labels" && ! verdict_ok "Laporan perf:" 1 && ! waiver_ok perf; then
     fail "needs-perf: butuh 'Laporan perf: lulus' dengan Angka sebelum/sesudah (berdigit), Tuning, dan 'Commit: <sha head>' dari aicrew-perf, atau waiver owner untuk head"
+  fi
+  # vonis QA untuk head dituntut oleh --auto pada PR yang bukan dokumentasi saja (#86); merge manual oleh owner tidak berubah
+  if [ "${3:-}" = "--auto" ] && [ "${nondoc:-0}" = 1 ] && ! verdict_ok "Laporan qa:" 0; then
+    fail "PR bukan dokumentasi saja: butuh komentar 'Laporan qa: lulus' dari aicrew-qa dengan 'Commit: <sha head>' (dua baris, atau satu baris: 'Laporan qa: lulus Commit: <sha head>'; huruf besar/kecil bebas); vonis terakhir untuk head menang"
   fi
   # baseline: rahasia memblokir (kecuali waiver owner untuk head), sisanya hanya peringatan; diff tak terbaca = tolak
   diff="$(gh pr diff "$pr")" || fail "diff PR #$pr tak terbaca"

@@ -69,6 +69,7 @@ issue terbuka → laporkan penyumbatnya dan berhenti.
    (satu perintah, keluaran dipadatkan). Pekerjaan berat konteks didelegasikan ke `aicrew-qa` (haiku): memeriksa
    tiap kriteria selesai satu per satu, membaca log panjang, dan memotret/membaca UI; minta laporan maks 12 baris.
    Laporan qa adalah klaim; hasil suite penuh tetap dijalankan orkestrator sekali per PR. UI wajib screenshot yang dibaca.
+   Lulus QA → pasang komentar PR `Laporan qa: lulus` beserta `Commit: <sha head>` (dua baris, atau satu baris `Laporan qa: lulus Commit: <sha>`; huruf besar/kecil bebas, vonis terakhir untuk head menang). `pr-merge-check.sh --auto` menolak merge PR yang bukan dokumentasi saja tanpa vonis itu, jadi pasang SETELAH QA selesai dan SEBELUM memanggil gerbang.
    Perubahan sensitif (auth, input, rahasia, dependensi) → `aicrew-security`. Issue berlabel `needs-security` wajib lewat sini;
    bila perubahan ternyata sensitif tetapi belum berlabel, pasang labelnya dulu. Lulus → pasang komentar PR `Laporan security: lulus` beserta `Commit: <sha head>`
    (`pr-merge-check.sh` menolak merge tanpa komentar itu).

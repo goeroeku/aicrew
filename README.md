@@ -205,6 +205,8 @@ Otherwise, scripts call `gh` and `git` on your behalf against your own project r
 
 ### Temporary grants
 
+**Verdict comments the gate reads.** For `needs-security`, `needs-perf` and (with `--auto`, on any PR that is not documentation-only) QA, the gate needs a PR comment `Laporan security: lulus` / `Laporan perf: lulus` / `Laporan qa: lulus` plus `Commit: <head sha>`, either on its own line or on the same line (`Laporan qa: lulus Commit: abc1234`). The label, the verdict word (`lulus` pass, `gagal` fail) and `Commit` are case-insensitive; the last verdict for the head wins. Documentation-only means every changed file is under `docs/` or is a top-level README, CHANGELOG, LICENSE or PRIVACY file. Manual merges by the owner do not require the QA verdict. Baseline-scan warnings name `file:line`.
+
 `pr-merge-check.sh <pr> <branch> --auto` never auto-merges `risk:L2`, unless the owner committed a structured grant to `docs/WORKFLOW.md` on the **target branch** (read over REST from `refs/heads/<branch>`, fail-closed):
 
 ```

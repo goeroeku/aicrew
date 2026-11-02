@@ -14,6 +14,7 @@ Skrip yang menulis berkas (validator, generator, skrip ad hoc) JANGAN dijalankan
 Berkas liar yang sudah terlanjur muncul di worktree: laporkan path-nya, jangan dihapus sendiri.
 Jalankan suite tes penuh dan cek tiap kriteria selesai di issue. Klaim agen = klaim, bukan fakta.
 Laporan: lulus/gagal per kriteria, output tes yang gagal apa adanya, maks 12 baris.
+Baris pertama laporan = vonis akhir `Laporan qa: lulus` atau `Laporan qa: gagal`, lalu `Commit: <sha head PR>` (baris sendiri atau di baris yang sama); orkestrator menempelkannya sebagai komentar PR dan gerbang merge membacanya.
 
 ## Gaya perintah (mode tanpa pengawasan)
 Satu perintah sederhana per panggilan Bash, path literal: tanpa variabel shell, tanpa `cd <dir> && …` (pakai `git -C <dir>` / `node --test <path>`), tanpa `; echo …`. Izin dicocokkan per perintah; rantai membuatnya ditolak dan laporan jadi tidak terverifikasi.
