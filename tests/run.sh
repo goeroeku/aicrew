@@ -1732,8 +1732,9 @@ ok "CHANGELOG.md: [1.1.0] memuat entri dari PR #65 (Changed) dan Behavior change
 cv="$(bash scripts/check-version.sh v1.1.0 2>&1)"; ok "check-version v1.1.0: lolos tanpa ::warning:: (versi sinkron, bagian CHANGELOG ada)" "$(printf '%s\n' "$cv" | grep -c '^ok:')|$(printf '%s\n' "$cv" | grep -c '::warning::')" '1|0'
 
 # 3t-0. keputusan owner terbaru dibaca sebelum needs-principal dipasang lagi (#62)
-ok "orchestrate: baca komentar owner terbaru sebelum memasang needs-principal" "$(grep -c 'Sebelum memasang `needs-principal`.*komentar owner terbaru' "$root/skills/orchestrate/SKILL.md")" 1
-ok "orchestrate: kendala nyata (implementasi/lingkungan) dilaporkan sebagai terblokir, bukan needs-principal" "$(grep -c 'terblokir: <sebab>' "$root/skills/orchestrate/SKILL.md")" 1
+SK="$root/skills/orchestrate/SKILL.md"
+for k in 'Sebelum memasang `needs-principal`' 'komentar owner terbaru' 'jangan pasang label' 'terblokir: <sebab>' 'tanpa `needs-principal`' 'Keputusan otomatis (principal)' 'tingkat 2 baru tetap dieskalasi' 'dua kali gagal setelah keputusan owner' 'jangan ulangi komentar'; do
+  grep -qF -- "$k" "$SK"; ok "orchestrate (#62): memuat '$k'" $? 0; done
 
 # 3t. sinkronisasi kartu kanban oleh kode (#69): card_status (tabel), board_ref, unsat_blockers, board.sh --sync-cards
 cs() { ( . "$root/scripts/lib/card-status.sh"; card_status "$@" ); }
