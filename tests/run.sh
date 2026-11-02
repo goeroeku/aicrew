@@ -2187,6 +2187,14 @@ alias usang kapital|- Merge PR ke cabang integrasi: Agen-Setelah-QA.|agent-after
 owner berbungkus|- Merge PR to integration branch: **`owner`**|owner
 kosong|- Prosa tanpa kunci.|owner
 MMEOF
+mmv() { printf '%b' "$1" > "$tmp/mm/v.md"; bash -c 'source "$1/scripts/lib/merge-mode.sh"; merge_mode "$2"' _ "$root" "$tmp/mm/v.md" | tr -d '\n'; }
+ok "mode merge (#97): baris templat asli (placeholder {{owner | agent-after-qa}}) -> owner" "$(mmv "$(grep -h 'Merge PR to integration branch' "$root/templates/WORKFLOW.md" | head -1)\n")" owner
+ok "mode merge (#97): prosa yang mengutip kunci sebelum baris nilai asli owner -> owner (gagal ke arah ketat)" "$(mmv 'Kunci `Merge PR to integration branch:` agent-after-qa dipakai bila ada QA.\n- Merge PR to integration branch: owner\n')" owner
+ok "mode merge (#97): dua nilai berbeda -> owner (salah konfigurasi)" "$(mmv '- Merge PR to integration branch: agent-after-qa\nContoh: Merge PR to integration branch: owner\n')" owner
+ok "mode merge (#97): nilai sama dua kali -> agent-after-qa" "$(mmv '- Merge PR to integration branch: agent-after-qa\nUlang: Merge PR to integration branch: `agent-after-qa`\n')" agent-after-qa
+mkdir -p "$tmp/mm/single/scripts" "$tmp/mm/single/templates"; cp "$root/scripts/install-permissions.sh" "$tmp/mm/single/scripts/"; cp "$root/templates/autopilot-permissions.json" "$tmp/mm/single/templates/"; echo '{}' > "$tmp/mm/s2.json"
+err="$(cd "$tmp/mm/w" && AICREW_MERGE_MODE=Agent-After-QA bash "$tmp/mm/single/scripts/install-permissions.sh" "$tmp/mm/s2.json" 2>&1 >/dev/null)"
+ok "mode merge (#97): salinan skrip tunggal (tanpa helper) menormalkan env dan memperingatkan di stderr" "$(jq -e '.permissions.allow|index("Bash(gh pr merge:*)")' "$tmp/mm/s2.json" >/dev/null && echo terpasang || echo hilang)|$(grep -c 'merge-mode' <<<"$err")" 'terpasang|1'
 rm -rf "$tmp/mm/w/.claude"; printf '%s\n' '- Merge PR to integration branch: owner' > "$tmp/mm/w/docs/WORKFLOW.md"
 ok "mode merge (#97): env AICREW_MERGE_MODE menang atas WORKFLOW" "$(bash -c 'source "$1/scripts/lib/merge-mode.sh"; merge_mode "$2"' _ "$root" "$tmp/mm/w/docs/WORKFLOW.md" | tr -d '\n')|$(AICREW_MERGE_MODE=agent-after-qa bash -c 'source "$1/scripts/lib/merge-mode.sh"; merge_mode "$2"' _ "$root" "$tmp/mm/w/docs/WORKFLOW.md" | tr -d '\n')" 'owner|agent-after-qa'
 
