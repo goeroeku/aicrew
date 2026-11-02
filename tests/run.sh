@@ -2122,4 +2122,23 @@ for f in templates/WORKFLOW.md templates/*.md skills/*/SKILL.md agents/*.md .git
 done
 ok "penjaga: README tanpa nama teknis Indonesia di luar Deprecated aliases" "$(grep -vE '^\*\*Deprecated aliases' README.md | grep -cE "$IDTOK")" 0
 
+# 3c-9. runner-check.sh (#81): alat yang hilang di mesin, dari log tes dan workflow
+RC="$tmp/rc"; mkdir -p "$RC/bin" "$RC/wf/.github/workflows"
+for t in bash grep sort tr sed awk cat; do ln -sf "$(command -v $t)" "$RC/bin/$t"; done
+printf 'ok a\nSKIP: yq not installed\nSKIP: jq tidak terpasang\n' > "$RC/test.log"
+printf 'jobs:\n  b:\n    steps:\n      - uses: actions/checkout@v4\n      - run: make test && docker compose up\n' > "$RC/wf/.github/workflows/ci.yml"
+rc() { (cd "$RC/wf" && PATH="$RC/bin" bash "$root/scripts/runner-check.sh" "$@" 2>&1); }
+ln -sf /usr/bin/true "$RC/bin/yq"; ln -sf /usr/bin/true "$RC/bin/jq"; ln -sf /usr/bin/true "$RC/bin/make"; ln -sf /usr/bin/true "$RC/bin/docker"
+rc "$RC/test.log" >/dev/null; ok "runner-check: semua alat ada -> exit 0" $? 0
+ok "runner-check: lengkap tidak mencetak apa pun" "$(rc "$RC/test.log")" ''
+rm "$RC/bin/yq"
+out="$(rc "$RC/test.log")"; st=$?
+ok "runner-check: yq hilang dari log -> tercetak" "$(grep -cx yq <<<"$out")" 1
+rc "$RC/test.log" >/dev/null; ok "runner-check: ada yang hilang -> exit 1" $? 1
+rm "$RC/bin/make"
+ok "runner-check: make hilang dari workflow tanpa log -> tercetak" "$(rc | grep -cx make)" 1
+ok "runner-check: alat tak terpakai (curl) tidak dilaporkan" "$(rc "$RC/test.log" | grep -cx curl)" 0
+rc --bogus >/dev/null; ok "runner-check: opsi salah -> exit 64" $? 64
+rc /nonexistent.log >/dev/null; ok "runner-check: berkas log tak ada -> exit 64" $? 64
+
 [ "$fails" = 0 ] && echo "SEMUA LULUS" || { echo "$fails GAGAL"; exit 1; }
