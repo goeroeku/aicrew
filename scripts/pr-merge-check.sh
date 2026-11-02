@@ -59,7 +59,7 @@ else
   fi
   comments="$(gh pr view "$pr" --json comments)" || fail "komentar PR #$pr tak terbaca"
   # hanya komentar OWNER/MEMBER/COLLABORATOR yang dihitung sebagai vonis atau waiver (#99); tanpa authorAssociation = tak tepercaya
-  trusted_cmts='.comments[] | select((.authorAssociation // "") as $a | ["OWNER","MEMBER","COLLABORATOR"] | index($a) != null)'
+  trusted_cmts='.comments[] | select(.authorAssociation | IN("OWNER","MEMBER","COLLABORATOR"))'
   sha_ok() { [ "${#1}" -ge 7 ] && case "$head" in "$1"*) return 0 ;; esac; return 1; }
   # verdict_ok <awalan> <wajib-angka-dan-tuning:0|1>: vonis TERAKHIR untuk head menang. lulus = satu komentar memuat vonis lulus (tanpa gagal),
   # Commit = head, dan (perf) Angka berdigit + Tuning; gagal, atau lulus tak lengkap, membuat hasil gagal sampai ada lulus lengkap berikutnya

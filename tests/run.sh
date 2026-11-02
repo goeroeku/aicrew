@@ -26,7 +26,7 @@ case "$*" in
   *"pr diff"*) [ -n "${DIFFFAIL:-}" ] && exit 1; printf '%s\n' "${DIFF:-}" ;;
   *baseRefName*) echo "$BASE" ;;
   *headRefOid*) echo "${HEAD:-abc1234567}" ;;
-  *comments*) jq -n --arg a "${COMM:-}" --arg b "${COMM2:-}" --arg x "${ASSOC-OWNER}" --arg y "${ASSOC2-OWNER}" '{comments:([{body:$a,authorAssociation:$x},{body:$b,authorAssociation:$y}]|map(select(.body!=""))|map(if .authorAssociation=="-" then del(.authorAssociation) else . end))}' ;;
+  *comments*) jq -n --arg a "${COMM:-}" --arg b "${COMM2:-}" --arg x "${ASSOC-OWNER}" --arg y "${ASSOC2-OWNER}" '{comments:([{body:$a,authorAssociation:($x|if startswith("[") then fromjson else . end)},{body:$b,authorAssociation:$y}]|map(select(.body!=""))|map(if .authorAssociation=="-" then del(.authorAssociation) else . end))}' ;;
   *"issue view"*) [ -n "${ISSFAIL:-}" ] && exit 1; v="ISSL_$3"; echo "${!v:-${ISSL:-}}" ;;
   *closingIssuesReferences*) for n in ${CLOSING:-}; do echo "$n"; done ;;
   *labels*) printf '%s\n' "${PRL:-}" ;;
@@ -2201,6 +2201,7 @@ ok "mode merge (#97): env AICREW_MERGE_MODE menang atas WORKFLOW" "$(bash -c 'so
 # 3c-11. gerbang: vonis dan waiver hanya dari komentar OWNER/MEMBER/COLLABORATOR (#99)
 for a in OWNER MEMBER COLLABORATOR; do qg ASSOC=$a COMM='Laporan qa: lulus Commit: abc1234' >/dev/null; ok "gerbang penulis (#99): vonis dari $a diterima" $? 0; done
 for a in NONE CONTRIBUTOR FIRST_TIMER FIRST_TIME_CONTRIBUTOR MANNEQUIN owner ''; do qg ASSOC="$a" COMM='Laporan qa: lulus Commit: abc1234' >/dev/null; ok "gerbang penulis (#99): vonis dari '$a' ditolak" $? 1; done
+qg ASSOC='["OWNER"]' COMM='Laporan qa: lulus Commit: abc1234' >/dev/null; ok "gerbang penulis (#99): authorAssociation berupa array ditolak" $? 1
 qg ASSOC=- COMM='Laporan qa: lulus Commit: abc1234' >/dev/null; ok "gerbang penulis (#99): tanpa authorAssociation -> ditolak (gagal tertutup)" $? 1
 qg ASSOC=NONE COMM='Laporan qa: lulus Commit: abc1234' ASSOC2=OWNER COMM2='Laporan qa: lulus Commit: abc1234' >/dev/null; ok "gerbang penulis (#99): komentar tak tepercaya diabaikan, yang tepercaya cukup" $? 0
 qg ASSOC=OWNER COMM='Laporan qa: lulus Commit: abc1234' ASSOC2=NONE COMM2='Laporan qa: gagal Commit: abc1234' >/dev/null; ok "gerbang penulis (#99): 'gagal' dari orang luar tidak membatalkan lulus tepercaya" $? 0
