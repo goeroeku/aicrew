@@ -58,6 +58,8 @@ else
     fi
   fi
   comments="$(gh pr view "$pr" --json comments)" || fail "komentar PR #$pr tak terbaca"
+  # hanya komentar OWNER/MEMBER/COLLABORATOR yang dihitung sebagai vonis atau waiver (#99); tanpa authorAssociation = tak tepercaya
+  trusted_cmts='.comments[] | select(.authorAssociation | IN("OWNER","MEMBER","COLLABORATOR"))'
   sha_ok() { [ "${#1}" -ge 7 ] && case "$head" in "$1"*) return 0 ;; esac; return 1; }
   # verdict_ok <awalan> <wajib-angka-dan-tuning:0|1>: vonis TERAKHIR untuk head menang. lulus = satu komentar memuat vonis lulus (tanpa gagal),
   # Commit = head, dan (perf) Angka berdigit + Tuning; gagal, atau lulus tak lengkap, membuat hasil gagal sampai ada lulus lengkap berikutnya
@@ -73,18 +75,18 @@ else
       if grep -Eiq "^$1 gagal([^[:alnum:]_]|$)" <<<"$b"; then res=1; continue; fi
       if [ "$2" != 0 ] && ! { grep -Eq '^Angka sebelum/sesudah:.*[0-9]' <<<"$b" && grep -Eq '^Tuning: *[^ ]' <<<"$b"; }; then res=1; continue; fi
       res=0
-    done < <(jq -c '.comments[]' <<<"$comments")
+    done < <(jq -c "$trusted_cmts" <<<"$comments")
     return $res
   }
   # waiver_ok <perf|rahasia>: komentar owner `Pengecualian disetujui owner (<cakupan>): <alasan> (Commit: <sha>)` untuk head PR; satu waiver hanya berlaku untuk cakupannya
   waiver_ok() {
     while IFS= read -r cj; do
       sha_ok "$(jq -r .body <<<"$cj" | sed -nE "s/^Pengecualian disetujui owner \($1\): .*[^ ].* \(Commit: *([0-9a-f]*)\).*/\1/p" | head -1)" && return 0
-    done < <(jq -c '.comments[]' <<<"$comments")
+    done < <(jq -c "$trusted_cmts" <<<"$comments")
     return 1
   }
   if grep -qix needs-security <<<"$labels" && ! verdict_ok "Laporan security:" 0; then
-    fail "needs-security: butuh komentar 'Laporan security: lulus' dengan 'Commit: <sha head>' dari aicrew-security (dua baris, atau satu baris: 'Laporan security: lulus Commit: <sha head>'; huruf besar/kecil bebas)"
+    fail "needs-security: butuh komentar 'Laporan security: lulus' dengan 'Commit: <sha head>' dari aicrew-security, ditulis oleh OWNER/MEMBER/COLLABORATOR (dua baris, atau satu baris: 'Laporan security: lulus Commit: <sha head>'; huruf besar/kecil bebas)"
   fi
   if grep -qix needs-perf <<<"$labels" && ! verdict_ok "Laporan perf:" 1 && ! waiver_ok perf; then
     fail "needs-perf: butuh 'Laporan perf: lulus' dengan Angka sebelum/sesudah (berdigit), Tuning, dan 'Commit: <sha head>' dari aicrew-perf, atau waiver owner untuk head"
