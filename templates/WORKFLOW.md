@@ -83,6 +83,12 @@ Diisi saat kickoff. "tidak diketahui" = belum diukur; `aicrew-perf` tidak boleh 
 - Perlu mengubah tes yang ada atau menambah dependensi.
 - Batas iterasi/biaya tercapai.
 
+## Temporary grants
+Izin sementara dari owner untuk gerbang `pr-merge-check.sh --auto`. Hanya satu jenis: `scope=merge; risk=L2`. Tulis hanya sebagai owner; teks bebas "izin sementara" tidak berlaku.
+Bentuk satu baris (kolom 0, di bagian ini saja): `- Grant: scope=merge; risk=L2; branch=<cabang integrasi>; expires=<YYYY-MM-DDTHH:MM:SS+07:00 atau Z>; note=<teks, terakhir, tanpa titik koma>`.
+Maksimum 7 hari dari saat dibaca; cabang bawaan tidak boleh; PR yang menyentuh berkas ini tidak di-merge otomatis. Contoh tidak sah (sengaja, tidak berlaku):
+`- Grant: scope=merge; risk=L2; branch=integration; expires=EXAMPLE`
+
 ## Batas
 - Paralel maksimum: {{3}}
 - Iterasi per sesi: {{20}}
