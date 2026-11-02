@@ -19,7 +19,7 @@ printf '%s' "$in" | jq -r '
   def txt: [.output.title?, .output.summary?, .output.text?, (.annotations[]?.message)] | map(select(type=="string" and . != "")) | join(" ");
   def secs: if .started_at and .completed_at then ((.completed_at|fromdateiso8601) - (.started_at|fromdateiso8601)) else null end;
   def norunner: ((has("runner_id") and (.runner_id == null or .runner_id == 0)) or (has("runner_name") and (.runner_name == null or .runner_name == "")));
-  def infra: (txt | test("payments? (have |has )?failed|spending limit|billing"; "i")) or (norunner and ((secs) as $s | $s != null and $s < 5));
+  def infra: (txt | test("payments? (have |has )?failed|spending limit"; "i")) or (norunner and ((secs) as $s | $s != null and $s < 5));
   [.check_runs[] | select(.status == "completed" and (.conclusion | IN("failure","timed_out","startup_failure","cancelled")))] as $f
   | if ($f | map(select(infra | not)) | length) > 0 then "code"
     elif ($f | length) > 0 then "infrastructure", "owner-action: CI cannot start: \($f[0] | (txt | if . == "" then "job has no runner" else . end) | gsub("[\n\r]+"; " ") | sub("[. ]+$"; "")). Fix account/runner; waiting."

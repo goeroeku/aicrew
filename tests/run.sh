@@ -2216,6 +2216,8 @@ ok "ci-classify (#80): campuran gagal kode + infra -> code" "$(cc "$(mkjson "$(c
 ok "ci-classify (#80): kode tidak mencetak owner-action" "$(cc "$(mkjson "$(cc_run failure 'x' 7 $T0 $T9)")" | grep -c '^owner-action')" 0
 ok "ci-classify (#80): belum selesai -> pending" "$(cc '{"check_runs":[{"name":"j","status":"in_progress","conclusion":null}]}' | head -1)" pending
 ok "ci-classify (#80): anotasi dari array annotations dikenali" "$(cc "$(jq -nc --arg m "$BILL" '{check_runs:[{status:"completed",conclusion:"failure",annotations:[{message:$m}]}]}')" | head -1)" infrastructure
+ok "ci-classify (#80): kata 'billing' di log tes yang gagal tetap code" "$(cc "$(mkjson "$(cc_run failure 'FAIL TestBillingInvoice: billing total mismatch' 7 $T0 $T9)")" | head -1)" code
+ok "ci-classify (#80): 'billing' tanpa runner tapi lama tetap code" "$(cc "$(mkjson "$(cc_run failure 'billing module panic' null $T0 $T9)")" | head -1)" code
 cc 'bukan json {' >"$CC/o"; st=$?
 ok "ci-classify (#80): JSON rusak -> exit non-nol, tanpa 'infrastructure' (fail-closed)" "$([ $st != 0 ] && echo nonzero)|$(grep -c infrastructure "$CC/o")" 'nonzero|0'
 cc '{"foo":1}' >"$CC/o"; st=$?
