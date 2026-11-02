@@ -208,7 +208,9 @@ git init -q "$tmp/rs" && cd "$tmp/rs" && git commit -q --allow-empty -m x && git
 echo '[{"number":10,"state":"OPEN","labels":[{"name":"in-progress"}]},{"number":11,"state":"OPEN","labels":[{"name":"in-review"}]},{"number":12,"state":"OPEN","labels":[{"name":"in-progress"}]},{"number":13,"state":"OPEN","labels":[{"name":"in-progress"}]},{"number":14,"state":"OPEN","labels":[{"name":"role:qa"}]}]' > "$F/issues.json"
 echo '[{"number":20,"state":"MERGED","head":"issue-10"},{"number":21,"state":"OPEN","head":"issue-11"}]' > "$F/pr.json"
 got="$(PATH="$P" bash $root/scripts/resume.sh | cut -f1,2 | tr '\t\n' '::')"
-ok "resume: klasifikasi dari fakta" "$got" "10:selesaikan-merge:11:lanjut-pr:12:periksa-cabang:13:antre-ulang:"
+ok "resume: klasifikasi dari fakta (nama Inggris di kolom 2)" "$got" "10:finish-merge:11:continue-pr:12:check-branch:13:requeue:"
+ok "resume: nama lama tetap di kolom 4 (alias usang)" "$(PATH="$P" bash $root/scripts/resume.sh | cut -f1,4 | tr '\t\n' '::')" "10:selesaikan-merge:11:lanjut-pr:12:periksa-cabang:13:antre-ulang:"
+ok "resume: kolom 3 detail tetap (PR #20)" "$(PATH="$P" bash $root/scripts/resume.sh | awk -F'\t' '$1==10{print $3}')" "PR #20"
 rm -f "$F/pr.json"; cd "$root" || exit 1
 
 # 2d. release-report.sh (gh palsu)
@@ -1159,7 +1161,7 @@ grep -q 'Idle watchdog' README.md && grep -q -- '--idle-limit' README.md; ok "RE
 grep -q 'AICREW_IDLE_LIMIT' scripts/autopilot.sh && grep -q 'AICREW_TERM_GRACE' scripts/autopilot.sh && grep -q 'AICREW_TRANSCRIPT_DIR' scripts/autopilot.sh; ok "autopilot.sh: komentar kepala mendokumentasikan variabel watchdog" $? 0
 grep -q 'file yang di-ignore' templates/WORKFLOW.md; ok "templat WORKFLOW: Clean up after merge menyebut file yang di-ignore ikut terhapus (#44)" $? 0
 # 0.10.0: skill orchestrate, templat WORKFLOW, README memuat integrasi terverifikasi dan menunggu-rilis (#28, #32)
-for k in 'integrated.sh' 'periksa-rilis' 'awaiting-release.sh --mark' 'scheduled-workflow.sh'; do grep -qF -- "$k" skills/orchestrate/SKILL.md; ok "orchestrate memuat '$k'" $? 0; done
+for k in 'integrated.sh' 'periksa-rilis' 'check-release' 'awaiting-release.sh --mark' 'scheduled-workflow.sh'; do grep -qF -- "$k" skills/orchestrate/SKILL.md; ok "orchestrate memuat '$k'" $? 0; done
 grep -q 'Awaiting-release label' templates/WORKFLOW.md; ok "templat WORKFLOW: Awaiting-release label" $? 0
 grep -q 'Integration is verified' README.md; ok "README: integrasi terverifikasi (integrated.sh)" $? 0
 
@@ -1378,7 +1380,8 @@ printf '[{"body":"<!-- aicrew-menunggu-rilis -->\\nPR lama.\\n- .github/workflow
 out="$(MR --check 58)"; rc=$?; ok "menunggu-rilis --check: jalur dari SEMUA komentar berpenanda dihitung (old.yml belum ada -> exit 1)" "$rc|$(grep -c 'old.yml' <<<"$out")" '1|1'
 # resume.sh: issue terbuka berlabel menunggu-rilis -> aksi periksa-rilis
 echo '[{"number":55,"labels":[{"name":"di-integrasi"},{"name":"menunggu-rilis"}]},{"number":56,"pull_request":{},"labels":[{"name":"menunggu-rilis"}]}]' > "$MI/fx/repos_o_r_issues_state_open_labels_menunggu-rilis_per_page_100"
-out="$(cd "$MI/w" && GH_REPO=o/r MI_FX="$MI/fx" PATH="$MI/bin:$PATH" bash "$root/scripts/resume.sh" 2>&1 | cut -f1,2 | tr '\t\n' '::')"; ok "resume: issue berlabel menunggu-rilis -> periksa-rilis (PR diabaikan)" "$out" "55:periksa-rilis:"
+out="$(cd "$MI/w" && GH_REPO=o/r MI_FX="$MI/fx" PATH="$MI/bin:$PATH" bash "$root/scripts/resume.sh" 2>&1 | cut -f1,2 | tr '\t\n' '::')"; ok "resume: issue berlabel menunggu-rilis -> check-release (PR diabaikan)" "$out" "55:check-release:"
+ok "resume: check-release membawa nama lama periksa-rilis di kolom 4" "$(cd "$MI/w" && GH_REPO=o/r MI_FX="$MI/fx" PATH="$MI/bin:$PATH" bash "$root/scripts/resume.sh" 2>&1 | cut -f1,4 | tr '\t\n' '::')" "55:periksa-rilis:"
 
 # 3m-4. cve-audit.sh: alur terjadwal/dependabot yang hanya ada di cabang integrasi (#32)
 CAU() { (cd "$MI/w" && PATH="$MI/bin:$PATH" GH_REPO=o/r bash "$root/scripts/cve-audit.sh" 2>&1); }
@@ -1584,6 +1587,11 @@ ok "autopilot log: PR terbuka dicatat dengan sha7" "$(grep -c 'PR terbuka: #8@ab
 ok "autopilot log: ringkasan tidak menimpa autopilot.status" "$(grep -c 'ringkasan' "$AP3/w/.aicrew/autopilot.status" 2>/dev/null)" 0
 ap3 "$AP3OPEN" $'noop\nclose'; sm="$(grep 'putaran 1: ringkasan:' "$AP3/w/.aicrew/autopilot.log")"
 ok "autopilot log: tanpa PR -> PR digabung: - dan PR terbuka: -, tanpa batas total" "$(grep -c 'PR digabung: -; PR terbuka: -; total 0$' <<<"$sm")" 1
+# 3c-6. skill orchestrate: aksi resume berbahasa Inggris, nama lama sebagai alias usang (#66)
+for k in 'finish-merge' 'continue-pr' 'check-branch' 'requeue'; do grep -qF -- "- \`$k\`" "$root/skills/orchestrate/SKILL.md"; ok "orchestrate (#66): aksi resume $k" $? 0; done
+for k in 'selesaikan-merge' 'lanjut-pr' 'periksa-cabang' 'antre-ulang'; do grep -qF -- "$k" "$root/skills/orchestrate/SKILL.md"; ok "orchestrate (#66): alias usang $k disebut" $? 0; done
+grep -qF 'kolom 4' "$root/skills/orchestrate/SKILL.md"; ok "orchestrate (#66): kolom 4 alias disebut" $? 0
+
 # 3c-5. autopilot.json: kunci Inggris + kunci lama bernilai setara, current dan last_completed (#66)
 AJ() { jq -r "$1" "$AP3/w/.aicrew/autopilot.json"; }
 ap3 "$AP3OPEN" peek
