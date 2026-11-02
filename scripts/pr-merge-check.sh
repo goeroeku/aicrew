@@ -7,6 +7,7 @@
 #   pr-merge-check.sh <pr> <cabang-tujuan> --after  setelah merge: exit 1 bila commit merge tak ada di origin/<tujuan>
 set -u
 GHX_STATE=/dev/null  # gerbang tidak memakai mode cadangan: tanpa berkas status
+source "$(dirname "$0")/lib/grants.sh"  # izin sementara terstruktur (#61)
 source "$(dirname "$0")/ghx.sh"  # hanya ghx_explain_limit: gerbang TIDAK pindah ke REST (closingIssuesReferences tak ada di REST)
 pr="${1:?pr}"; dst="${2:?cabang-tujuan}"
 if [ "${3:-}" = "--after" ]; then
@@ -32,7 +33,27 @@ else
     l="$(gh issue view "$n" --json labels -q '.labels[].name')" || fail "label issue #$n tak terbaca"
     labels="$labels"$'\n'"$l"
   done
-  if [ "${3:-}" = "--auto" ] && grep -qix "risk:L2" <<<"$labels"; then fail "risk:L2: auto-merge ditolak; minta owner merge"; fi
+  if [ "${3:-}" = "--auto" ]; then
+    [[ "$dst" =~ ^[A-Za-z0-9._/-]+$ ]] || fail "cabang tujuan '$dst' berkarakter tidak sah"
+    acr="$(ghx_repo)" && [ -n "$acr" ] || fail "repo tak dapat ditentukan"
+    # PR yang menyentuh docs/WORKFLOW.md (termasuk rename) tidak di-merge otomatis: izin sementara hanya dimasukkan owner (#61)
+    pg=1
+    while :; do
+      pj="$(gh api "repos/$acr/pulls/$pr/files?per_page=100&page=$pg")" || fail "daftar file PR #$pr tak terbaca"
+      jq -e 'type=="array"' <<<"$pj" >/dev/null 2>&1 || fail "daftar file PR #$pr tak terurai"
+      jq -e 'any(.[]; .filename=="docs/WORKFLOW.md" or .previous_filename=="docs/WORKFLOW.md")' <<<"$pj" >/dev/null 2>&1 && fail "PR menyentuh docs/WORKFLOW.md; auto-merge ditolak (izin sementara hanya dari owner); minta owner merge"
+      [ "$(jq length <<<"$pj")" -ge 100 ] || break
+      pg=$((pg+1)); [ "$pg" -le 30 ] || fail "PR punya lebih dari 3000 file; auto-merge ditolak"
+    done
+    if grep -qix "risk:L2" <<<"$labels"; then
+      # izin dibaca HANYA dari cabang tujuan (refs/heads/, bukan tag) lewat REST, gagal tertutup; waktu dari jam sistem
+      dflt="$(gh api "repos/$acr" 2>/dev/null | jq -r '.default_branch // empty' 2>/dev/null)"
+      [ -n "$dflt" ] || fail "risk:L2: auto-merge ditolak; cabang bawaan tak terbaca (izin tidak dievaluasi)"
+      wfg="$(gh api -H 'Accept: application/vnd.github.raw' "repos/$acr/contents/docs/WORKFLOW.md?ref=refs/heads/$dst" 2>/dev/null)" || fail "risk:L2: auto-merge ditolak; docs/WORKFLOW.md tak terbaca di $dst (izin tidak dievaluasi)"
+      gl="$(grant_allows L2 "$dst" "$wfg" "$(date -u +%s)" "main master $dflt")" || fail "risk:L2: auto-merge ditolak; minta owner merge (tidak ada izin sementara yang sah dan belum kedaluwarsa untuk $dst)"
+      echo "izin sementara: ${gl#- Grant: } (merge sebelum expires di atas; jalankan gerbang ulang tepat sebelum merge)"
+    fi
+  fi
   comments="$(gh pr view "$pr" --json comments)" || fail "komentar PR #$pr tak terbaca"
   sha_ok() { [ "${#1}" -ge 7 ] && case "$head" in "$1"*) return 0 ;; esac; return 1; }
   # verdict_ok <awalan> <wajib-angka-dan-tuning:0|1>: vonis TERAKHIR untuk head menang. lulus = satu komentar memuat vonis lulus (tanpa gagal),

@@ -19,6 +19,10 @@ $B bogus >/dev/null 2>&1; ok "budget: perintah asing -> exit 64" $? 64
 mkdir "$tmp/bin"; cat > "$tmp/bin/gh" <<'EOF'
 #!/usr/bin/env bash
 case "$*" in
+  *"/pulls/"*"/files"*) [ -n "${FILES_FAIL:-}" ] && exit 1; echo "${FILES_JSON:-[]}" ;;
+  *"contents/docs/WORKFLOW.md"*) [ -n "${WF_FAIL:-}" ] && exit 1; printf '%s\n' "${WFTEXT:-}" ;;
+  "api repos/o/r") echo '{"default_branch":"main"}' ;;
+  "repo view"*) echo o/r ;;
   *"pr diff"*) [ -n "${DIFFFAIL:-}" ] && exit 1; printf '%s\n' "${DIFF:-}" ;;
   *baseRefName*) echo "$BASE" ;;
   *headRefOid*) echo "${HEAD:-abc1234567}" ;;
@@ -1769,6 +1773,69 @@ unset OA_ISSUES OA_PRS
 
 grep -qF 'owner-action: <tindakan> | <perintah> | <alasan>' "$root/skills/orchestrate/SKILL.md"; ok "orchestrate (#57): komentar owner-action: dengan format tindakan|perintah|alasan" $? 0
 grep -qF '.aicrew/owner-actions.md' "$root/README.md"; ok "README (#57): menyebut .aicrew/owner-actions.md" $? 0
+
+# 3w. izin sementara terstruktur (#61): grants.sh (parser ketat) dan gerbang pr-merge-check.sh --auto
+NOW=1793620800   # 2026-11-02T12:00:00Z
+ge() { ( . "$root/scripts/lib/grants.sh"; grant_epoch "$1" ); }
+ok "grant_epoch: 2024-02-29T00:00:00Z (kabisat sah)" "$(ge 2024-02-29T00:00:00Z)" 1709164800
+ok "grant_epoch: 08 dan 09 bukan oktal" "$(ge 2026-08-09T09:08:00Z)" 1786266480
+ok "grant_epoch: offset +07:00 dikurangi (21:00Z)" "$(ge 2026-11-03T04:00:00+07:00)" 1793653200
+ok "grant_epoch: -00:00 diterima" "$(ge 2026-11-02T12:00:00-00:00)" 1793620800
+ok "grant_epoch: +14:00 diterima" "$(ge 2026-11-03T02:00:00+14:00)" 1793620800
+for bad in 2026-02-29T00:00:00Z 2026-13-01T00:00:00Z 2026-04-31T00:00:00Z 2026-11-02T24:00:00Z 2026-11-02T12:60:00Z 2026-11-02T12:00:60Z 2026-11-02T12:00:00 2026-11-02T12:00:00+0700 2026-11-02T12:00:00.5Z 2026-11-02T12:00:00z 2026-11-02T12:00:00+14:30 2026-11-02T12:00:00+15:00 1969-12-31T23:59:59Z 2101-01-01T00:00:00Z 2026-11-02; do
+  r="$(ge "$bad" 2>/dev/null)"; ok "grant_epoch: '$bad' ditolak" "$([ -z "$r" ] && echo kosong || echo "$r")" kosong; done
+
+ga() { ( . "$root/scripts/lib/grants.sh"; grant_allows "$1" "$2" "$3" "$NOW" "${4:-main master}" 2>/dev/null ) >/dev/null; echo $?; }
+G() { printf '## Temporary grants\n%s\n## Lain\n' "$1"; }
+GV='- Grant: scope=merge; risk=L2; branch=integration; expires=2026-11-03T04:00:00+07:00; note=hanya tes'
+ok "grant_allows: izin sah -> 0" "$(ga L2 integration "$(G "$GV")")" 0
+ok "grant_allows: kedaluwarsa -> 1" "$(ga L2 integration "$(G "${GV/2026-11-03T04:00:00+07:00/2026-11-02T11:00:00Z}")")" 1
+ok "grant_allows: lebih dari 7 hari -> 1" "$(ga L2 integration "$(G "${GV/2026-11-03T04:00:00+07:00/2026-11-20T00:00:00Z}")")" 1
+ok "grant_allows: cabang beda -> 1" "$(ga L2 develop "$(G "$GV")")" 1
+ok "grant_allows: cabang pola (glob) tidak cocok -> 1" "$(ga L2 integration "$(G "${GV/branch=integration/branch=integ*}")")" 1
+ok "grant_allows: cabang bawaan main -> 1" "$(ga L2 main "$(G "${GV/branch=integration/branch=main}")")" 1
+ok "grant_allows: cabang bawaan repo (daftar) -> 1" "$(ga L2 trunk "$(G "${GV/branch=integration/branch=trunk}")" 'main master trunk')" 1
+ok "grant_allows: risk L1 di baris -> 1" "$(ga L2 integration "$(G "${GV/risk=L2/risk=L1}")")" 1
+ok "grant_allows: scope selain merge -> 1" "$(ga L2 integration "$(G "${GV/scope=merge/scope=release}")")" 1
+ok "grant_allows: kunci tak dikenal (ci=) -> 1" "$(ga L2 integration "$(G "${GV/; note=hanya tes/; ci=local-suite}")")" 1
+ok "grant_allows: kunci ganda -> 1" "$(ga L2 integration "$(G "$GV; scope=merge")")" 1
+ok "grant_allows: note memuat ';' -> 1" "$(ga L2 integration "$(G "${GV/hanya tes/a; scope=merge}")")" 1
+ok "grant_allows: spasi di sekitar '=' -> 1" "$(ga L2 integration "$(G "${GV/scope=merge/scope =merge}")")" 1
+ok "grant_allows: CRLF -> 1" "$(ga L2 integration "$(G "$GV"$'\r')")" 1
+ok "grant_allows: tanpa bagian Temporary grants -> 1" "$(ga L2 integration "$GV")" 1
+ok "grant_allows: judul bagian beda huruf -> 1" "$(ga L2 integration "$(printf '## temporary grants\n%s\n' "$GV")")" 1
+ok "grant_allows: baris setelah judul ## berikutnya -> 1" "$(ga L2 integration "$(printf '## Temporary grants\n## Lain\n%s\n' "$GV")")" 1
+ok "grant_allows: di dalam blok kode -> 1" "$(ga L2 integration "$(printf '## Temporary grants\n```\n%s\n```\n' "$GV")")" 1
+ok "grant_allows: di dalam blok ~~~ -> 1" "$(ga L2 integration "$(printf '## Temporary grants\n~~~\n%s\n~~~\n' "$GV")")" 1
+ok "grant_allows: di dalam komentar HTML multi-baris -> 1" "$(ga L2 integration "$(printf '## Temporary grants\n<!--\n%s\n-->\n' "$GV")")" 1
+ok "grant_allows: berindentasi -> 1" "$(ga L2 integration "$(printf '## Temporary grants\n  %s\n' "$GV")")" 1
+ok "grant_allows: blockquote -> 1" "$(ga L2 integration "$(printf '## Temporary grants\n> %s\n' "$GV")")" 1
+ok "grant_allows: setelah blok kode ditutup, baris sah berlaku -> 0" "$(ga L2 integration "$(printf '## Temporary grants\n```\nx\n```\n%s\n' "$GV")")" 0
+ok "grant_allows: satu baris rusak + satu sah -> 0" "$(ga L2 integration "$(printf '## Temporary grants\n- Grant: scope=merge; risk=L2\n%s\n' "$GV")")" 0
+
+# gerbang --auto: bagian WORKFLOW dari cabang tujuan lewat REST, daftar file PR, validasi cabang
+exp_ok="$(date -u -v+1d +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -d '+1 day' +%Y-%m-%dT%H:%M:%SZ)"
+exp_old="$(date -u -v-1d +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -d '-1 day' +%Y-%m-%dT%H:%M:%SZ)"
+wfg() { printf '## Temporary grants\n- Grant: scope=merge; risk=L2; branch=integrasi; expires=%s\n' "$1"; }
+ga2() { env BASE=integrasi BODY="Closes #1" HEAD=abc1234567 "$@" PATH="$tmp/pmb:$PATH" bash "$root/scripts/pr-merge-check.sh" 9 integrasi --auto 2>&1; }
+out="$(ga2 ISSL=risk:L2 WFTEXT="$(wfg "$exp_ok")")"; rc=$?
+ok "gerbang izin: L2 dengan izin sah -> lulus dan mencetak izin sementara" "$rc|$(grep -c '^izin sementara: ' <<<"$out")" '0|1'
+out="$(ga2 ISSL=risk:L2 WFTEXT="$(wfg "$exp_old")")"; rc=$?
+ok "gerbang izin: izin kedaluwarsa -> ditolak" "$rc|$(grep -c 'risk:L2: auto-merge ditolak' <<<"$out")" '1|1'
+ga2 ISSL=risk:L2 >/dev/null; ok "gerbang izin: L2 tanpa izin -> ditolak" $? 1
+ga2 ISSL=risk:L2 WF_FAIL=1 WFTEXT="$(wfg "$exp_ok")" >/dev/null; ok "gerbang izin: WORKFLOW tak terbaca -> ditolak (gagal tertutup)" $? 1
+ga2 ISSL=risk:L1 FILES_JSON='[{"filename":"docs/WORKFLOW.md","status":"modified"}]' >/dev/null; ok "gerbang izin: --auto menolak PR yang menyentuh docs/WORKFLOW.md" $? 1
+ga2 ISSL=risk:L1 FILES_JSON='[{"filename":"x.md","previous_filename":"docs/WORKFLOW.md","status":"renamed"}]' >/dev/null; ok "gerbang izin: rename dari docs/WORKFLOW.md juga ditolak" $? 1
+ga2 ISSL=risk:L1 FILES_FAIL=1 >/dev/null; ok "gerbang izin: daftar file PR tak terbaca -> ditolak" $? 1
+ga2 ISSL=risk:L1 FILES_JSON='[{"filename":"README.md","status":"modified"}]' >/dev/null; ok "gerbang izin: PR biasa tetap lulus" $? 0
+(env BASE='x&ref=main' BODY="Closes #1" HEAD=abc1234567 ISSL=risk:L1 PATH="$tmp/pmb:$PATH" bash "$root/scripts/pr-merge-check.sh" 9 'x&ref=main' --auto >/dev/null 2>&1); ok "gerbang izin: nama cabang tujuan berkarakter khusus ditolak" $? 1
+env BASE=integrasi BODY="Closes #1" HEAD=abc1234567 ISSL=risk:L2 FILES_JSON='[{"filename":"docs/WORKFLOW.md","status":"modified"}]' WFTEXT="$(wfg "$exp_ok")" PATH="$tmp/pmb:$PATH" bash "$root/scripts/pr-merge-check.sh" 9 integrasi --auto >/dev/null 2>&1; ok "gerbang izin: izin aktif tidak melonggarkan larangan menyentuh WORKFLOW.md" $? 1
+env BASE=integrasi BODY="Closes #1" HEAD=abc1234567 ISSL=risk:L2 PATH="$tmp/pmb:$PATH" bash "$root/scripts/pr-merge-check.sh" 9 integrasi >/dev/null 2>&1; ok "gerbang izin: merge manual tanpa --auto tidak berubah (L2 tidak ditahan)" $? 0
+
+grep -q '^## Temporary grants' "$root/templates/WORKFLOW.md" && grep -q 'expires=EXAMPLE' "$root/templates/WORKFLOW.md"; ok "template (#61): bagian Temporary grants dengan contoh tak sah (expires=EXAMPLE)" $? 0
+( . "$root/scripts/lib/grants.sh"; grants_lines "$(cat "$root/templates/WORKFLOW.md")" | while IFS= read -r l; do grant_parse "$l" >/dev/null 2>&1 && echo sah; done ) | grep -q sah; ok "template (#61): contoh di template tidak pernah menjadi izin sah" $? 1
+grep -qF 'jalankan gerbang ulang tepat sebelum' "$root/skills/orchestrate/SKILL.md"; ok "orchestrate (#61): gerbang dijalankan ulang tepat sebelum merge" $? 0
+grep -qF 'Temporary grants' "$root/README.md" && grep -qF 'branch protection' "$root/README.md"; ok "README (#61): format izin dan syarat perlindungan cabang" $? 0
 
 # 3t-0. keputusan owner terbaru dibaca sebelum needs-principal dipasang lagi (#62)
 SK="$root/skills/orchestrate/SKILL.md"

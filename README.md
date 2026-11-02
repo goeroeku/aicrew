@@ -199,6 +199,17 @@ Telegram is only active when **you** fill in your own bot token and chat ID: thr
 When active it sends one message to `api.telegram.org` containing the notification text (e.g. "issue #N needs a decision") and the project folder name. No code, issue or conversation content.
 Otherwise, scripts call `gh` and `git` on your behalf against your own project repository. Details: [`PRIVACY.md`](PRIVACY.md).
 
+### Temporary grants
+
+`pr-merge-check.sh <pr> <branch> --auto` never auto-merges `risk:L2`, unless the owner committed a structured grant to `docs/WORKFLOW.md` on the **target branch** (read over REST from `refs/heads/<branch>`, fail-closed):
+
+```
+## Temporary grants
+- Grant: scope=merge; risk=L2; branch=integration; expires=2026-11-03T04:00:00+07:00; note=free text, last, no semicolons
+```
+
+Rules: only `scope=merge` and `risk=L2`; `branch` is an exact name and never the default branch; `expires` is ISO 8601 with a zone and at most 7 days ahead; unknown keys (for example `ci=`), duplicate keys, spaces around `=`, control characters, or lines inside code fences/HTML comments/other sections are not grants. A PR that touches `docs/WORKFLOW.md` (also by rename) is never auto-merged, so an agent cannot grant itself anything through a PR. All other gate conditions (CI, labels, QA evidence, CVE) still apply. The gate prints the grant it used; run it again right before `gh pr merge`. **Requirement:** protect `docs/WORKFLOW.md` on the integration branch (branch protection or CODEOWNERS); the gate is a convention for anyone who can push or merge directly.
+
 ## 🧱 Stability
 From 1.0 aiCrew follows [Semantic Versioning](https://semver.org/). The public interface is: the flags and exit codes of `scripts/*.sh` documented in this README, the keys and values of `docs/WORKFLOW.md`, the default label names, and the `.aicrew/autopilot.json` format. Skill and agent wording, log lines and messages are not part of that interface and may change in any minor release. Behavior changes to defaults are listed under *Behavior changes* in [`CHANGELOG.md`](CHANGELOG.md).
 
