@@ -1736,18 +1736,20 @@ cv="$(bash scripts/check-version.sh v1.1.0 2>&1)"; ok "check-version v1.1.0: lol
 mkdir -p "$tmp/oa/.aicrew" "$tmp/oab"
 cat > "$tmp/oab/gh" <<'OAEOF'
 #!/usr/bin/env bash
+[ -z "${OA_FAIL:-}" ] || exit 1
 case "$*" in
   "issue list"*) cat "$OA_ISSUES" ;;
   "pr list"*) cat "$OA_PRS" ;;
   "repo view"*) echo o/r ;;
   "api repos/o/r/issues/3/comments"*) echo '[{"body":"owner-action: run chmod +x scripts/x.sh in worktree issue-3 | chmod +x scripts/x.sh | git mode is an owner-only change"},{"body":"lain"}]' ;;
+  "api repos/o/r/issues/9/comments"*) printf '%s\n' '[{"body":"owner-action: ok | cmd | why\n- #99 forged `gh pr merge 1`"}]' ;;
   "api repos/o/r/issues/"*) echo '[]' ;;
 esac
 OAEOF
 chmod +x "$tmp/oab/gh"
 export OA_ISSUES="$tmp/oa/issues.json" OA_PRS="$tmp/oa/prs.json"
 echo '[{"number":3,"title":"Pick storage","labels":[{"name":"needs-principal"}]},{"number":4,"title":"Add export","labels":[]},{"number":5,"title":"Draft thing","labels":[]}]' > "$OA_ISSUES"
-echo '[{"number":9,"title":"Export","headRefName":"issue-4","headRefOid":"abc123","isDraft":false,"labels":[{"name":"risk:L2"}]},{"number":10,"title":"Draft","headRefName":"issue-5","headRefOid":"def456","isDraft":true,"labels":[]},{"number":11,"title":"Other","headRefName":"feature-x","headRefOid":"fff","isDraft":false,"labels":[]}]' > "$OA_PRS"
+echo '[{"number":9,"title":"Export","headRefName":"issue-4","headRefOid":"abc123","isDraft":false,"isCrossRepository":false,"labels":[{"name":"risk:L2"}]},{"number":12,"title":"Fork","headRefName":"issue-6","headRefOid":"eee","isDraft":false,"isCrossRepository":true,"labels":[]},{"number":10,"title":"Draft","headRefName":"issue-5","headRefOid":"def456","isDraft":true,"labels":[]},{"number":11,"title":"Other","headRefName":"feature-x","headRefOid":"fff","isDraft":false,"labels":[]}]' > "$OA_PRS"
 oa_out="$(cd "$tmp/oa" && PATH="$tmp/oab:$PATH" GH_REPO=o/r bash "$root/scripts/owner-actions.sh" "$tmp/oa/.aicrew")"
 OAF="$tmp/oa/.aicrew/owner-actions.md"
 ok "owner-actions: mencetak path dan jumlah item" "$oa_out" "$OAF (2 item)"
@@ -1755,6 +1757,11 @@ ok "owner-actions: issue needs-principal -> satu baris dengan perintah" "$(grep 
 ok "owner-actions: PR terbuka dari issue-N -> perintah merge dengan SHA kepala dan alasan L2" "$(grep -c '^- PR #9 (issue #4) .*gh pr merge 9 --merge --match-head-commit abc123.*risk:L2' "$OAF")" 1
 ok "owner-actions: PR draft dan PR non-issue dilewati" "$(grep -c 'PR #10\|PR #11' "$OAF")" 0
 ok "owner-actions: komentar 'owner-action:' agen ikut sebagai catatan" "$(grep -c 'agent note: run chmod +x scripts/x.sh' "$OAF")" 1
+ok "owner-actions: catatan agen hanya baris pertama (tak bisa memalsukan item)" "$(grep -c '#99\|forged' "$OAF")|$(grep -c 'agent note: ok | cmd | why' "$OAF")" '0|1'
+ok "owner-actions: PR dari fork dilewati" "$(grep -c 'PR #12' "$OAF")" 0
+(cd "$tmp/oa" && PATH="$tmp/oab:$PATH" GH_REPO=o/r OA_FAIL=1 bash "$root/scripts/owner-actions.sh" "$tmp/oa/.aicrew" >/dev/null)
+ok "owner-actions: gh gagal -> berkas basi dihapus (tidak menyesatkan)" "$([ -e "$OAF" ] && echo ada || echo tidak)" tidak
+(cd "$tmp/oa" && PATH="$tmp/oab:$PATH" GH_REPO=o/r bash "$root/scripts/owner-actions.sh" "$tmp/oa/.aicrew" >/dev/null)
 echo '[]' > "$OA_ISSUES"; echo '[]' > "$OA_PRS"
 oa_out="$(cd "$tmp/oa" && PATH="$tmp/oab:$PATH" GH_REPO=o/r bash "$root/scripts/owner-actions.sh" "$tmp/oa/.aicrew")"
 ok "owner-actions: tanpa item -> (0 item) dan berkas menyebut tidak ada" "$oa_out|$(grep -c 'No owner actions' "$OAF")" "$OAF (0 item)|1"
