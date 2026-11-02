@@ -82,7 +82,7 @@ reason() { # <jenis> <nama> <bukti> <ujung> -> alasan melewati sebelum pemeriksa
 }
 owned() { # <jenis> <nama>: milik orkestrator (dan sesuai --issue)
   local n="$2" rx
-  if [ "$1" = worktree ]; then rx="^${reponame}-wt-${issue:-[0-9]+}\$"; else rx="^issue-${issue:-[0-9]+}\$"; fi
+  if [ "$1" = worktree ]; then rx="^${reponame}-wt-${issue:-[0-9]+}(-[A-Za-z0-9]+)?\$"; else rx="^issue-${issue:-[0-9]+}(-[A-Za-z0-9]+)?\$"; fi   # sufiks -r2 dst. ikut (#78)
   [[ "$n" =~ $rx ]]
 }
 want() { [ -z "$only$issue" ] || owned "$1" "$2"; }
