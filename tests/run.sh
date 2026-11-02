@@ -1733,7 +1733,7 @@ cv="$(bash scripts/check-version.sh v1.1.0 2>&1)"; ok "check-version v1.1.0: lol
 
 # 3t-0. keputusan owner terbaru dibaca sebelum needs-principal dipasang lagi (#62)
 SK="$root/skills/orchestrate/SKILL.md"
-for k in 'Sebelum memasang `needs-principal`' 'komentar owner terbaru' 'jangan pasang label' 'terblokir: <sebab>' 'tanpa `needs-principal`' 'Keputusan otomatis (principal)' 'tingkat 2 baru tetap dieskalasi' 'dua kali gagal setelah keputusan owner' 'jangan ulangi komentar'; do
+for k in 'Sebelum memasang `needs-principal`' 'komentar owner terbaru' 'jangan pasang label' 'terblokir: <sebab>' 'tanpa `needs-principal`' 'Keputusan otomatis (principal)' 'tingkat 2 baru tetap dieskalasi' 'dua kali gagal setelah keputusan owner' 'Jangan ulangi komentar'; do
   grep -qF -- "$k" "$SK"; ok "orchestrate (#62): memuat '$k'" $? 0; done
 
 # 3t. sinkronisasi kartu kanban oleh kode (#69): card_status (tabel), board_ref, unsat_blockers, board.sh --sync-cards
