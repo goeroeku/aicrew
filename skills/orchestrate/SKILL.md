@@ -51,6 +51,9 @@ issue terbuka → laporkan penyumbatnya dan berhenti.
 1. `bash scripts/budget.sh check <maxIter> <maxFail> <issue>`; exit ≠ 0 → berhenti sesuai pesannya, lalu notifikasi.
    Lalu `budget.sh iter`.
 2. Worktree: baca baris `Worktree:` di `WORKFLOW.md`.
+   Sebelum membuat worktree: `bash ${CLAUDE_PLUGIN_ROOT}/scripts/worktree-for-issue.sh <n>` mendaftar worktree/cabang `issue-<n>` dan `issue-<n>-<sufiks>` yang sudah ada.
+   Exit 1 = ada kerja uncommitted atau unpushed: **jangan buat worktree baru di sampingnya**, lanjutkan di path yang dicetak dan sebut di laporan putaran.
+   Cabang kanonik satu issue adalah `issue-<n>` (tanpa sufiks `-r2`, dst.); percobaan ulang memakai ulang cabang/worktree itu, bukan membuat yang baru.
    - `dibuat orkestrator`: `git fetch origin <basis>` lalu `git worktree add ../<repo>-wt-<n> -b issue-<n> origin/<basis>` (basis = cabang integrasi bila ada, selain itu `main`).
      Bila baris `Worktree base:` berisi path absolut (mis. di dalam workspace Orca), pakai `<basis-worktree>/<repo>-wt-<n>` sebagai ganti `../<repo>-wt-<n>`; `install-permissions.sh` mengisi izin bacanya dari baris itu.
      Selalu dari `origin/<basis>`, bukan cabang lokal: cabang lokal bisa basi dan tidak memuat PR yang baru ter-merge.

@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # aicrew resume: klasifikasikan issue yang ditinggal sesi sebelumnya (limit/mati) dari FAKTA, bukan ingatan. GitHub/gh saja.
+# Cabang/PR dicari lewat nomor issue: issue-N atau issue-N-<sufiks> (#78).
 # Keluaran per issue (TSV): <issue> <aksi> <detail> <aksi-lama>. Kolom 4 = nama lama aksi (alias usang, tersedia sepanjang 1.x; boleh diabaikan). Aksi:
 #   finish-merge   PR sudah MERGED tapi label/kartu belum diperbarui -> pr-merge-check --after, label di-integrasi, kartu
 #   continue-pr    PR terbuka -> lanjut verifikasi/QA/merge sesuai mode
@@ -12,10 +13,14 @@ act() { printf '%s\t%s\t%s\t%s\n' "$1" "$2" "$3" "$4"; }   # alias-usang: argume
 for n in $(gh issue list --state open --json number,labels \
     -q '.[] | select(.labels|map(.name)|((index("in-progress") or index("in-review")) and (index("epic")|not))) | .number'); do
   read -r pr st < <(gh pr list --head "issue-$n" --state all --json number,state -q '.[0] | "\(.number) \(.state)"' 2>/dev/null || echo "- -")
+  if [ "${st:--}" != MERGED ] && [ "${st:--}" != OPEN ]; then   # tak ada PR di issue-N: cari lewat nomor issue (issue-N-<sufiks>), OPEN diutamakan atas MERGED (#78)
+    read -r pr st < <(gh pr list --state all --limit 200 --json number,state,headRefName -q '[.[]|select((.headRefName//"")|test("^issue-'"$n"'(-|$)"))] | (map(select(.state=="OPEN")) + map(select(.state=="MERGED"))) | .[0] | select(.!=null) | "\(.number) \(.state)"' 2>/dev/null || true)
+  fi
+  br="$(git for-each-ref --format='%(refname:short)' "refs/heads/issue-$n" "refs/heads/issue-$n-*" "refs/remotes/origin/issue-$n" "refs/remotes/origin/issue-$n-*" 2>/dev/null | head -1)"
   if [ "${st:--}" = MERGED ]; then act "$n" finish-merge "PR #$pr" selesaikan-merge   # alias-usang
   elif [ "${st:--}" = OPEN ]; then act "$n" continue-pr "PR #$pr" lanjut-pr   # alias-usang
-  elif git show-ref --verify --quiet "refs/heads/issue-$n" || git show-ref --verify --quiet "refs/remotes/origin/issue-$n"; then
-    act "$n" check-branch "issue-$n tanpa PR" periksa-cabang   # alias-usang
+  elif [ -n "$br" ]; then
+    act "$n" check-branch "${br#origin/} tanpa PR" periksa-cabang   # alias-usang
   else act "$n" requeue "tanpa cabang atau PR" antre-ulang; fi   # alias-usang
 done
 # issue yang menunggu rilis ke cabang bawaan (REST; PR dikecualikan)

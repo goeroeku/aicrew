@@ -2240,4 +2240,31 @@ bash "$root/scripts/ci-classify.sh" --bogus </dev/null >/dev/null 2>&1; ok "ci-c
 printf '%s' "$(mkjson "$(cc_run failure "$BILL" null $T0 $T1)")" | bash "$root/scripts/ci-classify.sh" | head -1 | grep -qx infrastructure; ok "ci-classify (#80): stdin tanpa opsi" $? 0
 for k in 'ci-classify.sh' 'infrastructure'; do grep -qF -- "$k" "$root/skills/orchestrate/SKILL.md"; ok "orchestrate (#80): menyebut $k" $? 0; grep -qF -- "$k" "$root/README.md"; ok "README (#80): menyebut $k" $? 0; done
 
+# 3c-13. satu issue satu cabang (#78): resume.sh resolve per nomor issue, worktree-for-issue.sh menolak di samping kerja belum aman, cleanup melaporkan worktree bersufiks
+echo '[{"number":10,"state":"OPEN","labels":[{"name":"in-progress"}]},{"number":11,"state":"OPEN","labels":[{"name":"in-progress"}]},{"number":12,"state":"OPEN","labels":[{"name":"in-progress"}]},{"number":13,"state":"OPEN","labels":[{"name":"in-progress"}]},{"number":1,"state":"OPEN","labels":[{"name":"in-progress"}]}]' > "$F/issues.json"
+echo '[{"number":30,"state":"MERGED","head":"issue-10-r2","headRefName":"issue-10-r2"},{"number":31,"state":"OPEN","head":"issue-11-r3","headRefName":"issue-11-r3"},{"number":32,"state":"OPEN","head":"issue-100","headRefName":"issue-100"}]' > "$F/pr.json"
+git init -q "$tmp/rs2" && cd "$tmp/rs2" && git commit -q --allow-empty -m x && git branch issue-12-r2
+export FAKE="$F"; got="$(PATH="$tmp/bin:$PATH" bash $root/scripts/resume.sh | cut -f1,2,3 | tr '\t\n' ':;')"
+ok "resume #78: PR dari issue-N-<sufiks> dan cabang bersufiks ditemukan lewat nomor issue (issue-100 tidak ikut issue-10/1)" "$got" "10:finish-merge:PR #30;11:continue-pr:PR #31;12:check-branch:issue-12-r2 tanpa PR;13:requeue:tanpa cabang atau PR;1:requeue:tanpa cabang atau PR;"
+rm -f "$F/pr.json"; cd "$root" || exit 1
+WF="$tmp/wf"; rm -rf "$WF"; mkdir -p "$WF"; git init -q --bare "$WF/remote.git"; git clone -q "$WF/remote.git" "$WF/w" 2>/dev/null
+WG() { git -C "$WF/w" "$@"; }; WG checkout -q -b main; WG commit -q --allow-empty -m base; WG push -q -u origin main
+for b in issue-22-r2 issue-23 issue-24-r3 issue-240; do WG branch "$b" main; done
+WG worktree add -q "$WF/w-wt-22-r2" issue-22-r2; WG worktree add -q "$WF/w-wt-23" issue-23; WG worktree add -q "$WF/w-wt-24-r3" issue-24-r3; WG worktree add -q "$WF/w-wt-240" issue-240
+echo x > "$WF/w-wt-23/f.txt"
+git -C "$WF/w-wt-24-r3" commit -q --allow-empty -m wip
+WT() { (cd "$WF/w" && bash "$root/scripts/worktree-for-issue.sh" "$@" 2>"$WF/err"); }
+out="$(WT 21)"; ok "worktree-for-issue: tanpa jejak -> exit 0 dan mencetak issue-21 kanonik" "$?|$(grep -c '^canonical.issue-21$' <<<"$out")" '0|1'
+out="$(WT 22)"; ok "worktree-for-issue: worktree bersufiks bersih dan terdorong -> exit 0, terdaftar" "$?|$(grep -c 'issue-22-r2' <<<"$out")|$(grep -c '^canonical.issue-22$' <<<"$out")" '0|1|1'
+WT 23 >/dev/null; ok "worktree-for-issue: perubahan belum di-commit -> exit 1, pesan menyebut path" "$?|$(grep -c 'uncommitted.*w-wt-23' "$WF/err")" '1|1'
+WT 24 >/dev/null; ok "worktree-for-issue: commit belum terdorong -> exit 1, pesan menyebut unpushed" "$?|$(grep -c 'unpushed.*w-wt-24-r3' "$WF/err")" '1|1'
+WT 2 >/dev/null; ok "worktree-for-issue: nomor 2 tidak cocok dengan issue-23/24/240 -> exit 0" $? 0
+WT x >/dev/null 2>&1; ok "worktree-for-issue: argumen bukan angka -> exit 64" $? 64
+grep -q 'worktree-for-issue.sh' skills/orchestrate/SKILL.md; ok "orchestrate SKILL.md menyebut worktree-for-issue.sh" $? 0
+# cleanup: worktree bersufiks milik orkestrator, ter-merge dan bersih, dilaporkan layak dihapus
+G() { git -C "$CL/w" "$@"; }   # G didefinisi ulang oleh bagian lain; MK memakainya
+MK; G checkout -q -b issue-9-r2 main; echo nine > "$CL/w/nine.txt"; G add -A; G commit -q -m nine; G checkout -q main; G merge -q --no-ff issue-9-r2 -m "merge nine"; G push -q origin main; G worktree add -q "$CL/w-wt-9-r2" issue-9-r2
+ok "cleanup #78: worktree issue-9-r2 ter-merge dan bersih -> hapus (bersufiks ikut --issue 9)" "$(CLN --no-fetch --issue 9 | cut -f1,2,5 | grep -c '^worktree.w-wt-9-r2.hapus$')" 1
+echo dirty > "$CL/w-wt-9-r2/d.txt"; ok "cleanup #78: worktree bersufiks kotor -> lewati:kotor" "$(CLN --no-fetch --issue 9 | cut -f1,2,5 | grep -c '^worktree.w-wt-9-r2.lewati:kotor$')" 1
+
 [ "$fails" = 0 ] && echo "SEMUA LULUS" || { echo "$fails GAGAL"; exit 1; }
