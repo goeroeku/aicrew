@@ -39,9 +39,8 @@ case "$backend" in
     elif gh auth status >/dev/null 2>&1; then say ok "gh login"
     else say GAGAL "gh belum login (jalankan: gh auth login)"; rc=1; fi
     # mode merge (#66): sama seperti install-permissions.sh: env AICREW_MERGE_MODE, lalu docs/WORKFLOW.md, bawaan owner; agent-after-qa menuntut aturan 'gh pr merge'
-    mmode="${AICREW_MERGE_MODE:-}"; wfp="$(git rev-parse --show-toplevel 2>/dev/null || pwd)/docs/WORKFLOW.md"
-    [ -n "$mmode" ] || mmode="$({ [ -f "$wfp" ] && bash "$(dirname "$0")/lib/wf-normalize.sh" < "$wfp"; } 2>/dev/null | sed -nE 's/^[- ]*Merge PR to integration branch: *(owner|agent-after-qa).*/\1/p' | head -1 || true)"
-    case "$mmode" in *-setelah-[Qq][Aa]) mmode=agent-after-qa ;; agent-after-qa) ;; *) mmode=owner ;; esac   # alias-usang: nilai lama WORKFLOW/env
+    # shellcheck source=lib/merge-mode.sh
+    source "$(dirname "$0")/lib/merge-mode.sh"; mmode="$(merge_mode "$(git rev-parse --show-toplevel 2>/dev/null || pwd)/docs/WORKFLOW.md")"
     if grep -qsE 'Bash\(gh pr merge' "$HOME/.claude/settings.json" "$HOME/.claude/settings.local.json" "$top/.claude/settings.json" "$top/.claude/settings.local.json"; then
       say ok "aturan izin 'gh pr merge' ada"
     elif [ "$mmode" = agent-after-qa ]; then say AWAS "mode merge agent-after-qa tanpa aturan izin 'gh pr merge': agen akan ditolak saat merge dan PR menggantung. Pasang: ! bash $(dirname "$0")/install-permissions.sh (menambah aturan sesuai mode di docs/WORKFLOW.md)"

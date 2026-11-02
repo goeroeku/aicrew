@@ -2170,4 +2170,32 @@ ok "runner-check: alat tak terpakai (curl) tidak dilaporkan" "$(rc "$RC/test.log
 rc --bogus >/dev/null; ok "runner-check: opsi salah -> exit 64" $? 64
 rc /nonexistent.log >/dev/null; ok "runner-check: berkas log tak ada -> exit 64" $? 64
 
+# 3c-10. mode merge (#97): satu helper dipakai preflight.sh dan install-permissions.sh; pembungkus, kunci di tengah baris, huruf besar-kecil
+mkdir -p "$tmp/mm/w/docs" "$tmp/mm/h"; git init -q "$tmp/mm/w"
+mm_ip() { printf '%s\n' "$1" > "$tmp/mm/w/docs/WORKFLOW.md"; echo '{}' > "$tmp/mm/s.json"; (cd "$tmp/mm/w" && env -u AICREW_MERGE_MODE bash "$root/scripts/install-permissions.sh" "$tmp/mm/s.json" >/dev/null 2>&1); jq -e '.permissions.allow|index("Bash(gh pr merge:*)")!=null' "$tmp/mm/s.json" >/dev/null 2>&1 && echo agent-after-qa || echo owner; }
+mm_pf() { printf '%s\n' "$1" > "$tmp/mm/w/docs/WORKFLOW.md"; rm -rf "$tmp/mm/w/.claude"; (cd "$tmp/mm/w" && env -u AICREW_MERGE_MODE HOME="$tmp/mm/h" GH_REPO=o/r PATH="$CL/bin:$PATH" DBM=true bash "$root/scripts/preflight.sh" github 2>&1 | grep -c '^AWAS.*agent-after-qa.*gh pr merge' || true) | sed 's/^1$/agent-after-qa/; s/^0$/owner/'; }
+while IFS='|' read -r label line want; do
+  ok "mode merge (#97) install-permissions: $label" "$(mm_ip "$line")" "$want"
+  ok "mode merge (#97) preflight: $label" "$(mm_pf "$line")" "$want"
+done <<'MMEOF'
+polos|- Merge PR to integration branch: agent-after-qa.|agent-after-qa
+backtick|- Merge PR to integration branch: `agent-after-qa`|agent-after-qa
+tebal|- Merge PR to integration branch: **agent-after-qa**|agent-after-qa
+tengah baris|Rilis dijaga. Merge PR to integration branch: `agent-after-qa`; sisanya prosa.|agent-after-qa
+huruf besar|- Merge PR to integration branch: Agent-After-QA|agent-after-qa
+alias usang kapital|- Merge PR ke cabang integrasi: Agen-Setelah-QA.|agent-after-qa
+owner berbungkus|- Merge PR to integration branch: **`owner`**|owner
+kosong|- Prosa tanpa kunci.|owner
+MMEOF
+mmv() { printf '%b' "$1" > "$tmp/mm/v.md"; bash -c 'source "$1/scripts/lib/merge-mode.sh"; merge_mode "$2"' _ "$root" "$tmp/mm/v.md" | tr -d '\n'; }
+ok "mode merge (#97): baris templat asli (placeholder {{owner | agent-after-qa}}) -> owner" "$(mmv "$(grep -h 'Merge PR to integration branch' "$root/templates/WORKFLOW.md" | head -1)\n")" owner
+ok "mode merge (#97): prosa yang mengutip kunci sebelum baris nilai asli owner -> owner (gagal ke arah ketat)" "$(mmv 'Kunci `Merge PR to integration branch:` agent-after-qa dipakai bila ada QA.\n- Merge PR to integration branch: owner\n')" owner
+ok "mode merge (#97): dua nilai berbeda -> owner (salah konfigurasi)" "$(mmv '- Merge PR to integration branch: agent-after-qa\nContoh: Merge PR to integration branch: owner\n')" owner
+ok "mode merge (#97): nilai sama dua kali -> agent-after-qa" "$(mmv '- Merge PR to integration branch: agent-after-qa\nUlang: Merge PR to integration branch: `agent-after-qa`\n')" agent-after-qa
+mkdir -p "$tmp/mm/single/scripts" "$tmp/mm/single/templates"; cp "$root/scripts/install-permissions.sh" "$tmp/mm/single/scripts/"; cp "$root/templates/autopilot-permissions.json" "$tmp/mm/single/templates/"; echo '{}' > "$tmp/mm/s2.json"
+err="$(cd "$tmp/mm/w" && AICREW_MERGE_MODE=Agent-After-QA bash "$tmp/mm/single/scripts/install-permissions.sh" "$tmp/mm/s2.json" 2>&1 >/dev/null)"
+ok "mode merge (#97): salinan skrip tunggal (tanpa helper) menormalkan env dan memperingatkan di stderr" "$(jq -e '.permissions.allow|index("Bash(gh pr merge:*)")' "$tmp/mm/s2.json" >/dev/null && echo terpasang || echo hilang)|$(grep -c 'merge-mode' <<<"$err")" 'terpasang|1'
+rm -rf "$tmp/mm/w/.claude"; printf '%s\n' '- Merge PR to integration branch: owner' > "$tmp/mm/w/docs/WORKFLOW.md"
+ok "mode merge (#97): env AICREW_MERGE_MODE menang atas WORKFLOW" "$(bash -c 'source "$1/scripts/lib/merge-mode.sh"; merge_mode "$2"' _ "$root" "$tmp/mm/w/docs/WORKFLOW.md" | tr -d '\n')|$(AICREW_MERGE_MODE=agent-after-qa bash -c 'source "$1/scripts/lib/merge-mode.sh"; merge_mode "$2"' _ "$root" "$tmp/mm/w/docs/WORKFLOW.md" | tr -d '\n')" 'owner|agent-after-qa'
+
 [ "$fails" = 0 ] && echo "SEMUA LULUS" || { echo "$fails GAGAL"; exit 1; }
