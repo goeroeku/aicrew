@@ -1794,6 +1794,15 @@ out="$(fo '[]')"; rc=$?; ok "file-overlap: daftar kosong -> exit 0" "$rc|$out" '
 out="$(fo 'bukan json')"; rc=$?; ok "file-overlap: masukan tak terurai -> exit 2 (bukan lolos diam-diam)" "$rc" 2
 IS='{"number":9,"labels":[],"body":"## Related files\n- Expected to touch: contracts/gov.yaml\n"}'
 out="$(fo "[$IA,$IB,$IS]")"; ok "file-overlap: tiga issue pada berkas sama -> tiga pasangan" "$(grep -c '^overlap: contracts/gov.yaml' <<<"$out")" 3
+IX1='{"number":1,"labels":[],"body":"## Related files\n- Expected to touch: a/x.go\n"}'
+IX3='{"number":3,"labels":[],"body":"## Related files\n- Expected to touch: a/x.go\n\n## Blocked by\nother/repo#1\n"}'
+out="$(fo "[$IX1,$IX3]")"; ok "file-overlap: Blocked by lintas repo (other/repo#1) bukan urutan" "$(grep -c '^overlap: a/x.go #1 #3' <<<"$out")" 1
+IV1='{"number":1,"labels":[],"body":"## related files\n* expected to touch: a/x.go\n"}'
+IV2='{"number":2,"labels":[],"body":"## Related Files\n- Expected To Touch: a/x.go\n"}'
+out="$(fo "[$IV1,$IV2]")"; ok "file-overlap: huruf besar/kecil dan bullet * tidak mengubah hasil" "$(grep -c '^overlap: a/x.go #1 #2' <<<"$out")" 1
+IN1='{"number":1,"labels":[],"body":"## Related files\n- Expected to touch: ./a/x.go\n"}'
+IN2='{"number":2,"labels":[],"body":"## Related files\n- Expected to touch: a/x.go.\n"}'
+out="$(fo "[$IN1,$IN2]")"; ok "file-overlap: ./ di depan dan titik di akhir dinormalkan" "$(grep -c '^overlap: a/x.go #1 #2' <<<"$out")" 1
 grep -qF 'file-overlap.sh' "$root/skills/breakdown/SKILL.md"; ok "breakdown (#60): memakai file-overlap.sh" $? 0
 grep -qF 'every file you create or edit' "$root/templates/ISSUE.md"; ok "template ISSUE (#60): Expected to touch memuat setiap berkas yang dibuat atau diubah" $? 0
 

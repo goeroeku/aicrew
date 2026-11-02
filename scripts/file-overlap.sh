@@ -3,7 +3,7 @@
 #   file-overlap.sh                 issue terbuka dari backend (gh)
 #   file-overlap.sh --json FILE|-   larik JSON [{number,body,labels}] (mis. rencana breakdown sebelum issue dibuat)
 # Berkas diambil dari baris "- Expected to touch: ..." di bagian "## Related files" (dipisah koma/spasi; `backtick` dan ":baris" dibuang; token tanpa "." atau "/" diabaikan,
-# jadi placeholder {{path}} tidak dihitung). Urutan = ada rantai "## Blocked by" (transitif) di salah satu arah. Epic diabaikan.
+# jadi placeholder {{path}} tidak dihitung; nama berkas bersepasi tidak didukung; "./" di depan dan ".,;" di akhir dibuang; huruf besar/kecil dan bullet - atau * diterima). Urutan = ada rantai "## Blocked by" (transitif; owner/repo#n lintas repo tidak dihitung) di salah satu arah. Epic diabaikan.
 # Keluaran: "overlap: <berkas> #a #b -> beri #b 'Blocked by #a' (atau pisahkan kepemilikan berkas itu)". Exit 0 tanpa overlap, 1 ada overlap, 2 masukan tak terbaca.
 set -u
 here="$(cd "$(dirname "$0")" && pwd)"
@@ -16,10 +16,10 @@ out="$(jq -r '
     | {n:.number, L:((.body // "")|split("\n"))}
     | . + (reduce .L[] as $l ({s:"",t:[],b:[]};
         (if ($l|test("^## ")) then .s=$l else . end)
-        | (if ((.s|test("^## Related files")) and ($l|test("^- Expected to touch:")))
-            then .t += ($l|sub("^- Expected to touch: *";"")|gsub("`";"")|[splits("[ ,]+")]|map(sub(":[0-9]+(-[0-9]+)?$";""))|map(select(test("[./]") and (test("[{}]")|not))))
+        | (if ((.s|test("^## Related files";"i")) and ($l|test("^[-*] Expected to touch:";"i")))
+            then .t += ($l|sub("^[-*] Expected to touch: *";"";"i")|gsub("`";"")|[splits("[ ,]+")]|map(sub(":[0-9]+(-[0-9]+)?$";"")|sub("[.,;]+$";"")|sub("^\\./";""))|map(select(test("[./]") and (test("[{}]")|not))))
             else . end)
-        | (if (.s|test("^## Blocked by")) then .b += ([$l|scan("#[0-9]+")|ltrimstr("#")|tonumber]) else . end))) ] as $I
+        | (if (.s|test("^## Blocked by")) then .b += ([$l|scan("(?<![A-Za-z0-9_./-])#[0-9]+")|ltrimstr("#")|tonumber]) else . end))) ] as $I
   | ($I|map({key:(.n|tostring), value:.b})|from_entries) as $B
   | ($I|map(.t[])|unique) as $paths
   | $paths[] as $p
