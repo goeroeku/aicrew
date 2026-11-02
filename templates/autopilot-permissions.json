@@ -22,6 +22,7 @@
       "Bash(git worktree:*)",
     "Bash(git update-ref:*)",
       "Bash(git merge:*)",
+      "Bash(git rebase:*)",
       "Bash(git add:*)",
       "Bash(git commit:*)",
       "Bash(git push:*)",
