@@ -96,6 +96,8 @@ dua kali gagal, persyaratan ambigu, perlu mengubah tes yang ada atau menambah de
    auth/uang/data pribadi, atau sulit dibalik (server baru, akun, migrasi). Tandai issue, tulis konkret apa yang
    bertentangan dengan bagian PRD mana, lewati, lanjut ke issue lain, dan kabari owner.
 Ragu antara keduanya → eskalasi.
+
+**Sebelum memasang `needs-principal` (atau memasangnya lagi), baca komentar issue.** Bila komentar owner terbaru sudah memutuskan pertanyaan itu (mis. dependensi disetujui dengan pin persis), anggap terjawab: jangan pasang label dan jangan bertanya ulang. Kendala nyata yang bukan keputusan owner (implementasi belum ada, kriteria selesai belum terpenuhi, lingkungan mati seperti daemon Docker) dilaporkan apa adanya sebagai `terblokir: <sebab>` di komentar issue dan laporan sesi, tanpa `needs-principal`; issue dilewati dan dicoba lagi di putaran berikut.
 Agen dilarang melonggarkan sandbox atau mengubah tes yang ada tanpa izin. Kena limit (Codex/agen lain) →
 ambil alih dengan model Claude sesuai bobot tugas dan sebutkan di laporan.
 
