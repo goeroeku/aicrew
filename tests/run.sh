@@ -2279,4 +2279,29 @@ printf '{"permissions":{"allow":["Bash(git:*)"]}}' > "$tmp/pi/r/.claude/settings
 ok "preflight (#107): Bash(git:*) mencukupi" "$(pfi agent-after-qa | grep -c '^ok.*izin subagen')" 1
 grep -q 'Bash(git rebase:\*)' "$root/templates/autopilot-permissions.json"; ok "template izin autopilot memuat git rebase (#107)" $? 0
 
+# 3c-15. label and board bookkeeping (#111): integrated.sh <pr> <issue> relabels and verifies, --sync mirrors PR-closed cards, scripts are executable
+echo '{"labels":[{"name":"integrated"}]}' > "$MI/fx/repos_o_r_issues_11"; : > "$MI/fx/calls"
+MIPR 7 '"2026-11-01T00:00:00Z"' "$X1" "$X1" integrasi; printf -- '- Cabang integrasi: integrasi\n' > "$MI/w/docs/WORKFLOW.md"
+out="$(TI 7 11)"; rc=$?; ok "integrated #111: <pr> <issue> -> exit 0, label added, in-progress/in-review removed" "$rc|$(grep -c 'POST repos/o/r/issues/11/labels' "$MI/fx/calls")|$(grep -c 'DELETE repos/o/r/issues/11/labels/in-progress' "$MI/fx/calls")|$(grep -c 'DELETE repos/o/r/issues/11/labels/in-review' "$MI/fx/calls")" '0|1|1|1'
+echo '{"labels":[{"name":"in-progress"},{"name":"integrated"}]}' > "$MI/fx/repos_o_r_issues_11"
+out="$(TI 7 11)"; rc=$?; ok "integrated #111: issue still in-progress afterwards -> non-zero with message" "$rc|$(grep -c 'still has' <<<"$out")" '1|1'
+echo '{"labels":[{"name":"in-review"}]}' > "$MI/fx/repos_o_r_issues_11"
+out="$(TI 7 11)"; rc=$?; ok "integrated #111: integrated label missing afterwards -> non-zero with message" "$rc|$(grep -c 'integrated label' <<<"$out")" '1|1'
+MIPR 8 null "$X1" "$X1" integrasi; : > "$MI/fx/calls"; out="$(TI 8 11)"; ok "integrated #111: PR not merged -> labels untouched" "$?|$(grep -c 'labels' "$MI/fx/calls")" '1|0'
+mkdir -p "$tmp/bs2/docs" "$tmp/bsb2"; git init -q "$tmp/bs2"; cat > "$tmp/bsb2/gh" <<'EOF'
+#!/usr/bin/env bash
+echo "$*" >> "$FAKE/calls"
+case "$*" in
+  "repo view"*) echo o/r ;;
+  "project view"*) echo PID ;;
+  "project field-list"*) echo '{"fields":[{"name":"Status","id":"F1","options":[{"name":"In review","id":"O1"},{"name":"Done","id":"OD"}]}]}' ;;
+  "project item-list"*) echo '{"items":[{"id":"I6","status":"In review","content":{"number":6,"type":"Issue"}},{"id":"I8","content":{"number":8,"type":"Issue"}},{"id":"I9","status":"Done","content":{"number":9,"type":"Issue"}}]}' ;;
+  "issue list"*) echo '[{"number":6,"closedByPullRequestsReferences":[{"number":9}]},{"number":8,"closedByPullRequestsReferences":[{"number":10}]},{"number":9,"closedByPullRequestsReferences":[{"number":11}]}]' ;;
+esac
+EOF
+chmod +x "$tmp/bsb2/gh"; export FAKE="$tmp/bs2"; : > "$FAKE/calls"; printf -- '- Kartu Done: agen-setelah-merge.\n' > "$tmp/bs2/docs/WORKFLOW.md"
+(cd "$tmp/bs2" && PATH="$tmp/bsb2:$PATH" bash "$root/scripts/board.sh" o 3 --sync >/dev/null)
+ok "board --sync #111: issue closed by a PR with no card status -> Done; In review and Done cards untouched" "$(grep 'item-edit' "$FAKE/calls" | grep -c 'I8.*OD')$(grep -c 'item-edit' "$FAKE/calls")" 11
+ok "scripts #111: every tracked scripts/*.sh and scripts/lib/*.sh is mode 100755" "$(git -C "$root" ls-files -s scripts | awk '$1!="100755"' | wc -l | tr -d ' ')" 0
+
 [ "$fails" = 0 ] && echo "SEMUA LULUS" || { echo "$fails GAGAL"; exit 1; }
