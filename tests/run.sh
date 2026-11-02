@@ -1584,6 +1584,33 @@ ok "autopilot log: PR terbuka dicatat dengan sha7" "$(grep -c 'PR terbuka: #8@ab
 ok "autopilot log: ringkasan tidak menimpa autopilot.status" "$(grep -c 'ringkasan' "$AP3/w/.aicrew/autopilot.status" 2>/dev/null)" 0
 ap3 "$AP3OPEN" $'noop\nclose'; sm="$(grep 'putaran 1: ringkasan:' "$AP3/w/.aicrew/autopilot.log")"
 ok "autopilot log: tanpa PR -> PR digabung: - dan PR terbuka: -, tanpa batas total" "$(grep -c 'PR digabung: -; PR terbuka: -; total 0$' <<<"$sm")" 1
+# 3c-5. autopilot.json: kunci Inggris + kunci lama bernilai setara, current dan last_completed (#66)
+AJ() { jq -r "$1" "$AP3/w/.aicrew/autopilot.json"; }
+ap3 "$AP3OPEN" peek
+ok "autopilot.json: saat putaran, kunci baru phase/round/idle_seconds/heartbeat" "$(jq -r '[.phase,.round,(.idle_seconds|type),(.heartbeat|type)]|join(",")' "$AP3FX/peek.json")" 'running,1,number,number'
+ok "autopilot.json: kunci lama tetap ada dan setara (fase=putaran, putaran=1)" "$(jq -r '[.fase,.putaran,(.idle_sejak_detik|type),(.detak|type)]|join(",")' "$AP3FX/peek.json")" 'putaran,1,number,number'
+ok "autopilot.json: akhir sukses -> phase done dan fase selesai, current kosong, last_completed null" "$(AJ '[.phase,.fase,(.current|length),(.last_completed|tostring)]|join(",")')" 'done,selesai,0,null'
+ap3 '[{"number":1,"state":"OPEN","labels":[{"name":"role:qa"},{"name":"in-progress"},{"name":"role:backend"}]},{"number":2,"state":"OPEN","labels":[{"name":"in-progress"}]},{"number":3,"state":"OPEN","labels":[{"name":"ready"}]}]' peek
+ok "autopilot.json: current memuat issue in-progress dengan role pertama abjad atau null" "$(jq -c '.current' "$AP3FX/peek.json")" '[{"issue":1,"role":"role:backend"},{"issue":2,"role":null}]'
+ap3 '[{"number":1,"state":"OPEN","labels":[{"name":"needs-principal"}]}]' close
+ok "autopilot.json: menunggu owner -> phase waiting-owner dan fase menunggu-owner" "$(AJ '[.phase,.fase]|join(",")')" 'waiting-owner,menunggu-owner'
+ap3 "$AP3OPEN" $'limit\nclose'
+ok "autopilot.json: tidur limit tercatat sebagai phase sleeping-limit (fase tidur-limit)" "$(grep -c '"phase":"sleeping-limit".*"fase":"tidur-limit"' "$AP3FX/sleeps")" 1
+ap3 "$AP3OPEN" $'mergepr\nclose'
+ok "autopilot.json: last_completed memuat PR yang digabung dan bertahan sampai selesai" "$(AJ '[.last_completed.pr,(.last_completed.merged_at|type),.phase]|join(",")')" '7,string,done'
+ok "autopilot.log: baris terakhir selesai dicatat" "$(grep -c 'putaran 1: terakhir selesai: #7' "$AP3/w/.aicrew/autopilot.log")" 1
+for k in '`current`' '`last_completed`' '`idle_seconds`' 'idle-interrupted' 'sleeping-limit' '`idle_sejak_detik`'; do grep -qF -- "$k" "$root/README.md"; ok "README Stability (#66): autopilot.json menyebut $k" $? 0; done
+ap3 '[{"number":1,"state":"OPEN","labels":[{"name":"in-progress"},{"name":"role:qa"}]}]' peek
+ok "autopilot.log: baris sedang dikerjakan dicatat dan autopilot.status tetap baris putaran" "$(grep -c 'putaran 1: sedang dikerjakan: #1(role:qa)' "$AP3/w/.aicrew/autopilot.log")|$(grep -c '^putaran 1: 1 issue terbuka' "$AP3FX/peek.status")" '1|1'
+mkdir -p "$AP3/w/.aicrew"; printf '{"pr":1}\n{"pr":2}\n' > "$AP3/w/.aicrew/last-completed.json"
+rm -f "$AP3FX/n"; AP3KEEP=1 ap3 "$AP3OPEN" peek
+ok "autopilot.json: last-completed.json korup (dua dokumen) -> last_completed null, berkas status tetap ditulis" "$(jq -c '[.phase,.last_completed]' "$AP3FX/peek.json" 2>/dev/null)" '["running",null]'
+printf '"x"' > "$AP3/w/.aicrew/last-completed.json"; rm -f "$AP3FX/n"; AP3KEEP=1 ap3 "$AP3OPEN" peek
+ok "autopilot.json: last-completed.json berbentuk salah (string) -> last_completed null" "$(jq -c '.last_completed' "$AP3FX/peek.json" 2>/dev/null)" null
+ap3 '[{"number":1,"state":"OPEN","labels":[{"name":null},{"name":"in-progress"},{"name":"role:qa"}]}]' peek
+ok "autopilot.json: label tanpa nama tidak mengosongkan current" "$(jq -c '.current' "$AP3FX/peek.json" 2>/dev/null)" '[{"issue":1,"role":"role:qa"}]'
+ap3 "$AP3OPEN" $'mergepr\nclose'; ok "autopilot: last-completed.json ditulis atomik (tanpa sisa .tmp)" "$(ls "$AP3/w/.aicrew" | grep -c 'last-completed.json.tmp')" 0
+
 
 AP3ENV="AICREW_IDLE_LIMIT=100 AICREW_IDLE_POLL=30" ap3 "$AP3OPEN" slowclose   # claude hidup 2 dtk: pemantau sedang di dalam sleep 30 saat dihentikan (stub instan membuat tes ini tak bermakna, #73)
 ok "autopilot: pemantau yang dihentikan tidak mencetak 'Terminated' (#63)" "$(grep -c 'Terminated' "$AP3/out")" 0

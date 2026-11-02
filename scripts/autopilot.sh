@@ -24,9 +24,13 @@ claude="${AICREW_CLAUDE:-claude}"; L_INT="$(bash "$here/label.sh" integrated --j
 g="$(git rev-parse --git-common-dir)" && d="$(cd "$g/.." && pwd)/.aicrew"; mkdir -p "$d"; run="$(date +%Y%m%d-%H%M%S)"   # nama unik per jalan untuk arsip keluaran putaran (round-N.log ditimpa tiap jalan)
 [ "$reset_total" = 1 ] && rm -f "$d/total"
 log() { printf '%s %s\n' "$(date '+%F %T')" "$*" | tee -a "$d/autopilot.log"; printf '%s\n' "$*" > "$d/autopilot.status"; }
-# status kesehatan (#48): .aicrew/autopilot.json {fase, putaran, idle_sejak_detik, detak}, ditulis atomik; baris pertama autopilot.status tidak berubah
+# status kesehatan (#48, #66): .aicrew/autopilot.json, ditulis atomik; baris pertama autopilot.status tidak berubah.
+# Kunci Inggris {phase, round, idle_seconds, heartbeat, current, last_completed} dan kunci lama {fase, putaran, idle_sejak_detik, detak} bernilai setara (alias usang, hapus hanya di mayor).
+phase_old() { case "$1" in running) echo putaran ;; idle-interrupted) echo idle-diinterupsi ;; waiting-owner) echo menunggu-owner ;; sleeping-limit) echo tidur-limit ;; done) echo selesai ;; *) echo "$1" ;; esac; }   # alias-usang
+cur_json='[]'; last_json="$(jq -cse 'select(length==1)|.[0]|select(type=="object" and (.pr|type=="number"))' "$d/last-completed.json" 2>/dev/null)" || last_json=null; [ -n "$last_json" ] || last_json=null
 set_phase() { command -v jq >/dev/null 2>&1 || return 0; local t="$d/autopilot.json.tmp.$$"
-  jq -nc --arg f "$1" --argjson r "${2:-$cur_round}" --argjson i "${3:-0}" --argjson t "$(date +%s)" '{fase:$f,putaran:$r,idle_sejak_detik:$i,detak:$t}' > "$t" 2>/dev/null && mv "$t" "$d/autopilot.json"; return 0; }
+  jq -nc --arg p "$1" --arg f "$(phase_old "$1")" --argjson r "${2:-$cur_round}" --argjson i "${3:-0}" --argjson t "$(date +%s)" --argjson cur "$cur_json" --argjson lc "$last_json" \
+    '{phase:$p,round:$r,idle_seconds:$i,heartbeat:$t,current:$cur,last_completed:$lc,fase:$f,putaran:$r,idle_sejak_detik:$i,detak:$t}' > "$t" 2>/dev/null && mv "$t" "$d/autopilot.json"; return 0; }
 note() { log "$*"; command -v jq >/dev/null && jq -n --arg m "$*" '{message:$m}' | bash "$here/notify.sh"; return 0; }
 fingerprint() { local a b; a="$(gh issue list --state all --limit 200 --json number,state,labels)" && b="$(gh pr list --state all --limit 200 --json number,state)" || return 1; printf '%s\n%s\n' "$a" "$b" | shasum | cut -d' ' -f1; }   # gagal = tidak ada sidik jari (bukan hash keluaran kosong, #73)
 
@@ -34,6 +38,8 @@ fingerprint() { local a b; a="$(gh issue list --state all --limit 200 --json num
 # Seperti baris rc, tidak lewat log(): autopilot.status tetap berisi keadaan putaran.
 round_summary() { local pr m o t l; t="$(cat "$d/total" 2>/dev/null || echo 0)"; [ -n "$max_total" ] && t="$t/$max_total"
   if pr="$(gh pr list --state all --limit 50 --json number,state,mergedAt,headRefOid 2>/dev/null)" && m="$(jq -r --argjson s "$2" '[.[]|select(.state=="MERGED" and .mergedAt!=null and (.mergedAt|sub("\\.[0-9]+";"")|fromdateiso8601)>=$s)|"#\(.number)"]|if length==0 then "-" else join(" ") end' <<<"$pr" 2>/dev/null)" && o="$(jq -r '[.[]|select(.state=="OPEN")|"#\(.number)@\((.headRefOid//"")[0:7])"]|if length==0 then "-" else join(" ") end' <<<"$pr" 2>/dev/null)"; then
+    lc="$(jq -c --argjson s "$2" '[.[]|select(.state=="MERGED" and .mergedAt!=null and (.mergedAt|sub("\\.[0-9]+";"")|fromdateiso8601)>=$s)]|sort_by(.mergedAt)|last|if .==null then empty else {pr:.number,merged_at:.mergedAt} end' <<<"$pr" 2>/dev/null)"
+    [ -z "$lc" ] || { printf '%s' "$lc" > "$d/last-completed.json.tmp.$$" && mv "$d/last-completed.json.tmp.$$" "$d/last-completed.json"; last_json="$lc"; printf '%s putaran %s: terakhir selesai: #%s (%s)\n' "$(date '+%F %T')" "$1" "$(jq -r .pr <<<"$lc")" "$(jq -r .merged_at <<<"$lc")" | tee -a "$d/autopilot.log"; }
     l="putaran $1: ringkasan: durasi $(( $(date +%s) - $2 ))s; rc=$3; PR digabung: $m; PR terbuka: $o; total $t"
   else l="putaran $1: ringkasan: durasi $(( $(date +%s) - $2 ))s; rc=$3; PR tak terbaca (gh gagal); total $t"; fi
   printf '%s %s\n' "$(date '+%F %T')" "$l" | tee -a "$d/autopilot.log"; return 0; }
@@ -99,12 +105,12 @@ watch_round() { # <awal-epoch> <induk-pid>
       busy=0
       for c in $(descendants "$target"); do nm="$(basename "$(ps -o comm= -p "$c" 2>/dev/null)" 2>/dev/null)"; [ -n "$nm" ] || continue; printf '%s' "$nm" | grep -Eq "$idle_ignore" || busy=1; done
       [ "$busy" = 0 ] || last="$now"
-      set_phase putaran "$cur_round" "$((now-last))"
+      set_phase running "$cur_round" "$((now-last))"
       [ $((now-last)) -ge "$idle_limit" ] && reason="idle $(((now-last)/60)) menit"
     fi
     [ -n "$reason" ] || continue
     pgrep -P "$parent" 2>/dev/null | grep -vx "$me" | grep -qx "$target" || continue   # pid masih anak langsung autopilot ini
-    : > "$d/idle-interrupt"; set_phase idle-diinterupsi "$cur_round" "$((now-last))"
+    : > "$d/idle-interrupt"; set_phase idle-interrupted "$cur_round" "$((now-last))"
     log "putaran $cur_round: $reason; diinterupsi (SIGINT)"; kill -INT "$target" 2>/dev/null
     # eskalasi: sesi yang mengabaikan SIGINT sudah macet (menggantung = masalah #48). Dicatat setelah AICREW_IDLE_GRACE (30 dtk), SIGTERM setelah AICREW_TERM_GRACE (60 dtk) lagi; tidak pernah SIGKILL
     ig="${AICREW_IDLE_GRACE:-30}"; tg="${AICREW_TERM_GRACE:-60}"; { sleep "$ig"; } 2>/dev/null
@@ -143,18 +149,19 @@ for ((i=1; i<=max_rounds; i++)); do
   fi
   gh_down=0
   n_open="$(jq length <<<"$open")"
+  cur_json="$(jq -c '[.[]|select(.labels|map(.name)|index("in-progress"))|{issue:.number,role:([.labels[].name|select(type=="string" and startswith("role:"))]|sort|.[0])}]' <<<"$open" 2>/dev/null)" || cur_json='[]'; [ -n "$cur_json" ] || cur_json='[]'
   board_sync
   n_wait="$(jq '[.[]|select(.labels|map(.name)|index("needs-principal"))]|length' <<<"$open")"
-  [ "$n_open" = 0 ] && { set_phase selesai "$((i-1))"; note "autopilot: semua issue selesai (putaran $((i-1)))"; exit 0; }
+  [ "$n_open" = 0 ] && { cur_json='[]'; set_phase done "$((i-1))"; note "autopilot: semua issue selesai (putaran $((i-1)))"; exit 0; }
   [ "$n_open" = "$n_wait" ] && {
-    m="autopilot: $n_open issue tersisa semuanya needs-principal; butuh keputusan owner"; set_phase menunggu-owner
+    m="autopilot: $n_open issue tersisa semuanya needs-principal; butuh keputusan owner"; set_phase waiting-owner
     if [ "$(cat "$d/principal-note" 2>/dev/null)" = "$m" ]; then log "$m"; else note "$m$(owner_actions)"; printf '%s' "$m" > "$d/principal-note"; fi  # satu notifikasi per keadaan, tidak tiap tick autostart
     exit 3; }
   if [ -n "$max_total" ]; then msg="$(bash "$here/budget.sh" check 999999 999 "" "$max_total")"; [ $? = 4 ] && { note "autopilot: $msg; total kumulatif antar-jalan, nolkan dengan --reset-total atau hapus .aicrew/total"; exit 4; }; fi
 
   # menunggu owner: sudah ada putaran tanpa perubahan dan semua issue tersisa hanya menunggu manusia -> pantau murah lewat gh (tanpa claude)
   if [ "$same" -ge 1 ] && waiting_on_owner "$open"; then
-    wf="$d/waiting-since"; set_phase menunggu-owner
+    wf="$d/waiting-since"; set_phase waiting-owner
     [ -f "$wf" ] || { date +%s > "$wf"; note "autopilot: menunggu owner ($n_open issue: needs-principal atau PR terbuka menunggu merge); cek tiap $((wait_s/60)) menit, batas $((wait_max/86400)) hari$(owner_actions)"; }
     since="$(cat "$wf")"
     while :; do
@@ -168,7 +175,8 @@ for ((i=1; i<=max_rounds; i++)); do
   fi
   rm -f "$d/principal-note"
   bash "$here/budget.sh" newrun
-  out="$d/round-$i.log"; log "putaran $i: $n_open issue terbuka ($n_wait needs-principal)"; set_phase putaran "$i"
+  out="$d/round-$i.log"; log "putaran $i: $n_open issue terbuka ($n_wait needs-principal)"; set_phase running "$i"
+  [ "$cur_json" = '[]' ] || printf '%s putaran %s: sedang dikerjakan: %s\n' "$(date '+%F %T')" "$i" "$(jq -r 'map("#\(.issue)(\(.role // "-"))")|join(" ")' <<<"$cur_json")" | tee -a "$d/autopilot.log"
   rm -f "$d/idle-interrupt"; rstart="$(date +%s)"
   if [ "$idle_limit" -gt 0 ] 2>/dev/null || [ "$round_timeout" -gt 0 ] 2>/dev/null; then watch_round "$rstart" "$$" & wpid=$!; fi
   # shellcheck disable=SC2086
@@ -192,7 +200,7 @@ for ((i=1; i<=max_rounds; i++)); do
   # ponytail: heuristik panjang; ganti dengan --output-format json dan is_error bila perlu pasti.
   if [ "$likely" = 1 ] && { [ "$rc" != 0 ] || [ "$(grep -c . "$out")" -le 3 ]; }; then
     [ "$was_limit" = 0 ] && note "autopilot: kena limit, menunggu $((sleep_s/60)) menit lalu coba lagi"
-    was_limit=1; set_phase tidur-limit "$i"; sleep "$sleep_s"; continue
+    was_limit=1; set_phase sleeping-limit "$i"; sleep "$sleep_s"; continue
   fi
   [ "$likely" = 0 ] || [ "$rc" != 0 ] || log "putaran $i: keluaran menyebut kata limit tetapi rc=0 dan laporan panjang ($(grep -c . "$out") baris); dianggap normal (bukan limit)"
   [ "$was_limit" = 1 ] && note "autopilot: lanjut setelah limit" && was_limit=0
