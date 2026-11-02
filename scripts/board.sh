@@ -75,7 +75,9 @@ if [ "${3:-}" = "--sync" ]; then
   # closedByPullRequestsReferences hanya ada di GraphQL: pada mode cadangan langkah ini dilewati (bukan ditebak)
   r=0; closed="$(ghx_gql gh issue list --state closed --limit 200 --json number,labels,closedByPullRequestsReferences)" || r=$?
   if [ "$r" = 75 ]; then skipped=$((skipped+1)); finish; elif [ "$r" != 0 ]; then exit "$r"; fi
-  for n in $(jq -r '.[]|select((.closedByPullRequestsReferences|length)==0 and ((.labels // [])|map(.name)|index("epic")|not))|.number' <<<"$closed"); do
+  # issue ditutup lewat PR (ke cabang mana pun) hanya dicerminkan bila kartunya belum bernilai status (#111); kartu ber-status diurus alur merge
+  nostat="$(jq -r '.items[]|select(.content.type=="Issue" and ((.status // "")==""))|.content.number' <<<"$done_items")"
+  for n in $(jq -r --arg ns "$nostat" '.[]|select(((.closedByPullRequestsReferences|length)==0 or (.number as $x|$ns|split("\n")|index($x|tostring))!=null) and ((.labels // [])|map(.name)|index("epic")|not))|.number' <<<"$closed"); do
     grep -qx "$n" <<<"$done_n" || bash "$0" "$owner" "$num" "$n" Done || true
   done
   exit 0
