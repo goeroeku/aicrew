@@ -1255,6 +1255,8 @@ ok "setelah-merge --issue 5: worktree w-wt-5 dan cabang issue-5 terhapus dalam s
 grep -q 'Clean up after merge:' templates/WORKFLOW.md; ok "templat WORKFLOW memuat 'Clean up after merge:'" $? 0
 grep -q 'cleanup.sh --after-merge' skills/orchestrate/SKILL.md && grep -q 'tidak pernah menghentikan' skills/orchestrate/SKILL.md; ok "orchestrate langkah 8 memanggil cleanup.sh --after-merge dan 'tidak pernah menghentikan'" $? 0
 jq -e '.permissions.allow|index("Bash(git update-ref:*)")' templates/autopilot-permissions.json >/dev/null; ok "autopilot-permissions.json memuat git update-ref" $? 0
+for r in 'Bash(git merge:*)' 'Bash(make:*)' 'Bash(go test:*)'; do jq -e --arg r "$r" '.permissions.allow|index($r)' templates/autopilot-permissions.json >/dev/null; ok "autopilot-permissions.json memuat $r (#59, #58)" $? 0; done
+jq -e '.permissions.deny|map(select(startswith("Bash(git merge")))|length==0' templates/autopilot-permissions.json >/dev/null; ok "autopilot-permissions.json: tidak ada deny yang membatalkan git merge" $? 0
 
 # 3k-4. preflight.sh: setelan GitHub hapus-cabang-saat-merge dan jumlah cabang ter-merge (bukti offline)
 PF() { (cd "$CL/w" && GH_REPO=o/r PATH="$CL/bin:$PATH" bash "$root/scripts/preflight.sh" github 2>&1); }

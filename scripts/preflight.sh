@@ -29,7 +29,7 @@ else
     grep -qxF -e "Bash($r:*)" -e "Bash($b:*)" -e "Bash" <<<"$allow" || miss="$miss Bash($r:*)"
   done <<<"$(tr "|" "\n" <<<"$need")"
   if [ -z "$miss" ]; then say ok "izin subagen: aturan Bash yang dibutuhkan ada"
-  else say AWAS "izin subagen: aturan allow hilang:$miss. Subagen tanpa aturan ini ditolak (QA 'no tests executed', PR menggantung). Pasang dari template: ! bash $(dirname "$0")/install-permissions.sh (template belum memuat make/go test: tambahkan manual)"; fi
+  else say AWAS "izin subagen: aturan allow hilang:$miss. Subagen tanpa aturan ini ditolak (QA 'no tests executed', PR menggantung). Pasang dari template: ! bash $(dirname "$0")/install-permissions.sh"; fi
 fi
 case "$PWD$(git worktree list 2>/dev/null)" in *orca/workspaces/*) say AWAS "workspace Orca: Orca meluncurkan agen dengan --dangerously-skip-permissions secara bawaan, sehingga aturan deny di settings TIDAK ditegakkan; matikan flag itu di pengaturan agen Orca" ;; esac
 
