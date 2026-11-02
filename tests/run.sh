@@ -2094,5 +2094,28 @@ for f in templates/WORKFLOW.md templates/*.md skills/*/SKILL.md agents/*.md .git
   ok "penjaga: tanpa nama teknis Indonesia di $f" "$(grep -vE '^\*\*Deprecated aliases' "$f" | grep -cE "$IDTOK")" 0
 done
 ok "penjaga: README tanpa nama teknis Indonesia di luar Deprecated aliases" "$(grep -vE '^\*\*Deprecated aliases' README.md | grep -cE "$IDTOK")" 0
+# 3c-8. buntu: sidik jari mencakup WORKFLOW.md dan berkas izin efektif; backoff log; petunjuk --retry-stuck (#79)
+mkdir -p "$AP3/home/.claude" "$AP3/w/docs" "$AP3/w/.claude"
+stuck79() { echo "base" > "$AP3/w/docs/WORKFLOW.md"; echo '{"permissions":{"allow":[]}}' > "$AP3/w/.claude/settings.json"; rm -f "$AP3/w/.claude/settings.local.json" "$AP3/home/.claude/settings.json"
+  AP3ENV="HOME=$AP3/home" ap3 "$AP3OPEN" $'noop\nnoop\nnoop\nnoop' --stuck 3 >/dev/null; }
+again79() { AP3KEEP=1 AP3ENV="HOME=$AP3/home AICREW_STUCK_BACKOFF=${BO79:-900}" ap3 "$AP3OPEN" $'noop\nnoop\nnoop\nnoop' --stuck 3; }
+stuck79; again79; rc=$?
+ok "buntu #79: tidak ada perubahan -> exit 5" "$rc" 5
+ok "buntu #79: pesan memuat alasan, 'changed inputs: none' dan petunjuk --retry-stuck" "$(grep -c 'state unchanged since .*; changed inputs: none.*--retry-stuck' "$AP3/w/.aicrew/autopilot.log")" 1
+again79 >/dev/null; again79 >/dev/null
+ok "buntu #79: restart berulang dalam periode backoff -> satu baris log" "$(grep -c 'masih buntu' "$AP3/w/.aicrew/autopilot.log")" 1
+BO79=0 again79 >/dev/null
+ok "buntu #79: backoff 0 -> baris log baru" "$(grep -c 'masih buntu' "$AP3/w/.aicrew/autopilot.log")" 2
+stuck79; echo "changed" > "$AP3/w/docs/WORKFLOW.md"; again79 >/dev/null; rc=$?
+ok "buntu #79: WORKFLOW.md berubah -> putaran jalan (bukan exit 5)" "$([ "$rc" != 5 ] && echo jalan || echo diam)" jalan
+stuck79; echo '{"permissions":{"allow":["Bash(x)"]}}' > "$AP3/w/.claude/settings.json"; again79 >/dev/null; rc=$?
+ok "buntu #79: .claude/settings.json berubah -> putaran jalan" "$([ "$rc" != 5 ] && echo jalan || echo diam)" jalan
+stuck79; echo '{}' > "$AP3/w/.claude/settings.local.json"; again79 >/dev/null; rc=$?
+ok "buntu #79: .claude/settings.local.json muncul -> putaran jalan" "$([ "$rc" != 5 ] && echo jalan || echo diam)" jalan
+stuck79; echo '{}' > "$AP3/home/.claude/settings.json"; again79 >/dev/null; rc=$?
+ok "buntu #79: ~/.claude/settings.json muncul -> putaran jalan" "$([ "$rc" != 5 ] && echo jalan || echo diam)" jalan
+rm -f "$AP3/home/.claude/settings.json" "$AP3/w/.claude/settings.local.json"
+for k in '--retry-stuck' '15 minutes' 'WORKFLOW.md'; do grep 'restarted while still stuck (5)' "$root/README.md" | grep -qF -- "$k"; ok "README (#79): paragraf exit 5 menyebut $k" $? 0; done
+
 
 [ "$fails" = 0 ] && echo "SEMUA LULUS" || { echo "$fails GAGAL"; exit 1; }

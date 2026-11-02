@@ -32,7 +32,10 @@ set_phase() { command -v jq >/dev/null 2>&1 || return 0; local t="$d/autopilot.j
   jq -nc --arg p "$1" --arg f "$(phase_old "$1")" --argjson r "${2:-$cur_round}" --argjson i "${3:-0}" --argjson t "$(date +%s)" --argjson cur "$cur_json" --argjson lc "$last_json" \
     '{phase:$p,round:$r,idle_seconds:$i,heartbeat:$t,current:$cur,last_completed:$lc,fase:$f,putaran:$r,idle_sejak_detik:$i,detak:$t}' > "$t" 2>/dev/null && mv "$t" "$d/autopilot.json"; return 0; }   # alias-usang
 note() { log "$*"; command -v jq >/dev/null && jq -n --arg m "$*" '{message:$m}' | bash "$here/notify.sh"; return 0; }
-fingerprint() { local a b; a="$(gh issue list --state all --limit 200 --json number,state,labels)" && b="$(gh pr list --state all --limit 200 --json number,state)" || return 1; printf '%s\n%s\n' "$a" "$b" | shasum | cut -d' ' -f1; }   # gagal = tidak ada sidik jari (bukan hash keluaran kosong, #73)
+fingerprint() { local a b c f top; top="$(git rev-parse --show-toplevel 2>/dev/null)" || top=.   # #79: yang bisa diubah owner tanpa menyentuh issue (WORKFLOW.md, berkas izin efektif) ikut sidik jari
+  c=""; for f in "$top/docs/WORKFLOW.md" "$top/.claude/settings.json" "$top/.claude/settings.local.json" "$HOME/.claude/settings.json"; do c="$c$f $(shasum < "$f" 2>/dev/null)
+"; done
+  a="$(gh issue list --state all --limit 200 --json number,state,labels)" && b="$(gh pr list --state all --limit 200 --json number,state)" || return 1; printf '%s\n%s\n%s\n' "$a" "$b" "$c" | shasum | cut -d' ' -f1; }   # gagal = tidak ada sidik jari (bukan hash keluaran kosong, #73)
 
 # ringkasan per putaran (#63): satu baris di autopilot.log setelah putaran selesai: durasi, rc, PR yang digabung selama putaran, PR terbuka dengan sha7, total. Hanya hasil pengamatan skrip (gh), tidak pernah fatal.
 # Seperti baris rc, tidak lewat log(): autopilot.status tetap berisi keadaan putaran.
@@ -132,11 +135,16 @@ errs=0; gh_down=0; same=0; was_limit=0; last="$(fingerprint)" || last=""
 [ -n "$last" ] && [ "$(cat "$d/last-round-fp" 2>/dev/null)" = "$last" ] && same=1
 # buntu berulang (#56): sidik jari saat berhenti buntu disimpan di $d/stuck. Start ulang (supervisor/loop luar) dengan keadaan sama = langsung exit 5 tanpa putaran claude;
 # keadaan berubah atau --retry-stuck menghapus penanda.
-if [ "$retry_stuck" = 1 ]; then rm -f "$d/stuck"
+if [ "$retry_stuck" = 1 ]; then rm -f "$d/stuck" "$d/stuck-logged"
 elif [ -f "$d/stuck" ] && [ -n "$last" ]; then   # sidik jari tak terbaca (gh gagal): penanda dibiarkan
   if [ "$(cat "$d/stuck")" = "$last" ]; then
-    set_phase stuck 0; log "autopilot: masih buntu: keadaan issue/PR sama seperti saat berhenti buntu terakhir; tidak ada putaran dijalankan (ubah sesuatu, atau pakai --retry-stuck)"; exit 5
-  else rm -f "$d/stuck"; fi
+    # satu baris log per periode backoff (AICREW_STUCK_BACKOFF, bawaan 900 dtk), bukan per percobaan start (#79)
+    set_phase stuck 0; nowe="$(date +%s)"; lw="$(cat "$d/stuck-logged" 2>/dev/null)"; case "$lw" in ''|*[!0-9]*) lw=0 ;; esac
+    if [ $((nowe - lw)) -ge "${AICREW_STUCK_BACKOFF:-900}" ]; then
+      se="$(stat -c %Y "$d/stuck" 2>/dev/null || stat -f %m "$d/stuck" 2>/dev/null || echo "$nowe")"
+      log "autopilot: masih buntu: state unchanged since $(date -r "$se" '+%F %T' 2>/dev/null || date -d "@$se" '+%F %T'); changed inputs: none; tidak ada putaran dijalankan (ubah issue/PR, WORKFLOW.md atau berkas izin, atau pakai --retry-stuck)"; echo "$nowe" > "$d/stuck-logged"
+    fi; exit 5
+  else rm -f "$d/stuck" "$d/stuck-logged"; fi
 fi
 for ((i=1; i<=max_rounds; i++)); do
   cur_round=$i
@@ -214,7 +222,7 @@ for ((i=1; i<=max_rounds; i++)); do
   if [ -n "$now" ]; then   # gh gagal di sini = keadaan tak diketahui: jangan dihitung maju/buntu dan jangan menulis penanda
     printf '%s' "$now" > "$d/last-round-fp"
     if [ "$now" = "$last" ]; then same=$((same+1)); else same=0; last="$now"; fi
-    [ "$same" -ge "$stuck_max" ] && { printf '%s' "$now" > "$d/stuck"; set_phase stuck "$i"; note "autopilot: buntu, $stuck_max putaran tanpa perubahan di issue/PR; berhenti"; exit 2; }
+    [ "$same" -ge "$stuck_max" ] && { printf '%s' "$now" > "$d/stuck"; rm -f "$d/stuck-logged"; set_phase stuck "$i"; note "autopilot: buntu, $stuck_max putaran tanpa perubahan di issue/PR; berhenti"; exit 2; }
   else log "putaran $i: sidik jari tak terbaca (gh gagal); tidak dihitung maju atau buntu; jeda sebelum putaran berikutnya"; sleep "${AICREW_ERR_SLEEP:-60}"
   fi
 done
