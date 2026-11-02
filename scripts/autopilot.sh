@@ -34,6 +34,8 @@ fingerprint() { local a b; a="$(gh issue list --state all --limit 200 --json num
 has_open_pr() { [ "$(gh pr list --head "issue-$1" --state open --json number,state -q '[.[]|select(.state=="OPEN")]|length' 2>/dev/null)" -ge 1 ] 2>/dev/null; }
 is_principal() { jq -e --argjson n "$2" '.[]|select(.number==$n)|.labels|map(.name)|index("needs-principal")' <<<"$1" >/dev/null 2>&1; }
 . "$here/lib/blockers.sh"; . "$here/lib/board-ref.sh"   # unsat_blockers, board_ref
+# ringkasan tindakan owner (#57): .aicrew/owner-actions.md ditulis saat mulai menunggu owner; mencetak "; tindakan owner: <path> (<N> item)" untuk ditempel ke catatan/notifikasi. Tak pernah gagal.
+owner_actions() { local r; r="$(bash "$here/owner-actions.sh" "$d" 2>/dev/null)" && [ -n "$r" ] && printf '; tindakan owner: %s' "$r"; return 0; }
 # cerminan kanban (#69): papan aktif ("Kanban board: GitHub Project o/n") -> --sync lalu --sync-cards, sekali per iterasi; tidak pernah fatal; AICREW_BOARD_SYNC=0 mematikan.
 # Baris log sengaja tidak lewat log(): autopilot.status tetap berisi keadaan putaran.
 board_sync() {
@@ -138,14 +140,14 @@ for ((i=1; i<=max_rounds; i++)); do
   [ "$n_open" = 0 ] && { set_phase selesai "$((i-1))"; note "autopilot: semua issue selesai (putaran $((i-1)))"; exit 0; }
   [ "$n_open" = "$n_wait" ] && {
     m="autopilot: $n_open issue tersisa semuanya needs-principal; butuh keputusan owner"; set_phase menunggu-owner
-    if [ "$(cat "$d/principal-note" 2>/dev/null)" = "$m" ]; then log "$m"; else note "$m"; printf '%s' "$m" > "$d/principal-note"; fi  # satu notifikasi per keadaan, tidak tiap tick autostart
+    if [ "$(cat "$d/principal-note" 2>/dev/null)" = "$m" ]; then log "$m"; else note "$m$(owner_actions)"; printf '%s' "$m" > "$d/principal-note"; fi  # satu notifikasi per keadaan, tidak tiap tick autostart
     exit 3; }
   if [ -n "$max_total" ]; then msg="$(bash "$here/budget.sh" check 999999 999 "" "$max_total")"; [ $? = 4 ] && { note "autopilot: $msg; total kumulatif antar-jalan, nolkan dengan --reset-total atau hapus .aicrew/total"; exit 4; }; fi
 
   # menunggu owner: sudah ada putaran tanpa perubahan dan semua issue tersisa hanya menunggu manusia -> pantau murah lewat gh (tanpa claude)
   if [ "$same" -ge 1 ] && waiting_on_owner "$open"; then
     wf="$d/waiting-since"; set_phase menunggu-owner
-    [ -f "$wf" ] || { date +%s > "$wf"; note "autopilot: menunggu owner ($n_open issue: needs-principal atau PR terbuka menunggu merge); cek tiap $((wait_s/60)) menit, batas $((wait_max/86400)) hari"; }
+    [ -f "$wf" ] || { date +%s > "$wf"; note "autopilot: menunggu owner ($n_open issue: needs-principal atau PR terbuka menunggu merge); cek tiap $((wait_s/60)) menit, batas $((wait_max/86400)) hari$(owner_actions)"; }
     since="$(cat "$wf")"
     while :; do
       if [ $(( $(date +%s) - since )) -ge "$wait_max" ]; then
