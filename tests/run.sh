@@ -1729,6 +1729,8 @@ ok "card_status: tanpa kartu -> skip"           "$(cs '' 0 none 0 - "$INT")" ski
 ok "card_status: tidak mundur dari In review"   "$(cs '' 0 none 0 'In review' "$INT")" 'In review'
 ok "card_status: tidak mundur dari In progress" "$(cs '' 3 none 0 'In progress' "$INT")" 'In progress'
 ok "card_status: In review tidak turun ke In progress" "$(cs 'in-progress' 0 none 0 'In review' "$INT")" 'In review'
+ok "card_status: nama status beda huruf besar/kecil tidak memundurkan kartu" "$(cs 'in-progress' 0 none 0 'In Review' "$INT")" 'In Review'
+ok "card_status: nama status beda huruf besar tidak dihitung perubahan" "$(cs '' 0 draft 0 'in progress' "$INT")" 'In progress'
 ok "card_status: Done dibiarkan"                "$(cs '' 0 none 0 Done "$INT")" Done
 ok "card_status: in-progress menang atas needs-principal" "$(cs 'needs-principal in-progress' 0 none 0 Ready "$INT")" 'In progress'
 

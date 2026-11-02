@@ -13,6 +13,6 @@ card_status() {
   elif [ "$bl" -gt 0 ]; then want=Backlog
   elif [[ "$lb" == *" needs-principal "* ]]; then echo skip:needs-principal; return 0
   else want=Ready; fi
-  _cs_rank() { case "$1" in "In progress") echo 1 ;; "In review") echo 2 ;; Done) echo 3 ;; *) echo 0 ;; esac; }
+  _cs_rank() { case "$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')" in "in progress") echo 1 ;; "in review") echo 2 ;; done) echo 3 ;; *) echo 0 ;; esac; }
   if [ "$(_cs_rank "$want")" -ge "$(_cs_rank "$cur")" ]; then echo "$want"; else echo "$cur"; fi
 }

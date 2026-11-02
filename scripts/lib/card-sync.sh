@@ -12,9 +12,9 @@ card_sync() {
   all="$(ghx_issues open - 200 number,body,labels)" || { echo "board: issue tak terbaca, sinkron kartu dilewati"; return 0; }
   repo="$(ghx_repo)" || { echo "board: repo tak diketahui, sinkron kartu dilewati"; return 0; }
   prs="$(gh api "repos/$repo/pulls?state=all&per_page=100" 2>/dev/null)" || { echo "board: PR tak terbaca, sinkron kartu dilewati"; return 0; }
-  il="$(bash "$_cs_scripts/label.sh" integrated --all)"; ilj="$(bash "$_cs_scripts/label.sh" integrated --json)"
-  openset="$(jq --argjson ls "$ilj" '[.[]|select((.labels|map(.name)) as $n|(any($ls[]; . as $x|$n|index($x)) or ($n|index("epic")))|not)]' <<<"$all")"  # sama dengan autopilot: epic dan integrated bukan blocker
-  wts="$(git worktree list --porcelain 2>/dev/null | sed -n 's#^worktree .*-wt-\([0-9][0-9]*\)$#\1#p')"
+  il="$(bash "$_cs_scripts/label.sh" integrated --all)" && ilj="$(bash "$_cs_scripts/label.sh" integrated --json)" || { echo "board: label integrated tak terbaca, sinkron kartu dilewati"; return 0; }
+  openset="$(jq --argjson ls "$ilj" '[.[]|select((.labels|map(.name)) as $n|(any($ls[]; . as $x|$n|index($x)) or ($n|index("epic")))|not)]' <<<"$all")" || { echo "board: issue tak terurai, sinkron kartu dilewati"; return 0; }  # sama dengan autopilot: epic dan integrated bukan blocker
+  wts="$(git worktree list --porcelain 2>/dev/null | sed -n 's#^worktree .*-wt-\([0-9][0-9]*\)$#\1#p')" || true
   while IFS=$'\t' read -r n lb; do
     [ -n "$n" ] || continue
     cur="$(jq -r --argjson n "$n" '[.items[]|select(.content.number==$n and .content.type=="Issue")]|if length==0 then "-" else (.[0].status // "") end' <<<"$items")"
@@ -24,9 +24,9 @@ card_sync() {
     want="$(card_status "$lb" "$bl" "$pr" "$wt" "$cur" "$il")"
     case "$want" in
       skip:*) sk=$((sk+1)); reasons="$reasons ${want#skip:}" ;;
-      "$cur") ;;
-      *) ch=$((ch+1)); echo "#$n: ${cur:--} -> $want"
-         [ "$dry" = 1 ] || bash "$_cs_scripts/board.sh" "$owner" "$num" "$n" "$want" >/dev/null || fail=$((fail+1)) ;;
+      *) [ "$(printf %s "$want" | tr '[:upper:]' '[:lower:]')" = "$(printf %s "$cur" | tr '[:upper:]' '[:lower:]')" ] && continue
+         ch=$((ch+1)); echo "#$n: ${cur:--} -> $want"
+         [ "$dry" = 1 ] || bash "$_cs_scripts/board.sh" "$owner" "$num" "$n" "$want" >/dev/null </dev/null || fail=$((fail+1)) ;;
     esac
   done < <(jq -r '.[]|select((.labels|map(.name)|index("epic"))|not)|"\(.number)\t\(.labels|map(.name)|join(" "))"' <<<"$all")
   r=""; for c in integrated multi-merged-pr needs-principal no-card; do
