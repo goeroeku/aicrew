@@ -2267,4 +2267,16 @@ MK; G checkout -q -b issue-9-r2 main; echo nine > "$CL/w/nine.txt"; G add -A; G 
 ok "cleanup #78: worktree issue-9-r2 ter-merge dan bersih -> hapus (bersufiks ikut --issue 9)" "$(CLN --no-fetch --issue 9 | cut -f1,2,5 | grep -c '^worktree.w-wt-9-r2.hapus$')" 1
 echo dirty > "$CL/w-wt-9-r2/d.txt"; ok "cleanup #78: worktree bersufiks kotor -> lewati:kotor" "$(CLN --no-fetch --issue 9 | cut -f1,2,5 | grep -c '^worktree.w-wt-9-r2.lewati:kotor$')" 1
 
+# 3c-16. preflight (#107): alur integrasi (mode agent-after-qa) menuntut aturan git merge dan git rebase
+mkdir -p "$tmp/pi/h" "$tmp/pi/r/.claude"; git init -q "$tmp/pi/r"
+pfi() { (cd "$tmp/pi/r" && HOME="$tmp/pi/h" AICREW_MERGE_MODE="$1" bash "$root/scripts/preflight.sh" 2>&1); }
+printf '{"permissions":{"allow":["Bash(git worktree:*)","Bash(git commit:*)","Bash(git push:*)"]}}' > "$tmp/pi/r/.claude/settings.local.json"
+ok "preflight (#107): agent-after-qa tanpa merge/rebase -> AWAS menyebut kedua aturan" "$(pfi agent-after-qa | grep '^AWAS.*izin subagen' | grep -c 'Bash(git merge:\*).*Bash(git rebase:\*)')" 1
+ok "preflight (#107): mode owner tidak menuntut merge/rebase" "$(pfi owner | grep -c '^ok.*izin subagen')" 1
+printf '{"permissions":{"allow":["Bash(git worktree:*)","Bash(git commit:*)","Bash(git push:*)","Bash(git merge:*)"]}}' > "$tmp/pi/r/.claude/settings.local.json"
+ok "preflight (#107): hanya rebase yang hilang -> disebut, merge tidak" "$(pfi agent-after-qa | grep '^AWAS.*izin subagen' | grep -c 'Bash(git rebase:\*)')|$(pfi agent-after-qa | grep '^AWAS.*izin subagen' | grep -c 'Bash(git merge:')" '1|0'
+printf '{"permissions":{"allow":["Bash(git:*)"]}}' > "$tmp/pi/r/.claude/settings.local.json"
+ok "preflight (#107): Bash(git:*) mencukupi" "$(pfi agent-after-qa | grep -c '^ok.*izin subagen')" 1
+grep -q 'Bash(git rebase:\*)' "$root/templates/autopilot-permissions.json"; ok "template izin autopilot memuat git rebase (#107)" $? 0
+
 [ "$fails" = 0 ] && echo "SEMUA LULUS" || { echo "$fails GAGAL"; exit 1; }

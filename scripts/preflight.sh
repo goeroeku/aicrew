@@ -14,6 +14,9 @@ for f in .github/workflows/*.y*ml; do [ -f "$f" ] || continue
   grep -qE '^[[:space:]]*push:' "$f" && grep -qE 'branches:.*(main|master)|^[[:space:]]*-[[:space:]]*(main|master)[[:space:]]*$' "$f" \
     && say AWAS "$f jalan saat push ke main/master: merge ke main memicunya (deploy?)"
 done
+# mode merge (#66): env AICREW_MERGE_MODE, lalu docs/WORKFLOW.md, bawaan owner; agent-after-qa = alur integrasi oleh agen (butuh 'gh pr merge', git merge, git rebase)
+# shellcheck source=lib/merge-mode.sh
+source "$(dirname "$0")/lib/merge-mode.sh"; mmode="$(merge_mode "$(git rev-parse --show-toplevel 2>/dev/null || pwd)/docs/WORKFLOW.md")"
 # izin subagen (#58): subagen unattended ditolak diam-diam bila aturan Bash tak ada; baca .permissions.allow efektif, sebut aturan yang hilang
 top="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 set -- "$HOME/.claude/settings.json" "$HOME/.claude/settings.local.json" "$top/.claude/settings.json" "$top/.claude/settings.local.json"
@@ -24,6 +27,7 @@ else
   allow="$( [ "${#ex[@]}" -gt 0 ] && jq -r '.permissions.allow[]? | strings' "${ex[@]}" 2>/dev/null)"
   need="git worktree|git commit|git push"; [ "$backend" = github ] && need="$need|gh pr|gh issue"
   [ -f "$top/Makefile" ] && need="$need|make"; [ -f "$top/go.mod" ] && need="$need|go test"
+  [ "$mmode" = agent-after-qa ] && need="$need|git merge|git rebase"
   miss=""; while IFS= read -r r; do
     case "$r" in git*) b="git" ;; gh*) b="gh" ;; make) b="make" ;; go*) b="go" ;; esac
     grep -qxF -e "Bash($r:*)" -e "Bash($b:*)" -e "Bash" <<<"$allow" || miss="$miss Bash($r:*)"
@@ -39,8 +43,6 @@ case "$backend" in
     elif gh auth status >/dev/null 2>&1; then say ok "gh login"
     else say GAGAL "gh belum login (jalankan: gh auth login)"; rc=1; fi
     # mode merge (#66): sama seperti install-permissions.sh: env AICREW_MERGE_MODE, lalu docs/WORKFLOW.md, bawaan owner; agent-after-qa menuntut aturan 'gh pr merge'
-    # shellcheck source=lib/merge-mode.sh
-    source "$(dirname "$0")/lib/merge-mode.sh"; mmode="$(merge_mode "$(git rev-parse --show-toplevel 2>/dev/null || pwd)/docs/WORKFLOW.md")"
     if grep -qsE 'Bash\(gh pr merge' "$HOME/.claude/settings.json" "$HOME/.claude/settings.local.json" "$top/.claude/settings.json" "$top/.claude/settings.local.json"; then
       say ok "aturan izin 'gh pr merge' ada"
     elif [ "$mmode" = agent-after-qa ]; then say AWAS "mode merge agent-after-qa tanpa aturan izin 'gh pr merge': agen akan ditolak saat merge dan PR menggantung. Pasang: ! bash $(dirname "$0")/install-permissions.sh (menambah aturan sesuai mode di docs/WORKFLOW.md)"
