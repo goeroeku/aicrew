@@ -26,7 +26,7 @@ case "$*" in
   *"pr diff"*) [ -n "${DIFFFAIL:-}" ] && exit 1; printf '%s\n' "${DIFF:-}" ;;
   *baseRefName*) echo "$BASE" ;;
   *headRefOid*) echo "${HEAD:-abc1234567}" ;;
-  *comments*) jq -n --arg a "${COMM:-}" --arg b "${COMM2:-}" '{comments:([$a,$b]|map(select(.!=""))|map({body:.}))}' ;;
+  *comments*) jq -n --arg a "${COMM:-}" --arg b "${COMM2:-}" --arg x "${ASSOC-OWNER}" --arg y "${ASSOC2-OWNER}" '{comments:([{body:$a,authorAssociation:($x|if startswith("[") then fromjson else . end)},{body:$b,authorAssociation:$y}]|map(select(.body!=""))|map(if .authorAssociation=="-" then del(.authorAssociation) else . end))}' ;;
   *"issue view"*) [ -n "${ISSFAIL:-}" ] && exit 1; v="ISSL_$3"; echo "${!v:-${ISSL:-}}" ;;
   *closingIssuesReferences*) for n in ${CLOSING:-}; do echo "$n"; done ;;
   *labels*) printf '%s\n' "${PRL:-}" ;;
@@ -2198,7 +2198,49 @@ ok "mode merge (#97): salinan skrip tunggal (tanpa helper) menormalkan env dan m
 rm -rf "$tmp/mm/w/.claude"; printf '%s\n' '- Merge PR to integration branch: owner' > "$tmp/mm/w/docs/WORKFLOW.md"
 ok "mode merge (#97): env AICREW_MERGE_MODE menang atas WORKFLOW" "$(bash -c 'source "$1/scripts/lib/merge-mode.sh"; merge_mode "$2"' _ "$root" "$tmp/mm/w/docs/WORKFLOW.md" | tr -d '\n')|$(AICREW_MERGE_MODE=agent-after-qa bash -c 'source "$1/scripts/lib/merge-mode.sh"; merge_mode "$2"' _ "$root" "$tmp/mm/w/docs/WORKFLOW.md" | tr -d '\n')" 'owner|agent-after-qa'
 
-# 3c-11. satu issue satu cabang (#78): resume.sh resolve per nomor issue, worktree-for-issue.sh menolak di samping kerja belum aman, cleanup melaporkan worktree bersufiks
+# 3c-11. gerbang: vonis dan waiver hanya dari komentar OWNER/MEMBER/COLLABORATOR (#99)
+for a in OWNER MEMBER COLLABORATOR; do qg ASSOC=$a COMM='Laporan qa: lulus Commit: abc1234' >/dev/null; ok "gerbang penulis (#99): vonis dari $a diterima" $? 0; done
+for a in NONE CONTRIBUTOR FIRST_TIMER FIRST_TIME_CONTRIBUTOR MANNEQUIN owner ''; do qg ASSOC="$a" COMM='Laporan qa: lulus Commit: abc1234' >/dev/null; ok "gerbang penulis (#99): vonis dari '$a' ditolak" $? 1; done
+qg ASSOC='["OWNER"]' COMM='Laporan qa: lulus Commit: abc1234' >/dev/null; ok "gerbang penulis (#99): authorAssociation berupa array ditolak" $? 1
+qg ASSOC=- COMM='Laporan qa: lulus Commit: abc1234' >/dev/null; ok "gerbang penulis (#99): tanpa authorAssociation -> ditolak (gagal tertutup)" $? 1
+qg ASSOC=NONE COMM='Laporan qa: lulus Commit: abc1234' ASSOC2=OWNER COMM2='Laporan qa: lulus Commit: abc1234' >/dev/null; ok "gerbang penulis (#99): komentar tak tepercaya diabaikan, yang tepercaya cukup" $? 0
+qg ASSOC=OWNER COMM='Laporan qa: lulus Commit: abc1234' ASSOC2=NONE COMM2='Laporan qa: gagal Commit: abc1234' >/dev/null; ok "gerbang penulis (#99): 'gagal' dari orang luar tidak membatalkan lulus tepercaya" $? 0
+qg ASSOC=OWNER COMM='Laporan qa: lulus Commit: abc1234' ASSOC2=OWNER COMM2='Laporan qa: gagal Commit: abc1234' >/dev/null; ok "gerbang penulis (#99): 'gagal' tepercaya tetap menang" $? 1
+qg ISSL=needs-security ASSOC=NONE COMM='Laporan security: lulus Commit: abc1234' ASSOC2=OWNER COMM2='Laporan qa: lulus Commit: abc1234' >/dev/null; ok "gerbang penulis (#99): security lulus dari orang luar ditolak" $? 1
+WV='Pengecualian disetujui owner (perf): alasan uji (Commit: abc1234)'
+qg ISSL=needs-perf ASSOC=OWNER COMM="$WV" ASSOC2=OWNER COMM2='Laporan qa: lulus Commit: abc1234' >/dev/null; ok "gerbang penulis (#99): waiver perf dari OWNER diterima" $? 0
+qg ISSL=needs-perf ASSOC=NONE COMM="$WV" ASSOC2=OWNER COMM2='Laporan qa: lulus Commit: abc1234' >/dev/null; ok "gerbang penulis (#99): waiver perf dari orang luar ditolak" $? 1
+grep -qF 'COLLABORATOR' "$root/README.md"; ok "README (#99): menyebut komentar tepercaya" $? 0
+
+# 3c-12. ci-classify.sh (#80): kegagalan infrastruktur CI (billing, tanpa runner) dibedakan dari kegagalan kode
+CC="$tmp/cc"; mkdir -p "$CC"
+cc() { printf '%s' "$1" | bash "$root/scripts/ci-classify.sh" --json - 2>"$CC/err"; }
+cc_run() { jq -nc --arg c "$1" --arg m "$2" --argjson r "$3" --arg s "$4" --arg e "$5" \
+  '{name:"j",status:"completed",conclusion:$c,started_at:$s,completed_at:$e,runner_id:$r,runner_name:(if $r==null then "" else "r1" end),output:{title:"",summary:$m}}'; }
+T0=2026-01-01T00:00:00Z; T1=2026-01-01T00:00:02Z; T9=2026-01-01T00:02:00Z
+BILL='The job was not started because recent account payments have failed or your spending limit needs to be increased.'
+mkjson() { jq -nc --argjson a "[$(IFS=,; echo "$*")]" '{total_count:($a|length),check_runs:$a}'; }
+out="$(cc "$(mkjson "$(cc_run failure "$BILL" null $T0 $T1)")")"; st=$?
+ok "ci-classify (#80): pesan billing -> infrastructure, exit 0" "$st|$(head -1 <<<"$out")" '0|infrastructure'
+ok "ci-classify (#80): baris owner-action memuat anotasi" "$(grep -c '^owner-action: CI cannot start: .*spending limit.*\. Fix account/runner; waiting\.$' <<<"$out")" 1
+ok "ci-classify (#80): tanpa runner dan < 5 s -> infrastructure" "$(cc "$(mkjson "$(cc_run failure 'Process completed' null $T0 $T1)")" | head -1)" infrastructure
+ok "ci-classify (#80): runner ada, gagal cepat -> code" "$(cc "$(mkjson "$(cc_run failure 'lint failed' 7 $T0 $T1)")" | head -1)" code
+ok "ci-classify (#80): tanpa runner tapi lama (>= 5 s) -> code" "$(cc "$(mkjson "$(cc_run failure 'boom' null $T0 $T9)")" | head -1)" code
+ok "ci-classify (#80): campuran gagal kode + infra -> code" "$(cc "$(mkjson "$(cc_run failure "$BILL" null $T0 $T1)" "$(cc_run failure 'tests failed' 7 $T0 $T9)")" | head -1)" code
+ok "ci-classify (#80): kode tidak mencetak owner-action" "$(cc "$(mkjson "$(cc_run failure 'x' 7 $T0 $T9)")" | grep -c '^owner-action')" 0
+ok "ci-classify (#80): belum selesai -> pending" "$(cc '{"check_runs":[{"name":"j","status":"in_progress","conclusion":null}]}' | head -1)" pending
+ok "ci-classify (#80): anotasi dari array annotations dikenali" "$(cc "$(jq -nc --arg m "$BILL" '{check_runs:[{status:"completed",conclusion:"failure",annotations:[{message:$m}]}]}')" | head -1)" infrastructure
+ok "ci-classify (#80): kata 'billing' di log tes yang gagal tetap code" "$(cc "$(mkjson "$(cc_run failure 'FAIL TestBillingInvoice: billing total mismatch' 7 $T0 $T9)")" | head -1)" code
+ok "ci-classify (#80): 'billing' tanpa runner tapi lama tetap code" "$(cc "$(mkjson "$(cc_run failure 'billing module panic' null $T0 $T9)")" | head -1)" code
+cc 'bukan json {' >"$CC/o"; st=$?
+ok "ci-classify (#80): JSON rusak -> exit non-nol, tanpa 'infrastructure' (fail-closed)" "$([ $st != 0 ] && echo nonzero)|$(grep -c infrastructure "$CC/o")" 'nonzero|0'
+cc '{"foo":1}' >"$CC/o"; st=$?
+ok "ci-classify (#80): JSON tanpa check_runs -> exit non-nol" "$([ $st != 0 ] && echo nonzero)|$(grep -c infrastructure "$CC/o")" 'nonzero|0'
+bash "$root/scripts/ci-classify.sh" --bogus </dev/null >/dev/null 2>&1; ok "ci-classify (#80): opsi salah -> exit 64" $? 64
+printf '%s' "$(mkjson "$(cc_run failure "$BILL" null $T0 $T1)")" | bash "$root/scripts/ci-classify.sh" | head -1 | grep -qx infrastructure; ok "ci-classify (#80): stdin tanpa opsi" $? 0
+for k in 'ci-classify.sh' 'infrastructure'; do grep -qF -- "$k" "$root/skills/orchestrate/SKILL.md"; ok "orchestrate (#80): menyebut $k" $? 0; grep -qF -- "$k" "$root/README.md"; ok "README (#80): menyebut $k" $? 0; done
+
+# 3c-13. satu issue satu cabang (#78): resume.sh resolve per nomor issue, worktree-for-issue.sh menolak di samping kerja belum aman, cleanup melaporkan worktree bersufiks
 echo '[{"number":10,"state":"OPEN","labels":[{"name":"in-progress"}]},{"number":11,"state":"OPEN","labels":[{"name":"in-progress"}]},{"number":12,"state":"OPEN","labels":[{"name":"in-progress"}]},{"number":13,"state":"OPEN","labels":[{"name":"in-progress"}]},{"number":1,"state":"OPEN","labels":[{"name":"in-progress"}]}]' > "$F/issues.json"
 echo '[{"number":30,"state":"MERGED","head":"issue-10-r2","headRefName":"issue-10-r2"},{"number":31,"state":"OPEN","head":"issue-11-r3","headRefName":"issue-11-r3"},{"number":32,"state":"OPEN","head":"issue-100","headRefName":"issue-100"}]' > "$F/pr.json"
 git init -q "$tmp/rs2" && cd "$tmp/rs2" && git commit -q --allow-empty -m x && git branch issue-12-r2
