@@ -38,9 +38,14 @@ case "$backend" in
     if ! have gh; then say GAGAL "gh tidak terpasang"; rc=1
     elif gh auth status >/dev/null 2>&1; then say ok "gh login"
     else say GAGAL "gh belum login (jalankan: gh auth login)"; rc=1; fi
-    if grep -qsE 'Bash\(gh pr merge' ~/.claude/settings.json ~/.claude/settings.local.json .claude/settings.json .claude/settings.local.json; then
+    # mode merge (#66): sama seperti install-permissions.sh: env AICREW_MERGE_MODE, lalu docs/WORKFLOW.md, bawaan owner; agent-after-qa menuntut aturan 'gh pr merge'
+    mmode="${AICREW_MERGE_MODE:-}"; wfp="$(git rev-parse --show-toplevel 2>/dev/null || pwd)/docs/WORKFLOW.md"
+    [ -n "$mmode" ] || mmode="$({ [ -f "$wfp" ] && bash "$(dirname "$0")/lib/wf-normalize.sh" < "$wfp"; } 2>/dev/null | sed -nE 's/^[- ]*Merge PR to integration branch: *(owner|agent-after-qa).*/\1/p' | head -1 || true)"
+    case "$mmode" in *-setelah-[Qq][Aa]) mmode=agent-after-qa ;; agent-after-qa) ;; *) mmode=owner ;; esac   # alias-usang: nilai lama WORKFLOW/env
+    if grep -qsE 'Bash\(gh pr merge' "$HOME/.claude/settings.json" "$HOME/.claude/settings.local.json" "$top/.claude/settings.json" "$top/.claude/settings.local.json"; then
       say ok "aturan izin 'gh pr merge' ada"
-    else say info "tanpa aturan izin 'gh pr merge': agen akan ditolak (mode agent-after-qa butuh ini). Owner yang merge, atau ketik di prompt sesi: ! mkdir -p .claude && echo '{\"permissions\":{\"allow\":[\"Bash(gh pr merge:*)\"]}}' > .claude/settings.local.json  (jangan menimpa bila berkas sudah ada)"; fi
+    elif [ "$mmode" = agent-after-qa ]; then say AWAS "mode merge agent-after-qa tanpa aturan izin 'gh pr merge': agen akan ditolak saat merge dan PR menggantung. Pasang: ! bash $(dirname "$0")/install-permissions.sh (menambah aturan sesuai mode di docs/WORKFLOW.md)"
+    else say info "tanpa aturan izin 'gh pr merge' (mode merge owner: owner yang merge; mode agent-after-qa butuh aturan ini, pasang dengan install-permissions.sh)"; fi
     # setelan GitHub: hapus cabang otomatis saat merge (plugin tidak mengubahnya; milik owner repo) dan jumlah cabang ter-merge (bukti offline saja)
     if rp="$(ghx_repo 2>/dev/null)" && [ -n "$rp" ]; then
       case "$(gh api "repos/$rp" 2>/dev/null | jq -r '.delete_branch_on_merge | if . == null then empty else tostring end' 2>/dev/null)" in
