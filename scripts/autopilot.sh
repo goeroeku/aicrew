@@ -8,7 +8,7 @@
 #   AICREW_TG_TOKEN/AICREW_TG_CHAT (opsional, lewat notify.sh). Jangan memakai --dangerously-skip-permissions.
 # Watchdog idle (#48): AICREW_IDLE_LIMIT/--idle-limit (bawaan 1800 dtk; 0 = mati), AICREW_ROUND_TIMEOUT/--round-timeout (bawaan 0 = mati), AICREW_IDLE_POLL (30), AICREW_IDLE_IGNORE (pembantu yang tak dihitung sibuk),
 #   AICREW_IDLE_GRACE (30) dan AICREW_TERM_GRACE (60): masa tenggang SIGINT -> SIGTERM, AICREW_TRANSCRIPT_DIR (menimpa ~/.claude/projects/<cwd>). Status kesehatan: .aicrew/autopilot.json. Wrapper AICREW_CLAUDE wajib `exec claude ...`.
-# Exit: 0 semua issue selesai, 1 error beruntun, 2 buntu (tanpa kemajuan), 6 gh tidak terbaca 5 kali beruntun (sementara, bukan keadaan issue: autostart mencoba lagi di tick berikutnya), 5 masih buntu (start ulang dengan keadaan issue/PR sama seperti saat berhenti buntu terakhir; tidak ada putaran dijalankan, --retry-stuck memaksa), 3 hanya tersisa menunggu owner (needs-principal, atau PR terbuka menunggu merge: dipantau murah lewat gh, tanpa claude,
+# Exit: 0 semua issue selesai, 1 error beruntun, 2 buntu (tanpa kemajuan), 6 autopilot already running in this repo (lock .aicrew/autopilot.lock, #115) atau gh tidak terbaca 5 kali beruntun (sementara, bukan keadaan issue: autostart mencoba lagi di tick berikutnya), 5 masih buntu (start ulang dengan keadaan issue/PR sama seperti saat berhenti buntu terakhir; tidak ada putaran dijalankan, --retry-stuck memaksa), 3 hanya tersisa menunggu owner (needs-principal, atau PR terbuka menunggu merge: dipantau murah lewat gh, tanpa claude,
 #   sampai ada perubahan atau --wait-max), 4 batas total.
 set -u
 here="$(cd "$(dirname "$0")" && pwd)"
@@ -22,6 +22,19 @@ while [ $# -gt 0 ]; do case "$1" in
   --max-total) max_total="$2"; shift 2 ;; --reset-total) reset_total=1; shift ;; --prompt) prompt="$2"; shift 2 ;; *) echo "argumen tak dikenal: $1" >&2; exit 64 ;; esac; done
 claude="${AICREW_CLAUDE:-claude}"; L_INT="$(bash "$here/label.sh" integrated --json)"
 g="$(git rev-parse --git-common-dir)" && d="$(cd "$g/.." && pwd)/.aicrew"; mkdir -p "$d"; run="$(date +%Y%m%d-%H%M%S)"   # nama unik per jalan untuk arsip keluaran putaran (round-N.log ditimpa tiap jalan)
+# single-instance lock (#115): .aicrew/autopilot.lock = "<pid> <start time>"; a live holder -> exit 6, a dead one is taken over
+lock="$d/autopilot.lock"; lock_held=0
+release_lock() { [ "$lock_held" = 1 ] && rm -f "$lock"; return 0; }
+for _try in 1 2 3; do
+  if ( set -o noclobber; echo "$$ $(date '+%F %T')" > "$lock" ) 2>/dev/null; then lock_held=1; break; fi
+  holder="$(cut -d' ' -f1 "$lock" 2>/dev/null || true)"
+  if [ -n "$holder" ] && kill -0 "$holder" 2>/dev/null && ps -p "$holder" -o command= 2>/dev/null | grep -q autopilot.sh; then
+    echo "autopilot already running (pid $holder, started $(cut -d' ' -f2- "$lock" 2>/dev/null || true))" >&2; exit 6
+  fi
+  rm -f "$lock"
+done
+[ "$lock_held" = 1 ] || { echo "autopilot: cannot take lock $lock" >&2; exit 1; }
+trap release_lock EXIT   # ponytail: no TERM trap (bash would defer it until the claude child ends); a TERM-killed run leaves a dead-pid lock, taken over next start
 [ "$reset_total" = 1 ] && rm -f "$d/total"
 log() { printf '%s %s\n' "$(date '+%F %T')" "$*" | tee -a "$d/autopilot.log"; printf '%s\n' "$*" > "$d/autopilot.status"; }
 # status kesehatan (#48, #66): .aicrew/autopilot.json, ditulis atomik; baris pertama autopilot.status tidak berubah.
@@ -127,7 +140,7 @@ watch_round() { # <awal-epoch> <induk-pid>
 }
 wpid=""
 stop_watch() { [ -z "$wpid" ] || { pkill -P "$wpid" 2>/dev/null; kill "$wpid" 2>/dev/null; { wait "$wpid"; } 2>/dev/null; wpid=""; }; return 0; }
-trap 'stop_watch; rm -f "$d/idle-interrupt"' EXIT
+trap 'stop_watch; rm -f "$d/idle-interrupt"; release_lock' EXIT
 # INT dari pemantau (penanda ada) = putaran idle diakhiri, autopilot lanjut; selain itu Ctrl-C pemilik: matikan pemantau dan sesi, keluar 130
 trap 'if [ -f "$d/idle-interrupt" ]; then :; else stop_watch; pkill -INT -P $$ 2>/dev/null; exit 130; fi' INT
 rm -f "$d/idle-interrupt"   # penanda basi dari proses yang mati tidak boleh menelan Ctrl-C
