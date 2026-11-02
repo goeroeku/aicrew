@@ -30,7 +30,7 @@ phase_old() { case "$1" in running) echo putaran ;; idle-interrupted) echo idle-
 cur_json='[]'; last_json="$(jq -cse 'select(length==1)|.[0]|select(type=="object" and (.pr|type=="number"))' "$d/last-completed.json" 2>/dev/null)" || last_json=null; [ -n "$last_json" ] || last_json=null
 set_phase() { command -v jq >/dev/null 2>&1 || return 0; local t="$d/autopilot.json.tmp.$$"
   jq -nc --arg p "$1" --arg f "$(phase_old "$1")" --argjson r "${2:-$cur_round}" --argjson i "${3:-0}" --argjson t "$(date +%s)" --argjson cur "$cur_json" --argjson lc "$last_json" \
-    '{phase:$p,round:$r,idle_seconds:$i,heartbeat:$t,current:$cur,last_completed:$lc,fase:$f,putaran:$r,idle_sejak_detik:$i,detak:$t}' > "$t" 2>/dev/null && mv "$t" "$d/autopilot.json"; return 0; }
+    '{phase:$p,round:$r,idle_seconds:$i,heartbeat:$t,current:$cur,last_completed:$lc,fase:$f,putaran:$r,idle_sejak_detik:$i,detak:$t}' > "$t" 2>/dev/null && mv "$t" "$d/autopilot.json"; return 0; }   # alias-usang
 note() { log "$*"; command -v jq >/dev/null && jq -n --arg m "$*" '{message:$m}' | bash "$here/notify.sh"; return 0; }
 fingerprint() { local a b; a="$(gh issue list --state all --limit 200 --json number,state,labels)" && b="$(gh pr list --state all --limit 200 --json number,state)" || return 1; printf '%s\n%s\n' "$a" "$b" | shasum | cut -d' ' -f1; }   # gagal = tidak ada sidik jari (bukan hash keluaran kosong, #73)
 
