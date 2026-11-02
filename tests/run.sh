@@ -291,7 +291,7 @@ calls() { wc -l < "$AP_CALLS" | tr -d ' '; }
 R; ok "autostart run: jalan normal exit 0" $? 0; ok "autostart run: autopilot dipanggil dengan --max-total 50" "$(grep -c -- '--max-total 50' "$AP_CALLS")" 1
 ok "autostart run: exit 0 tidak membuat halted" "$([ -f "$RP/.aicrew/halted" ] && echo ada || echo tidak)" tidak
 mkdir -p "$RP/.aicrew"; touch "$RP/.aicrew/PAUSE"; R; ok "autostart run: PAUSE -> tidak memanggil autopilot" "$(calls)" 1; rm -f "$RP/.aicrew/PAUSE"
-for rc in 3 4; do echo $rc > "$AP_RC"; R; ok "autostart run: exit $rc tidak membuat halted" "$([ -f "$RP/.aicrew/halted" ] && echo ada || echo tidak)" tidak; done
+for rc in 3 4 6; do echo $rc > "$AP_RC"; R; ok "autostart run: exit $rc tidak membuat halted" "$([ -f "$RP/.aicrew/halted" ] && echo ada || echo tidak)" tidak; done
 echo 2 > "$AP_RC"; R; ok "autostart run: exit 2 (buntu) membuat halted" "$([ -f "$RP/.aicrew/halted" ] && echo ada || echo tidak)" ada
 grep -q 'rc=2' "$RP/.aicrew/halted"; ok "autostart run: halted mencatat rc" $? 0
 n=$(calls); R; ok "autostart run: halted -> tidak memanggil autopilot lagi" "$(calls)" "$n"
@@ -1489,6 +1489,7 @@ cat > "$AP3/bin/gh" <<'GHEOF'
 #!/usr/bin/env bash
 echo "$*" >> "$AP3FX/calls"
 [ -f "$AP3FX/ghfail" ] && exit 1
+if [ -s "$AP3FX/ghfailn" ]; then k=$(cat "$AP3FX/ghfailn"); if [ "$k" -gt 0 ]; then echo $((k-1)) > "$AP3FX/ghfailn"; exit 1; fi; fi   # gagal k kali lalu pulih
 c="$1 $2"; q=""; head=""; st=""; prev=""
 for a in "$@"; do [ "$prev" = -q ] && q="$a"; [ "$prev" = --head ] && head="$a"; [ "$prev" = --state ] && st="$a"; prev="$a"; done
 if [ "$c" = "pr list" ]; then data="$(cat "$AP3FX/pr.json" 2>/dev/null || echo '[]')"
@@ -1556,6 +1557,14 @@ touch "$AP3FX/ghfail"; AP3KEEP=1 ap3 "$AP3OPEN" $'noop' --stuck 3 >/dev/null; rm
 ok "autopilot: gh gagal saat start -> penanda buntu tidak dihapus" "$(cat "$AP3/w/.aicrew/stuck" 2>/dev/null)" "$stk"
 ap3 "$AP3OPEN" $'breakgh\nnoop' --stuck 1 >/dev/null; rm -f "$AP3FX/ghfail"
 ok "autopilot: gh gagal di akhir putaran -> last-round-fp bukan hash keluaran kosong dan stuck tidak ditulis" "$([ "$(cat "$AP3/w/.aicrew/last-round-fp" 2>/dev/null)" = da39a3ee5e6b4b0d3255bfef95601890afd80709 ] && echo hash-kosong || echo ok)|$([ -e "$AP3/w/.aicrew/stuck" ] && echo ada || echo tidak)" 'ok|tidak'
+
+# 3p-4c. gh mati bukan 'keadaan' (#75): tidak memutuskan selesai/menunggu dari data kosong; jeda; berhenti terbatas
+touch "$AP3FX/ghfail"; ap3 "$AP3OPEN" noop; rc=$?; rm -f "$AP3FX/ghfail"
+ok "gh mati terus: exit 6 (bukan exit 3 palsu), tanpa putaran claude, tanpa catatan needs-principal" "$rc|$(cat "$AP3FX/n" 2>/dev/null || echo 0)|$([ -e "$AP3/w/.aicrew/principal-note" ] && echo ada || echo tidak)|$(grep -c 'gh tidak terbaca (percobaan' "$AP3/w/.aicrew/autopilot.log")" '6|0|tidak|5'
+echo 3 > "$AP3FX/ghfailn"; ap3 "$AP3OPEN" close; rc=$?; rm -f "$AP3FX/ghfailn"
+ok "gh pulih setelah gagal sebentar: putaran jalan dan selesai (exit 0, claude 1 kali)" "$rc|$(cat "$AP3FX/n" 2>/dev/null || echo 0)|$([ "$(grep -c 'gh tidak terbaca' "$AP3/w/.aicrew/autopilot.log")" -ge 1 ] && echo dicatat || echo tidak)" '0|1|dicatat'
+ap3 "$AP3OPEN" $'breakgh\nnoop\nnoop' --stuck 5; rc=$?; rm -f "$AP3FX/ghfail"
+ok "gh mati di akhir putaran: dicatat, tidak ada putaran claude lagi (exit 6, claude 1 kali)" "$rc|$(cat "$AP3FX/n")|$(grep -c 'sidik jari tak terbaca' "$AP3/w/.aicrew/autopilot.log")" '6|1|1'
 
 # 3p-5. sinkron kartu kanban dari autopilot (#69): sekali per iterasi bila papan aktif; tidak fatal; dapat dimatikan
 mkdir -p "$AP3/w/docs"; BSH="$AP3FX/fakeboard.sh"

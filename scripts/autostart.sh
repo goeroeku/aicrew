@@ -94,7 +94,7 @@ run)
   log "mulai autopilot (--max-total $AICREW_MAX_TOTAL)"
   bash "${AICREW_AUTOPILOT:-$here/autopilot.sh}" --max-total "$AICREW_MAX_TOTAL"; rc=$?
   log "autopilot selesai rc=$rc"
-  case $rc in 0|3|4) ;; *)
+  case $rc in 0|3|4|6) ;; *)
     printf '%s rc=%s\n' "$(date '+%F %T')" "$rc" > "$d/halted"
     command -v jq >/dev/null && jq -n --arg m "autostart $(basename "$repo"): berhenti (rc=$rc), tidak dijalankan lagi otomatis. Periksa $d/autopilot.log lalu: autostart.sh resume $repo" '{message:$m}' | bash "$here/notify.sh" ;;
   esac

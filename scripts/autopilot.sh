@@ -8,7 +8,7 @@
 #   AICREW_TG_TOKEN/AICREW_TG_CHAT (opsional, lewat notify.sh). Jangan memakai --dangerously-skip-permissions.
 # Watchdog idle (#48): AICREW_IDLE_LIMIT/--idle-limit (bawaan 1800 dtk; 0 = mati), AICREW_ROUND_TIMEOUT/--round-timeout (bawaan 0 = mati), AICREW_IDLE_POLL (30), AICREW_IDLE_IGNORE (pembantu yang tak dihitung sibuk),
 #   AICREW_IDLE_GRACE (30) dan AICREW_TERM_GRACE (60): masa tenggang SIGINT -> SIGTERM, AICREW_TRANSCRIPT_DIR (menimpa ~/.claude/projects/<cwd>). Status kesehatan: .aicrew/autopilot.json. Wrapper AICREW_CLAUDE wajib `exec claude ...`.
-# Exit: 0 semua issue selesai, 1 error beruntun, 2 buntu (tanpa kemajuan), 5 masih buntu (start ulang dengan keadaan issue/PR sama seperti saat berhenti buntu terakhir; tidak ada putaran dijalankan, --retry-stuck memaksa), 3 hanya tersisa menunggu owner (needs-principal, atau PR terbuka menunggu merge: dipantau murah lewat gh, tanpa claude,
+# Exit: 0 semua issue selesai, 1 error beruntun, 2 buntu (tanpa kemajuan), 6 gh tidak terbaca 5 kali beruntun (sementara, bukan keadaan issue: autostart mencoba lagi di tick berikutnya), 5 masih buntu (start ulang dengan keadaan issue/PR sama seperti saat berhenti buntu terakhir; tidak ada putaran dijalankan, --retry-stuck memaksa), 3 hanya tersisa menunggu owner (needs-principal, atau PR terbuka menunggu merge: dipantau murah lewat gh, tanpa claude,
 #   sampai ada perubahan atau --wait-max), 4 batas total.
 set -u
 here="$(cd "$(dirname "$0")" && pwd)"
@@ -111,7 +111,7 @@ trap 'stop_watch; rm -f "$d/idle-interrupt"' EXIT
 # INT dari pemantau (penanda ada) = putaran idle diakhiri, autopilot lanjut; selain itu Ctrl-C pemilik: matikan pemantau dan sesi, keluar 130
 trap 'if [ -f "$d/idle-interrupt" ]; then :; else stop_watch; pkill -INT -P $$ 2>/dev/null; exit 130; fi' INT
 rm -f "$d/idle-interrupt"   # penanda basi dari proses yang mati tidak boleh menelan Ctrl-C
-errs=0; same=0; was_limit=0; last="$(fingerprint)" || last=""
+errs=0; gh_down=0; same=0; was_limit=0; last="$(fingerprint)" || last=""
 # sidik jari akhir putaran terakhir tersimpan: setelah restart (laptop mati) tanpa perubahan, langsung menunggu, tidak membakar putaran claude
 [ -n "$last" ] && [ "$(cat "$d/last-round-fp" 2>/dev/null)" = "$last" ] && same=1
 # buntu berulang (#56): sidik jari saat berhenti buntu disimpan di $d/stuck. Start ulang (supervisor/loop luar) dengan keadaan sama = langsung exit 5 tanpa putaran claude;
@@ -125,7 +125,13 @@ fi
 for ((i=1; i<=max_rounds; i++)); do
   cur_round=$i
   # issue berlabel integrasi ($L_INT, bawaan integrated; nama lama di-integrasi tetap dikenali) sudah selesai (menunggu merge ke main oleh owner): bukan pekerjaan tersisa
-  open="$(gh issue list --state open --limit 200 --json number,labels,body | jq --argjson ls "$L_INT" '[.[]|select((.labels|map(.name)) as $n|(any($ls[]; . as $x|$n|index($x)) or ($n|index("epic")))|not)]')"  # epic = pengelompokan journey, bukan pekerjaan
+  # gh gagal / keluaran tak terurai = keadaan TIDAK diketahui (#75): jangan memutuskan selesai atau menunggu-owner dari data kosong; jeda, coba lagi, berhenti setelah 5 kali beruntun (exit 6)
+  if ! raw="$(gh issue list --state open --limit 200 --json number,labels,body)" || ! open="$(jq --argjson ls "$L_INT" '[.[]|select((.labels|map(.name)) as $n|(any($ls[]; . as $x|$n|index($x)) or ($n|index("epic")))|not)]' <<<"$raw")" || [ -z "$open" ]; then   # epic = pengelompokan journey, bukan pekerjaan
+    gh_down=$((gh_down+1)); log "putaran $i: gh tidak terbaca (percobaan $gh_down/5): keadaan tidak diketahui, tidak memutuskan selesai atau menunggu"
+    [ "$gh_down" -ge 5 ] && { set_phase gh-down "$i"; note "autopilot: gh tidak terbaca 5 kali beruntun; berhenti (bukan keadaan issue), periksa jaringan dan login gh"; exit 6; }
+    sleep "${AICREW_ERR_SLEEP:-60}"; continue
+  fi
+  gh_down=0
   n_open="$(jq length <<<"$open")"
   board_sync
   n_wait="$(jq '[.[]|select(.labels|map(.name)|index("needs-principal"))]|length' <<<"$open")"
@@ -190,6 +196,7 @@ for ((i=1; i<=max_rounds; i++)); do
     printf '%s' "$now" > "$d/last-round-fp"
     if [ "$now" = "$last" ]; then same=$((same+1)); else same=0; last="$now"; fi
     [ "$same" -ge "$stuck_max" ] && { printf '%s' "$now" > "$d/stuck"; set_phase stuck "$i"; note "autopilot: buntu, $stuck_max putaran tanpa perubahan di issue/PR; berhenti"; exit 2; }
+  else log "putaran $i: sidik jari tak terbaca (gh gagal); tidak dihitung maju atau buntu; jeda sebelum putaran berikutnya"; sleep "${AICREW_ERR_SLEEP:-60}"
   fi
 done
 note "autopilot: batas putaran ($max_rounds) tercapai"; exit 1
