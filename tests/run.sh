@@ -1544,6 +1544,7 @@ case "$(sed -n "${n}p" "$AP3FX/script")" in
   peek) cp .aicrew/autopilot.json "$AP3FX/peek.json"; head -1 .aicrew/autopilot.status > "$AP3FX/peek.status"; closeall; echo ok ;;
   limit) echo "Claude usage limit reached. Your limit will reset at 5pm."; exit 1 ;;
   noop) echo noop ;;
+  mergepr) now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"; echo "[{\"number\":5,\"state\":\"MERGED\",\"isDraft\":false,\"mergedAt\":\"2020-01-01T00:00:00Z\",\"headRefOid\":\"1111111aaaa\"},{\"number\":7,\"state\":\"MERGED\",\"isDraft\":false,\"mergedAt\":\"${now%Z}.123Z\",\"headRefOid\":\"2222222bbbb\"},{\"number\":8,\"state\":\"OPEN\",\"isDraft\":false,\"mergedAt\":null,\"headRefOid\":\"abcdef1234567\"}]" > "$AP3FX/pr.json"; echo ok ;;
   slowclose) /bin/sleep 2; closeall; echo ok ;;
   breakgh) touch "$AP3FX/ghfail"; echo noop ;;
   idle) echo "menunggu owner"; exec /bin/sleep 20 ;;
@@ -1572,6 +1573,16 @@ ok "autopilot status: hanya needs-principal -> exit 3 dan fase menunggu-owner" "
 ok "autopilot: menunggu owner -> ringkasan tindakan owner ditulis dan path-nya ada di log (#57)" "$(grep -c 'needs-principal' "$AP3/w/.aicrew/owner-actions.md" 2>/dev/null)|$(grep -c 'tindakan owner: .*owner-actions.md' "$AP3/w/.aicrew/autopilot.log")" '1|1'
 ap3 "$AP3OPEN" $'limit\nclose'; rc=$?
 ok "autopilot status: tidur karena limit -> fase tidur-limit tercatat saat tidur" "$rc|$(grep -c '"fase":"tidur-limit"' "$AP3FX/sleeps")" '0|1'
+# 3c-4. autopilot.log: ringkasan per putaran (#63): durasi, rc, PR digabung dalam putaran, PR terbuka dengan sha, total
+ap3 "$AP3OPEN" $'mergepr\nclose' --max-total 50; rc=$?
+sm="$(grep '^[0-9-]* [0-9:]* putaran 1: ringkasan:' "$AP3/w/.aicrew/autopilot.log")"
+ok "autopilot log: satu baris ringkasan putaran 1 dengan durasi, rc, dan total" "$rc|$(grep -c 'putaran 1: ringkasan: durasi [0-9]*s; rc=0; .*total 0/50' <<<"$sm")" '0|1'
+ok "autopilot log: PR digabung dalam putaran dicatat, PR lama tidak" "$(grep -c 'PR digabung: #7;' <<<"$sm")|$(grep -c '#5' <<<"$sm")" '1|0'
+ok "autopilot log: PR terbuka dicatat dengan sha7" "$(grep -c 'PR terbuka: #8@abcdef1;' <<<"$sm")" 1
+ok "autopilot log: ringkasan tidak menimpa autopilot.status" "$(grep -c 'ringkasan' "$AP3/w/.aicrew/autopilot.status" 2>/dev/null)" 0
+ap3 "$AP3OPEN" $'noop\nclose'; sm="$(grep 'putaran 1: ringkasan:' "$AP3/w/.aicrew/autopilot.log")"
+ok "autopilot log: tanpa PR -> PR digabung: - dan PR terbuka: -, tanpa batas total" "$(grep -c 'PR digabung: -; PR terbuka: -; total 0$' <<<"$sm")" 1
+
 AP3ENV="AICREW_IDLE_LIMIT=100 AICREW_IDLE_POLL=30" ap3 "$AP3OPEN" slowclose   # claude hidup 2 dtk: pemantau sedang di dalam sleep 30 saat dihentikan (stub instan membuat tes ini tak bermakna, #73)
 ok "autopilot: pemantau yang dihentikan tidak mencetak 'Terminated' (#63)" "$(grep -c 'Terminated' "$AP3/out")" 0
 
