@@ -1592,6 +1592,21 @@ for k in 'finish-merge' 'continue-pr' 'check-branch' 'requeue'; do grep -qF -- "
 for k in 'selesaikan-merge' 'lanjut-pr' 'periksa-cabang' 'antre-ulang'; do grep -qF -- "$k" "$root/skills/orchestrate/SKILL.md"; ok "orchestrate (#66): alias usang $k disebut" $? 0; done
 grep -qF 'kolom 4' "$root/skills/orchestrate/SKILL.md"; ok "orchestrate (#66): kolom 4 alias disebut" $? 0
 
+# 3c-7. tes penjaga bahasa (#66): permukaan teknis skrip tanpa token Indonesia di luar alias usang bertanda
+# Teknis = kunci JSON yang ditulis, nilai fase, nama aksi, nama berkas status. Prosa pesan dan komentar tidak dipindai (itu #64). Baris alias diberi penanda 'alias-usang'.
+IDN_TECH='(^|[^a-z_])(fase|detak|idle_sejak_detik)[:"]|selesaikan-merge|lanjut-pr|periksa-cabang|periksa-rilis|antre-ulang|menunggu-owner|tidur-limit|idle-diinterupsi|set_phase +(putaran|selesai)'
+idn_tech() { grep -nE "$IDN_TECH" "$1" | grep -vE '#[[:space:]]*alias-usang[[:space:]]*$' | grep -vE '^[0-9]+:[[:space:]]*#'; }
+phase_unknown() { grep -oE 'set_phase +[A-Za-z_-]+' "$1" | awk '{print $2}' | grep -vxE 'running|idle-interrupted|waiting-owner|sleeping-limit|done|stuck|gh-down'; }
+hits=0; for f in "$root"/scripts/*.sh "$root"/scripts/lib/*.sh; do n="$(idn_tech "$f" | grep -c .)"; [ "$n" = 0 ] || { echo "  token Indonesia teknis di $f:"; idn_tech "$f" | head -3; }; hits=$((hits+n)); done
+ok "bahasa teknis: scripts/ tanpa kunci/aksi/nilai berbahasa Indonesia di luar alias usang bertanda" "$hits" 0
+printf "jq -nc '{phase:1,fase:2}'\n" > "$tmp/idn1.sh"; ok "penjaga bahasa: mendeteksi kunci lama tanpa penanda" "$(idn_tech "$tmp/idn1.sh" | grep -c .)" 1
+printf "jq -nc '{phase:1,fase:2}'   # alias-usang\n" > "$tmp/idn2.sh"; ok "penjaga bahasa: baris bertanda alias-usang lolos" "$(idn_tech "$tmp/idn2.sh" | grep -c .)" 0
+printf '# komentar menyebut menunggu-owner\n' > "$tmp/idn3.sh"; ok "penjaga bahasa: komentar tidak dipindai" "$(idn_tech "$tmp/idn3.sh" | grep -c .)" 0
+printf 'act 1 x y antre-ulang\n' > "$tmp/idn4.sh"; ok "penjaga bahasa: nama aksi lama tanpa penanda terdeteksi" "$(idn_tech "$tmp/idn4.sh" | grep -c .)" 1
+printf "echo 'x # alias-usang'; echo fase:1\n" > "$tmp/idn5.sh"; ok "penjaga bahasa: penanda di tengah string tidak menyembunyikan baris" "$(idn_tech "$tmp/idn5.sh" | grep -c .)" 1
+printf 'set_phase tidur "$i"\nset_phase running 1\n' > "$tmp/idn6.sh"; ok "penjaga bahasa: argumen set_phase di luar daftar fase Inggris terdeteksi" "$(phase_unknown "$tmp/idn6.sh" | grep -c .)" 1
+ok "penjaga bahasa: semua argumen set_phase di autopilot.sh ada di daftar fase Inggris" "$(phase_unknown "$root/scripts/autopilot.sh" | grep -c .)" 0
+
 # 3c-5. autopilot.json: kunci Inggris + kunci lama bernilai setara, current dan last_completed (#66)
 AJ() { jq -r "$1" "$AP3/w/.aicrew/autopilot.json"; }
 ap3 "$AP3OPEN" peek
