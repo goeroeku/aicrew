@@ -7,7 +7,7 @@
 
 ## Related files
 - Reuse / read: {{path:line}}
-- Expected to touch: {{path}} (≤ 5 files)
+- Expected to touch: {{path, path: every file you create or edit}} (≤ 5 files)
 
 ## PRD context
 {{quote/reference only the relevant PRD section}}

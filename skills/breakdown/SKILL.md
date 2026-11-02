@@ -34,6 +34,9 @@ Jangan memecah PRD yang belum disetujui; bila `Status PRD` tidak tercatat, tanya
 5. Isi `Blocked by` dan daftar file yang disentuh. Hitung gelombang (wave):
    issue tanpa blocker dan tanpa tumpang tindih file → satu gelombang, boleh paralel (maks sesuai
    `WORKFLOW.md`). Tumpang tindih file atau saling bergantung → gelombang berikutnya.
+   Tumpang tindih diperiksa kode, bukan tebakan: tiap issue mencantumkan SEMUA berkas yang dibuat atau diubah di "Expected to touch", lalu jalankan
+   `bash ${CLAUDE_PLUGIN_ROOT}/scripts/file-overlap.sh --json -` pada rencana (larik JSON `[{number,body,labels}]` dengan nomor sementara). Tiap baris `overlap:` wajib selesai
+   sebelum gelombang dihitung: serialkan dengan `Blocked by` atau pisahkan kepemilikan berkas itu. Setelah issue dibuat, jalankan tanpa argumen sebagai pemeriksaan akhir.
    Jika hampir semuanya saling bergantung, katakan terus terang: sekuensial lebih murah.
    Ada rantai `blocked-by`: usulkan **cabang integrasi** untuk fitur ini (aturan merge di `WORKFLOW.md`),
    supaya rantai tidak macet menunggu merge ke `main`.

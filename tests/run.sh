@@ -428,6 +428,32 @@ mkdir -p "$tmp/home/orca/workspaces/p" "$tmp/plain"; git init -q "$tmp/home/orca
 out="$(cd "$tmp/home/orca/workspaces/p" && bash "$root/scripts/preflight.sh" 2>&1)"; case "$out" in *dangerously-skip-permissions*) r=ada ;; *) r=tidak ;; esac; ok "preflight: di workspace Orca -> peringatan" $r ada
 out="$(cd "$tmp/plain" && bash "$root/scripts/preflight.sh" 2>&1)"; case "$out" in *dangerously-skip-permissions*) r=ada ;; *) r=tidak ;; esac; ok "preflight: repo biasa tanpa peringatan Orca" $r tidak
 
+# 3c-2. preflight: aturan izin untuk subagen (#58) dibaca dari settings efektif, menyebut aturan yang hilang
+mkdir -p "$tmp/pp/h" "$tmp/pp/r1" "$tmp/pp/r2"; git init -q "$tmp/pp/r1"; git init -q "$tmp/pp/r2"; : > "$tmp/pp/r1/Makefile"; : > "$tmp/pp/r1/go.mod"
+pfp() { (cd "$1" && HOME="$tmp/pp/h" bash "$root/scripts/preflight.sh" 2>&1); }
+out="$(pfp "$tmp/pp/r1")"
+ok "preflight izin: tanpa settings -> AWAS menyebut git worktree, git commit, git push, make, go test" "$(grep '^AWAS.*izin subagen' <<<"$out" | grep -c 'Bash(git worktree.*Bash(git commit.*Bash(git push.*Bash(make.*Bash(go test')" 1
+ok "preflight izin: AWAS menyebut install-permissions.sh" "$(grep -c '^AWAS.*izin subagen.*install-permissions.sh' <<<"$out")" 1
+out="$(pfp "$tmp/pp/r2")"
+ok "preflight izin: repo tanpa Makefile/go.mod -> make dan go test tidak diminta" "$(grep '^AWAS.*izin subagen' <<<"$out" | grep -c 'Bash(make\|Bash(go test')" 0
+mkdir -p "$tmp/pp/r1/.claude"; printf '{"permissions":{"allow":["Bash(git worktree:*)","Bash(git commit:*)","Bash(git push:*)","Bash(make:*)","Bash(go test:*)"]}}' > "$tmp/pp/r1/.claude/settings.local.json"
+out="$(pfp "$tmp/pp/r1")"
+ok "preflight izin: semua aturan ada -> ok dan tanpa AWAS izin" "$(grep -c '^ok.*izin subagen' <<<"$out")|$(grep -c '^AWAS.*izin subagen' <<<"$out")" '1|0'
+mkdir -p "$tmp/pp/r2/.claude"; printf '{"permissions":{"defaultMode":"bypassPermissions"}}' > "$tmp/pp/r2/.claude/settings.local.json"
+out="$(pfp "$tmp/pp/r2")"
+ok "preflight izin: mode bypassPermissions -> info, bukan AWAS" "$(grep -c '^info.*izin subagen.*bypassPermissions' <<<"$out")|$(grep -c '^AWAS.*izin subagen' <<<"$out")" '1|0'
+
+printf '{"permissions":{"allow":["Bash(git worktree:*)","Bash(git commit:*)","Bash(make:*)","Bash(go test:*)"],"deny":["Bash(git push:*)"]}}' > "$tmp/pp/r1/.claude/settings.local.json"
+ok "preflight izin: aturan hanya di deny tidak dihitung ada" "$(pfp "$tmp/pp/r1" | grep '^AWAS.*izin subagen' | grep -c 'Bash(git push:\*)')" 1
+printf '{"permissions":{"allow":["Bash(git:*)","Bash(make:*)","Bash(go test:*)"]}}' > "$tmp/pp/r1/.claude/settings.local.json"
+ok "preflight izin: Bash(git:*) mencukupi aturan git" "$(pfp "$tmp/pp/r1" | grep -c '^ok.*izin subagen')" 1
+printf '{"permissions":{"allow":["Bash(git push --force:*)","Bash(git worktree:*)","Bash(git commit:*)","Bash(makeself:*)","Bash(go test:*)"]}}' > "$tmp/pp/r1/.claude/settings.local.json"
+ok "preflight izin: aturan sempit/serupa (git push --force, makeself) tidak cocok" "$(pfp "$tmp/pp/r1" | grep '^AWAS.*izin subagen' | grep -c 'Bash(git push:\*).*Bash(make:\*)')" 1
+mkdir -p "$tmp/pp/r1/sub" "$tmp/pp/h sp/.claude"; printf '{"permissions":{"allow":["Bash(git worktree:*)","Bash(git commit:*)","Bash(git push:*)","Bash(make:*)","Bash(go test:*)"]}}' > "$tmp/pp/r1/.claude/settings.local.json"
+ok "preflight izin: dijalankan dari subdirektori memakai akar repo" "$(pfp "$tmp/pp/r1/sub" | grep -c '^ok.*izin subagen')" 1
+rm "$tmp/pp/r1/.claude/settings.local.json"; printf '{"permissions":{"allow":["Bash(git worktree:*)","Bash(git commit:*)","Bash(git push:*)","Bash(make:*)","Bash(go test:*)"]}}' > "$tmp/pp/h sp/.claude/settings.json"
+ok "preflight izin: HOME berspasi dibaca" "$(cd "$tmp/pp/r1" && HOME="$tmp/pp/h sp" bash "$root/scripts/preflight.sh" 2>&1 | grep -c '^ok.*izin subagen')" 1
+
 # 3d. install-permissions: basis worktree absolut, izin merge per mode, deny baru
 IP() { (cd "$1" && bash "$root/scripts/install-permissions.sh" "$2" >/dev/null); }
 mkdir -p "$tmp/ip1/docs" "$tmp/ip2/docs"; git init -q "$tmp/ip1"; git init -q "$tmp/ip2"
@@ -1122,7 +1148,7 @@ grep -q 'Private packages:' templates/WORKFLOW.md; ok "templat WORKFLOW memuat '
 grep -q 'Private packages:' PRIVACY.md && grep -q '~/.npmrc' PRIVACY.md; ok "PRIVACY: sumber pola dan ~/.npmrc tidak dibaca" $? 0
 grep -q 'Private packages:' README.md; ok "README menyebut 'Private packages:'" $? 0
 grep -q 'Paket privat' skills/cve-audit/SKILL.md; ok "skill cve-audit menyebut paket privat" $? 0
-grep -q '"version": "1.1.0"' .claude-plugin/plugin.json; ok "plugin.json versi 1.1.0" $? 0
+grep -q '"version": "1.2.0"' .claude-plugin/plugin.json; ok "plugin.json versi 1.2.0" $? 0
 # 0.12.0: watchdog idle autopilot terdokumentasi (#48, #17)
 grep -q 'Mode tanpa pengawasan (autopilot)' skills/orchestrate/SKILL.md && grep -q 'exec claude' skills/orchestrate/SKILL.md; ok "orchestrate: subbagian Mode tanpa pengawasan (autopilot) memuat aturan exec claude" $? 0
 grep -q 'Idle watchdog' README.md && grep -q -- '--idle-limit' README.md; ok "README: Idle watchdog menyebut --idle-limit" $? 0
@@ -1713,7 +1739,7 @@ idn_hits() { if [ -f "$1" ]; then strip_code "$1" | grep -ciE "$IDN" || true; el
 miss=0; wrong=0
 while read -r v d; do [ -n "$v" ] || continue; grep -qE "^## \\[$v\\] - $d$" CHANGELOG.md 2>/dev/null || miss=$((miss+1)); done <<<"$TAGDATES"
 ok "CHANGELOG.md: satu bagian '## [X.Y.Z] - tanggal-tag' untuk tiap tag 0.1.0-0.12.0 (25), tanggal dari commit tag" "$miss" 0
-n="$(grep -cE '^## \[' CHANGELOG.md 2>/dev/null || true)"; ok "CHANGELOG.md: tidak ada bagian di luar tag yang ada (tanpa [Unreleased])" "$([ "${n:-0}" -le 27 ] && ! grep -q 'Unreleased' CHANGELOG.md 2>/dev/null && echo ok || echo salah)" ok
+n="$(grep -cE '^## \[' CHANGELOG.md 2>/dev/null || true)"; ok "CHANGELOG.md: tidak ada bagian di luar tag yang ada (tanpa [Unreleased])" "$([ "${n:-0}" -le 28 ] && ! grep -q 'Unreleased' CHANGELOG.md 2>/dev/null && echo ok || echo salah)" ok
 ok "CHANGELOG.md: tanpa blok tautan perbandingan di dasar berkas" "$(grep -cE '^\[[0-9][^]]*\]: http' CHANGELOG.md 2>/dev/null || true)" 0
 ok "README: tanpa judul atau paragraf bertanda versi (0.x.y)" "$(grep -cE '\(0\.[0-9]+\.[0-9]+[;)]' README.md)" 0
 for f in README.md PRIVACY.md CHANGELOG.md; do ok "bahasa publik: $f tanpa kata fungsi/judul Indonesia di luar kode" "$(idn_hits "$f")" 0; done
@@ -1729,12 +1755,13 @@ for v in 0.1.2 0.2.0 0.3.0 0.4.0 0.7.0 0.8.0 0.9.0 0.10.0 0.11.1 0.12.0; do awk 
 grep -q 'none yet' README.md && grep -q 'Deprecated aliases' README.md; ok "README: 'Merge into main' = none yet; bagian Deprecated aliases" $? 0
 for k in 'does not reject' 'is never deleted' 'report-only' 'response headers' 'not yet proven' 'through chat'; do grep -qF -- "$k" README.md; ok "README mempertahankan rincian: '$k'" $? 0; done
 
-# 3r. rilis 1.1.0 (#55): bagian [1.1.0] hasil release-notes.sh, heading pertama, versi sinkron; [1.0.0] (#34) tetap utuh
+# 3r. rilis 1.2.0 (#67): bagian [1.2.0] hasil release-notes.sh, heading pertama, versi sinkron; [1.1.0] (#55) dan [1.0.0] (#34) tetap utuh
 cd "$root" || exit 1
-ok "CHANGELOG.md: bagian pertama adalah [1.1.0] bertanggal" "$(grep -m1 '^## \[' CHANGELOG.md | grep -cE '^## \[1\.1\.0\] - [0-9]{4}-[0-9]{2}-[0-9]{2}$')" 1
+ok "CHANGELOG.md: bagian pertama adalah [1.2.0] bertanggal" "$(grep -m1 '^## \[' CHANGELOG.md | grep -cE '^## \[1\.2\.0\] - [0-9]{4}-[0-9]{2}-[0-9]{2}$')" 1
 ok "CHANGELOG.md: [1.0.0] memuat entri dari PR #53 (Added dan Changed)" "$(awk '/^## \[1\.0\.0\]/{p=1;next} /^## \[/{p=0} p' CHANGELOG.md | grep -c '(#53)')" 2
 ok "CHANGELOG.md: [1.1.0] memuat entri dari PR #65 (Changed) dan Behavior changes" "$(awk '/^## \[1\.1\.0\]/{p=1;next} /^## \[/{p=0} p' CHANGELOG.md | grep -c '(#65)')|$(awk '/^## \[1\.1\.0\]/{p=1;next} /^## \[/{p=0} p' CHANGELOG.md | grep -c '^### Behavior changes')" '3|1'
-cv="$(bash scripts/check-version.sh v1.1.0 2>&1)"; ok "check-version v1.1.0: lolos tanpa ::warning:: (versi sinkron, bagian CHANGELOG ada)" "$(printf '%s\n' "$cv" | grep -c '^ok:')|$(printf '%s\n' "$cv" | grep -c '::warning::')" '1|0'
+ok "CHANGELOG.md: [1.2.0] memuat entri dari PR #70, #72, #74, #76, #77, #82 dan Behavior changes (exit 5 dan 6)" "$(for n in 70 72 74 76 77 82; do awk '/^## \[1\.2\.0\]/{p=1;next} /^## \[/{p=0} p' CHANGELOG.md | grep -q "(#$n)" && printf x; done)|$(awk '/^## \[1\.2\.0\]/{p=1;next} /^## \[/{p=0} p' CHANGELOG.md | grep -c 'exit code [56]')" 'xxxxxx|2'
+cv="$(bash scripts/check-version.sh v1.2.0 2>&1)"; ok "check-version v1.2.0: lolos tanpa ::warning:: (versi sinkron, bagian CHANGELOG ada)" "$(printf '%s\n' "$cv" | grep -c '^ok:')|$(printf '%s\n' "$cv" | grep -c '::warning::')" '1|0'
 
 # 3v. ringkasan tindakan owner (#57): owner-actions.sh dan pemanggilan autopilot saat menunggu owner
 mkdir -p "$tmp/oa/.aicrew" "$tmp/oab"
@@ -1842,6 +1869,41 @@ grep -q '^## Temporary grants' "$root/templates/WORKFLOW.md" && grep -q 'expires
 ( . "$root/scripts/lib/grants.sh"; grants_lines "$(cat "$root/templates/WORKFLOW.md")" | while IFS= read -r l; do grant_parse "$l" >/dev/null 2>&1 && echo sah; done ) | grep -q sah; ok "template (#61): contoh di template tidak pernah menjadi izin sah" $? 1
 grep -qF 'jalankan gerbang ulang tepat sebelum' "$root/skills/orchestrate/SKILL.md"; ok "orchestrate (#61): gerbang dijalankan ulang tepat sebelum merge" $? 0
 grep -qF 'Temporary grants' "$root/README.md" && grep -qF 'branch protection' "$root/README.md"; ok "README (#61): format izin dan syarat perlindungan cabang" $? 0
+
+# 3x. breakdown mendeteksi dua issue yang menyentuh berkas sama (#60): scripts/file-overlap.sh
+fo() { printf '%s' "$1" | bash "$root/scripts/file-overlap.sh" --json - 2>&1; }
+IA='{"number":1,"labels":[],"body":"## Goal\nx\n\n## Related files\n- Reuse / read: a/y.go:3\n- Expected to touch: `contracts/gov.yaml`, tools/lint/main.go\n\n## Blocked by\nnone\n"}'
+IB='{"number":2,"labels":[],"body":"## Related files\n- Expected to touch: contracts/gov.yaml:12, other/z.go\n\n## Blocked by\nnone\n"}'
+IC='{"number":3,"labels":[],"body":"## Related files\n- Expected to touch: only/c.go\n"}'
+out="$(fo "[$IA,$IB,$IC]")"; rc=$?
+ok "file-overlap: dua issue pada berkas sama tanpa urutan -> exit 1 dan satu baris overlap" "$rc|$(grep -c '^overlap: contracts/gov.yaml #1 #2' <<<"$out")|$(grep -c '#3' <<<"$out")" '1|1|0'
+ok "file-overlap: baris overlap menyarankan Blocked by" "$(grep -c 'Blocked by' <<<"$out")" 1
+IB2="${IB/\\n\\n## Blocked by\\nnone\\n/\\n\\n## Blocked by\\n#1\\n}"
+out="$(fo "[$IA,$IB2,$IC]")"; rc=$?; ok "file-overlap: issue sudah Blocked by yang lain -> tidak ada overlap (exit 0)" "$rc|$out" '0|'
+ID='{"number":4,"labels":[],"body":"## Related files\n- Expected to touch: tools/lint/main.go\n\n## Blocked by\n#2\n"}'
+out="$(fo "[$IA,$IB2,$ID]")"; rc=$?; ok "file-overlap: urutan transitif (4 <- 2 <- 1) -> tidak ada overlap" "$rc|$out" '0|'
+IE='{"number":5,"labels":[{"name":"epic"}],"body":"## Related files\n- Expected to touch: contracts/gov.yaml\n"}'
+out="$(fo "[$IA,$IE]")"; rc=$?; ok "file-overlap: epic diabaikan" "$rc|$out" '0|'
+IP='{"number":6,"labels":[],"body":"## Related files\n- Expected to touch: {{path}}\n"}'
+IQ='{"number":7,"labels":[],"body":"## Related files\n- Expected to touch: {{path}}\n"}'
+out="$(fo "[$IP,$IQ]")"; rc=$?; ok "file-overlap: placeholder templat {{path}} tidak dihitung" "$rc|$out" '0|'
+IR='{"number":8,"labels":[],"body":"tanpa bagian file"}'
+out="$(fo "[$IA,$IR]")"; rc=$?; ok "file-overlap: issue tanpa bagian Related files diabaikan" "$rc|$out" '0|'
+out="$(fo '[]')"; rc=$?; ok "file-overlap: daftar kosong -> exit 0" "$rc|$out" '0|'
+out="$(fo 'bukan json')"; rc=$?; ok "file-overlap: masukan tak terurai -> exit 2 (bukan lolos diam-diam)" "$rc" 2
+IS='{"number":9,"labels":[],"body":"## Related files\n- Expected to touch: contracts/gov.yaml\n"}'
+out="$(fo "[$IA,$IB,$IS]")"; ok "file-overlap: tiga issue pada berkas sama -> tiga pasangan" "$(grep -c '^overlap: contracts/gov.yaml' <<<"$out")" 3
+IX1='{"number":1,"labels":[],"body":"## Related files\n- Expected to touch: a/x.go\n"}'
+IX3='{"number":3,"labels":[],"body":"## Related files\n- Expected to touch: a/x.go\n\n## Blocked by\nother/repo#1\n"}'
+out="$(fo "[$IX1,$IX3]")"; ok "file-overlap: Blocked by lintas repo (other/repo#1) bukan urutan" "$(grep -c '^overlap: a/x.go #1 #3' <<<"$out")" 1
+IV1='{"number":1,"labels":[],"body":"## related files\n* expected to touch: a/x.go\n"}'
+IV2='{"number":2,"labels":[],"body":"## Related Files\n- Expected To Touch: a/x.go\n"}'
+out="$(fo "[$IV1,$IV2]")"; ok "file-overlap: huruf besar/kecil dan bullet * tidak mengubah hasil" "$(grep -c '^overlap: a/x.go #1 #2' <<<"$out")" 1
+IN1='{"number":1,"labels":[],"body":"## Related files\n- Expected to touch: ./a/x.go\n"}'
+IN2='{"number":2,"labels":[],"body":"## Related files\n- Expected to touch: a/x.go.\n"}'
+out="$(fo "[$IN1,$IN2]")"; ok "file-overlap: ./ di depan dan titik di akhir dinormalkan" "$(grep -c '^overlap: a/x.go #1 #2' <<<"$out")" 1
+grep -qF 'file-overlap.sh' "$root/skills/breakdown/SKILL.md"; ok "breakdown (#60): memakai file-overlap.sh" $? 0
+grep -qF 'every file you create or edit' "$root/templates/ISSUE.md"; ok "template ISSUE (#60): Expected to touch memuat setiap berkas yang dibuat atau diubah" $? 0
 
 # 3t-0. keputusan owner terbaru dibaca sebelum needs-principal dipasang lagi (#62)
 SK="$root/skills/orchestrate/SKILL.md"
