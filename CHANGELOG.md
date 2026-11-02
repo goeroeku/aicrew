@@ -4,6 +4,18 @@ All notable changes to aiCrew are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Entries before 0.11.0 were reconstructed from tags, merged pull requests and commit history.
 
+## [1.3.0] - 2026-11-02
+
+### Added
+
+- temporary grants (a `## Temporary grants` section in `docs/WORKFLOW.md`, read from the target branch) that let `pr-merge-check.sh --auto` accept `risk:L2` PRs until an expiry time of at most 7 days; the default branch is never allowed (#84)
+- `scripts/file-overlap.sh`: `breakdown` now detects two issues that create or edit the same file without a `Blocked by` order and asks for them to be serialized or split (#87)
+- `preflight.sh` warns (AWAS) when the Bash allow rules that unattended subagents need are missing from the effective settings, and names each missing rule (#88)
+
+### Behavior changes
+
+- `pr-merge-check.sh --auto` now refuses any PR that touches `docs/WORKFLOW.md` and needs REST access to the PR file list (fails closed) (#84)
+
 ## [1.2.0] - 2026-11-02
 
 ### Added
