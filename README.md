@@ -128,6 +128,8 @@ The Telegram token is read from `~/.config/aicrew/env` (`export AICREW_TG_TOKEN=
 > install it into the project's `.claude/settings.local.json` with `bash scripts/install-permissions.sh` (merges, never overwrites; fills in your paths).
 > Do not use `--dangerously-skip-permissions`. Extra arguments go through `AICREW_CLAUDE_ARGS` (e.g. `--max-budget-usd 3`).
 >
+**Round log.** After every round `.aicrew/autopilot.log` gets one `putaran N: ringkasan:` line observed by the script through `gh`: duration, exit code, PRs merged during the round, open PRs with their head SHA (7 characters), and the `--max-total` counter (`used/limit`, or just `used` without a limit). `autopilot.status` is not overwritten by it.
+
 > **Limit detection.** A limit is recognized when its text is in the last 20 lines **and** (the `claude -p` exit code is not 0, or the output is short, at most 3 lines). A normal, long orchestrator report may contain a sentence such as "No agent hit a usage limit" without triggering a 30-minute sleep. Each round's exit code is logged in `.aicrew/autopilot.log` (`putaran N: rc=...`), and output that mentions a limit or has a non-zero exit code is archived in `.aicrew/archive/round-<run>-<round>-rc<code>.log` (the last 20), so the next real limit is captured in full. The limit message pattern is a guess not yet proven with a real limit: whether the exit code is non-zero is unverified (an API error has been reported to end with code 0), so short output is still treated as a limit; if the pattern misses, the round counts as an error and autopilot stops safely after 3.
 
 ## 📋 Release candidate and release notes

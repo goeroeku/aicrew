@@ -30,6 +30,14 @@ set_phase() { command -v jq >/dev/null 2>&1 || return 0; local t="$d/autopilot.j
 note() { log "$*"; command -v jq >/dev/null && jq -n --arg m "$*" '{message:$m}' | bash "$here/notify.sh"; return 0; }
 fingerprint() { local a b; a="$(gh issue list --state all --limit 200 --json number,state,labels)" && b="$(gh pr list --state all --limit 200 --json number,state)" || return 1; printf '%s\n%s\n' "$a" "$b" | shasum | cut -d' ' -f1; }   # gagal = tidak ada sidik jari (bukan hash keluaran kosong, #73)
 
+# ringkasan per putaran (#63): satu baris di autopilot.log setelah putaran selesai: durasi, rc, PR yang digabung selama putaran, PR terbuka dengan sha7, total. Hanya hasil pengamatan skrip (gh), tidak pernah fatal.
+# Seperti baris rc, tidak lewat log(): autopilot.status tetap berisi keadaan putaran.
+round_summary() { local pr m o t l; t="$(cat "$d/total" 2>/dev/null || echo 0)"; [ -n "$max_total" ] && t="$t/$max_total"
+  if pr="$(gh pr list --state all --limit 50 --json number,state,mergedAt,headRefOid 2>/dev/null)" && m="$(jq -r --argjson s "$2" '[.[]|select(.state=="MERGED" and .mergedAt!=null and (.mergedAt|sub("\\.[0-9]+";"")|fromdateiso8601)>=$s)|"#\(.number)"]|if length==0 then "-" else join(" ") end' <<<"$pr" 2>/dev/null)" && o="$(jq -r '[.[]|select(.state=="OPEN")|"#\(.number)@\((.headRefOid//"")[0:7])"]|if length==0 then "-" else join(" ") end' <<<"$pr" 2>/dev/null)"; then
+    l="putaran $1: ringkasan: durasi $(( $(date +%s) - $2 ))s; rc=$3; PR digabung: $m; PR terbuka: $o; total $t"
+  else l="putaran $1: ringkasan: durasi $(( $(date +%s) - $2 ))s; rc=$3; PR tak terbaca (gh gagal); total $t"; fi
+  printf '%s %s\n' "$(date '+%F %T')" "$l" | tee -a "$d/autopilot.log"; return 0; }
+
 # semua issue terbuka hanya menunggu manusia: needs-principal, atau punya PR terbuka (cabang issue-N, konvensi yang sama dengan resume.sh)
 has_open_pr() { [ "$(gh pr list --head "issue-$1" --state open --json number,state -q '[.[]|select(.state=="OPEN")]|length' 2>/dev/null)" -ge 1 ] 2>/dev/null; }
 is_principal() { jq -e --argjson n "$2" '.[]|select(.number==$n)|.labels|map(.name)|index("needs-principal")' <<<"$1" >/dev/null 2>&1; }
@@ -170,6 +178,7 @@ for ((i=1; i<=max_rounds; i++)); do
 
   # rc tiap putaran dicatat; keluaran yang bergejala (menyebut limit, atau rc != 0) diarsipkan (20 terakhir) supaya limit sungguhan terekam utuh
   printf '%s putaran %s: rc=%s\n' "$(date '+%F %T')" "$i" "$rc" | tee -a "$d/autopilot.log"
+  round_summary "$i" "$rstart" "$rc"
   likely=0; tail -n 20 "$out" | grep -qiE 'usage limit|rate.?limit|limit (reached|will reset)|resets? (at|in)' && likely=1
   # putaran yang diakhiri watchdog idle (penanda ada): rc dinormalkan, bukan limit dan bukan gagal; sidik jari dibandingkan seperti biasa (--stuck menghentikan bila berulang)
   if [ "$interrupted" = 1 ]; then rc=0; likely=0; log "putaran $i: diakhiri watchdog idle (rc dinormalkan); daftar issue dimuat ulang di putaran berikut"; fi
