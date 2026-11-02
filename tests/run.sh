@@ -454,6 +454,10 @@ ok "preflight izin: dijalankan dari subdirektori memakai akar repo" "$(pfp "$tmp
 rm "$tmp/pp/r1/.claude/settings.local.json"; printf '{"permissions":{"allow":["Bash(git worktree:*)","Bash(git commit:*)","Bash(git push:*)","Bash(make:*)","Bash(go test:*)"]}}' > "$tmp/pp/h sp/.claude/settings.json"
 ok "preflight izin: HOME berspasi dibaca" "$(cd "$tmp/pp/r1" && HOME="$tmp/pp/h sp" bash "$root/scripts/preflight.sh" 2>&1 | grep -c '^ok.*izin subagen')" 1
 
+# 3c-3. orchestrate: PR konflik dengan cabang tujuan -> batalkan, worktree bersih, laporkan berkas dan klasifikasi, tanpa mengulang (#59)
+SK="$root/skills/orchestrate/SKILL.md"
+for k in 'Konflik dengan cabang tujuan' 'git diff --name-only --diff-filter=U' 'git merge --abort' 'git status --porcelain' 'terblokir: konflik merge' 'mechanical' 'design decision' 'Ragu = `design decision`' 'rev-parse -q --verify MERGE_HEAD' 'git fetch origin <target>' 'owner-action: merge origin/<target>' 'push cabang PR' 'komentar owner terbaru' 'Jangan mengulang'; do grep -qF -- "$k" "$SK"; ok "orchestrate (#59): konflik merge menyebut '$k'" $? 0; done
+
 # 3d. install-permissions: basis worktree absolut, izin merge per mode, deny baru
 IP() { (cd "$1" && bash "$root/scripts/install-permissions.sh" "$2" >/dev/null); }
 mkdir -p "$tmp/ip1/docs" "$tmp/ip2/docs"; git init -q "$tmp/ip1"; git init -q "$tmp/ip2"
