@@ -1,14 +1,19 @@
 #!/usr/bin/env bash
 # aicrew board: pindahkan kartu issue di GitHub Project. Pakai: board.sh <owner> <nomor-project> <issue> <nama-status>
 # Contoh: board.sh goeroeku 2 3 "In review" (nama status tanpa beda huruf besar/kecil; bawaan GitHub: Backlog, Ready, In progress, In review, Done). Butuh scope gh 'project'. Kartu belum ada -> ditambahkan.
+# --sync-cards [--dry-run]: pindahkan kartu task (Backlog/Ready/In progress/In review) dari label, PR, worktree, dan blocker; hanya maju, selisih saja (#69).
 # --sync (board.sh <owner> <nomor> --sync): status + progres epic, issue yang ditutup tanpa PR dipindah ke Done bila "Done card: agent-after-merge", dan (opsional) menutup issue di-integrasi.
 # Gagal tidak fatal bagi alur: label tetap sumber status; skrip ini hanya cermin kanban (exit != 0 = laporkan, lanjut).
 set -euo pipefail
 source "$(dirname "$0")/ghx.sh"  # cadangan REST saat GraphQL kena batas
-if [ "$#" -lt 3 ] || { [ "$3" != "--sync" ] && [ "$#" -lt 4 ]; }; then
-  echo "Pemakaian: board.sh <owner> <proj> <issue> <status> | board.sh <owner> <proj> --sync" >&2; exit 64
+if [ "$#" -lt 3 ] || { [ "$3" != "--sync" ] && [ "$3" != "--sync-cards" ] && [ "$#" -lt 4 ]; }; then
+  echo "Pemakaian: board.sh <owner> <proj> <issue> <status> | board.sh <owner> <proj> --sync | board.sh <owner> <proj> --sync-cards [--dry-run]" >&2; exit 64
 fi
 owner="$1"; num="$2"
+if [ "$3" = "--sync-cards" ]; then   # status kartu task dari label/PR/worktree/blocker (#69); pemetaan di lib/card-status.sh
+  [ -z "${4:-}" ] || [ "${4:-}" = "--dry-run" ] || { echo "board: argumen tak dikenal: $4" >&2; exit 64; }
+  . "$(dirname "$0")/lib/card-sync.sh"; card_sync "$owner" "$num" "$([ "${4:-}" = "--dry-run" ] && echo 1 || echo 0)"; exit 0
+fi
 if [ "${3:-}" = "--sync" ]; then
   # status epic dari anaknya: sub-issue native bila ada, selain itu daftar centang "- [ ] #n" (kotak centang tidak pernah dicentang otomatis,
   # jadi status anak dibaca dari issue/board, bukan dari kotaknya). Ada anak berjalan atau sebagian sudah Done -> In progress; semua anak

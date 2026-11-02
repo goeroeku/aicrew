@@ -169,6 +169,20 @@ GitHub's GraphQL limit (5,000 points/hour) is shared by every tool on one accoun
 
 ## 🗂️ Kanban (optional)
 `scripts/board-init.sh` creates a GitHub Project, links it to the repository, normalizes the statuses and creates a board view (`createProjectV2View` with `BOARD_LAYOUT`; a new project only has a table view). `scripts/board.sh` moves cards; `board.sh <owner> <number> --sync` moves issues closed without a PR to Done when `Done card: agent-after-merge`. Needs the `gh` `project` scope.
+
+**Card sync.** `board.sh <owner> <number> --sync-cards [--dry-run]` moves task cards from labels, PRs, worktrees and blockers; the autopilot runs it (after `--sync`) once per loop when `Kanban board: GitHub Project <owner>/<number>` is set (`AICREW_BOARD_SYNC=0` turns it off). Labels stay the source of truth; the board only mirrors them. First match wins:
+
+| Condition (open, non-epic issue that has a card) | Card status |
+|---|---|
+| labeled `integrated` | skipped (`integrated`) |
+| more than one merged PR from `issue-<n>` | skipped (`multi-merged-pr`) |
+| open non-draft PR from `issue-<n>` | In review |
+| label `in-progress`, a `<repo>-wt-<n>` worktree, or a draft PR | In progress |
+| an open blocker in `## Blocked by` | Backlog |
+| `needs-principal` | skipped (`needs-principal`) |
+| otherwise | Ready |
+
+Cards only move forward (Backlog/Ready → In progress → In review); only Backlog ↔ Ready move both ways. Issues without a card are skipped (`no-card`), never added. It skips (exit 0, one log line) when the remaining GraphQL budget is below `AICREW_BOARD_MIN_GRAPHQL` (default 1500). PRs are read through REST (latest 100).
 > [!NOTE]
 > The built-in "Item closed" workflow (card moves to Done automatically when an issue closes) **cannot be enabled through the API**: GraphQL only has `deleteProjectV2Workflow`. Enable it once in the UI: Project → Workflows → Item closed → Enable. Without it, use `--sync`.
 
