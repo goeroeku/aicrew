@@ -439,6 +439,17 @@ mkdir -p "$tmp/pp/r2/.claude"; printf '{"permissions":{"defaultMode":"bypassPerm
 out="$(pfp "$tmp/pp/r2")"
 ok "preflight izin: mode bypassPermissions -> info, bukan AWAS" "$(grep -c '^info.*izin subagen.*bypassPermissions' <<<"$out")|$(grep -c '^AWAS.*izin subagen' <<<"$out")" '1|0'
 
+printf '{"permissions":{"allow":["Bash(git worktree:*)","Bash(git commit:*)","Bash(make:*)","Bash(go test:*)"],"deny":["Bash(git push:*)"]}}' > "$tmp/pp/r1/.claude/settings.local.json"
+ok "preflight izin: aturan hanya di deny tidak dihitung ada" "$(pfp "$tmp/pp/r1" | grep '^AWAS.*izin subagen' | grep -c 'Bash(git push:\*)')" 1
+printf '{"permissions":{"allow":["Bash(git:*)","Bash(make:*)","Bash(go test:*)"]}}' > "$tmp/pp/r1/.claude/settings.local.json"
+ok "preflight izin: Bash(git:*) mencukupi aturan git" "$(pfp "$tmp/pp/r1" | grep -c '^ok.*izin subagen')" 1
+printf '{"permissions":{"allow":["Bash(git push --force:*)","Bash(git worktree:*)","Bash(git commit:*)","Bash(makeself:*)","Bash(go test:*)"]}}' > "$tmp/pp/r1/.claude/settings.local.json"
+ok "preflight izin: aturan sempit/serupa (git push --force, makeself) tidak cocok" "$(pfp "$tmp/pp/r1" | grep '^AWAS.*izin subagen' | grep -c 'Bash(git push:\*).*Bash(make:\*)')" 1
+mkdir -p "$tmp/pp/r1/sub" "$tmp/pp/h sp/.claude"; printf '{"permissions":{"allow":["Bash(git worktree:*)","Bash(git commit:*)","Bash(git push:*)","Bash(make:*)","Bash(go test:*)"]}}' > "$tmp/pp/r1/.claude/settings.local.json"
+ok "preflight izin: dijalankan dari subdirektori memakai akar repo" "$(pfp "$tmp/pp/r1/sub" | grep -c '^ok.*izin subagen')" 1
+rm "$tmp/pp/r1/.claude/settings.local.json"; printf '{"permissions":{"allow":["Bash(git worktree:*)","Bash(git commit:*)","Bash(git push:*)","Bash(make:*)","Bash(go test:*)"]}}' > "$tmp/pp/h sp/.claude/settings.json"
+ok "preflight izin: HOME berspasi dibaca" "$(cd "$tmp/pp/r1" && HOME="$tmp/pp/h sp" bash "$root/scripts/preflight.sh" 2>&1 | grep -c '^ok.*izin subagen')" 1
+
 # 3d. install-permissions: basis worktree absolut, izin merge per mode, deny baru
 IP() { (cd "$1" && bash "$root/scripts/install-permissions.sh" "$2" >/dev/null); }
 mkdir -p "$tmp/ip1/docs" "$tmp/ip2/docs"; git init -q "$tmp/ip1"; git init -q "$tmp/ip2"
