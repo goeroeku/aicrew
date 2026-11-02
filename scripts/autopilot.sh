@@ -33,8 +33,18 @@ fingerprint() { { gh issue list --state all --limit 200 --json number,state,labe
 # semua issue terbuka hanya menunggu manusia: needs-principal, atau punya PR terbuka (cabang issue-N, konvensi yang sama dengan resume.sh)
 has_open_pr() { [ "$(gh pr list --head "issue-$1" --state open --json number,state -q '[.[]|select(.state=="OPEN")]|length' 2>/dev/null)" -ge 1 ] 2>/dev/null; }
 is_principal() { jq -e --argjson n "$2" '.[]|select(.number==$n)|.labels|map(.name)|index("needs-principal")' <<<"$1" >/dev/null 2>&1; }
-# blocker yang masih terbuka (ada di $nums) dari bagian "## Blocked by" di badan issue; "owner/repo#n" (lintas repo) diabaikan; blocker ditutup/berlabel integrasi terpenuhi (tak ada di $nums)
-unsat_blockers() { local b; for b in $(jq -r --argjson n "$2" '.[]|select(.number==$n)|.body // ""' <<<"$1" | awk 'tolower($0) ~ /^##[ \t]+blocked by/{f=1;next} /^##/{f=0} f' | grep -oE '(^|[^A-Za-z0-9_./-])#[0-9]+' | grep -oE '[0-9]+' | sort -u); do [ "$b" != "$2" ] || continue; case " $nums " in *" $b "*) echo "$b" ;; esac; done; }
+. "$here/lib/blockers.sh"; . "$here/lib/board-ref.sh"   # unsat_blockers, board_ref
+# cerminan kanban (#69): papan aktif ("Kanban board: GitHub Project o/n") -> --sync lalu --sync-cards, sekali per iterasi; tidak pernah fatal; AICREW_BOARD_SYNC=0 mematikan.
+# Baris log sengaja tidak lewat log(): autopilot.status tetap berisi keadaan putaran.
+board_sync() {
+  [ "${AICREW_BOARD_SYNC:-1}" != 0 ] || return 0
+  local o nm b="${AICREW_BOARD_SH:-$here/board.sh}" out
+  read -r o nm < <(bash "$here/workflow.sh" 2>/dev/null | board_ref) || true; [ -n "${nm:-}" ] || return 0
+  bash "$b" "$o" "$nm" --sync >/dev/null 2>&1 || printf '%s board: --sync gagal (diabaikan)\n' "$(date '+%F %T')" | tee -a "$d/autopilot.log"
+  out="$(bash "$b" "$o" "$nm" --sync-cards 2>&1)" || out="$out"$'\n'"board: --sync-cards gagal (diabaikan)"
+  out="$(grep '^board:' <<<"$out" | tail -1)"; [ -z "$out" ] || printf '%s %s\n' "$(date '+%F %T')" "$out" | tee -a "$d/autopilot.log"
+  return 0
+}
 # semua issue terbuka hanya menunggu manusia (#17): needs-principal, PR terbuka, atau semua blocker yang masih terbuka sendiri menunggu (dihitung berulang sampai tetap).
 # Hemat kuota GraphQL: issue tanpa blocker terbuka yang bukan needs-principal harus punya PR, selain itu langsung "bukan menunggu" (berhenti di sana, seperti semula); PR issue terblokir dicek belakangan.
 waiting_on_owner() {
@@ -117,6 +127,7 @@ for ((i=1; i<=max_rounds; i++)); do
   # issue berlabel integrasi ($L_INT, bawaan integrated; nama lama di-integrasi tetap dikenali) sudah selesai (menunggu merge ke main oleh owner): bukan pekerjaan tersisa
   open="$(gh issue list --state open --limit 200 --json number,labels,body | jq --argjson ls "$L_INT" '[.[]|select((.labels|map(.name)) as $n|(any($ls[]; . as $x|$n|index($x)) or ($n|index("epic")))|not)]')"  # epic = pengelompokan journey, bukan pekerjaan
   n_open="$(jq length <<<"$open")"
+  board_sync
   n_wait="$(jq '[.[]|select(.labels|map(.name)|index("needs-principal"))]|length' <<<"$open")"
   [ "$n_open" = 0 ] && { set_phase selesai "$((i-1))"; note "autopilot: semua issue selesai (putaran $((i-1)))"; exit 0; }
   [ "$n_open" = "$n_wait" ] && {

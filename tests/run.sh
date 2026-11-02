@@ -1545,6 +1545,22 @@ ok "buntu: --retry-stuck menghapus penanda dan menjalankan putaran lagi (exit 2 
 AP3KEEP=1 ap3 '[{"number":1,"state":"OPEN","labels":[{"name":"role:qa"}]},{"number":2,"state":"OPEN","labels":[{"name":"role:qa"}]}]' $'noop\nnoop\nnoop\nnoop' --stuck 3; rc=$?
 ok "buntu: keadaan berubah (issue baru) -> penanda diabaikan, putaran jalan" "$([ "$rc" != 5 ] && echo jalan || echo diam)" jalan
 
+# 3p-5. sinkron kartu kanban dari autopilot (#69): sekali per iterasi bila papan aktif; tidak fatal; dapat dimatikan
+mkdir -p "$AP3/w/docs"; BSH="$AP3FX/fakeboard.sh"
+printf '%s\n' '#!/usr/bin/env bash' 'echo "$*" >> "$AP3FX/board-calls"' '[ "${3:-}" != --sync-cards ] || echo "board: 0 kartu diubah, 0 dilewati, graphql sisa 9"' '[ -z "${FAKEBOARD_FAIL:-}" ] || exit 1' > "$BSH"
+printf -- '- Kanban board: GitHub Project o/3, status bawaan\n' > "$AP3/w/docs/WORKFLOW.md"
+rm -f "$AP3FX/board-calls"; AP3ENV="AICREW_BOARD_SH=$BSH" ap3 "$AP3OPEN" close; rc=$?
+ok "autopilot kanban: papan aktif -> --sync dan --sync-cards sekali per iterasi (2 iterasi)" "$rc|$(grep -c ' --sync$' "$AP3FX/board-calls")|$(grep -c ' --sync-cards$' "$AP3FX/board-calls")" '0|2|2'
+ok "autopilot kanban: argumen owner dan nomor dari WORKFLOW" "$(head -1 "$AP3FX/board-calls")" 'o 3 --sync'
+ok "autopilot kanban: satu baris log 'board:' per sinkron, status tak tertimpa" "$(grep -c 'board: 0 kartu diubah' "$AP3/w/.aicrew/autopilot.log")|$(grep -c '^board' "$AP3/w/.aicrew/autopilot.status")" '2|0'
+rm -f "$AP3FX/board-calls"; AP3ENV="AICREW_BOARD_SH=$BSH AICREW_BOARD_SYNC=0" ap3 "$AP3OPEN" close
+ok "autopilot kanban: AICREW_BOARD_SYNC=0 -> tidak memanggil board.sh" "$(cat "$AP3FX/board-calls" 2>/dev/null | wc -l | tr -d ' ')" 0
+rm -f "$AP3FX/board-calls"; AP3ENV="AICREW_BOARD_SH=$BSH FAKEBOARD_FAIL=1" ap3 "$AP3OPEN" close; rc=$?
+ok "autopilot kanban: board.sh gagal -> tidak fatal (exit 0), putaran tetap jalan" "$rc|$(cat "$AP3FX/n")" '0|1'
+printf -- '- Kanban board: none\n' > "$AP3/w/docs/WORKFLOW.md"; rm -f "$AP3FX/board-calls"; AP3ENV="AICREW_BOARD_SH=$BSH" ap3 "$AP3OPEN" close
+ok "autopilot kanban: Kanban board none -> tidak memanggil board.sh" "$(cat "$AP3FX/board-calls" 2>/dev/null | wc -l | tr -d ' ')" 0
+rm -rf "$AP3/w/docs"
+
 # 3p-2. watchdog idle: SIGINT, penanda, normalisasi rc, trap Ctrl-C (#48)
 APLOG() { cat "$AP3/w/.aicrew/autopilot.log" 2>/dev/null; }
 AP3ENV="AICREW_IDLE_LIMIT=2 AICREW_IDLE_POLL=1" ap3 "$AP3OPEN" $'idle\nclose'; rc=$?
@@ -1693,6 +1709,66 @@ ok "CHANGELOG.md: bagian pertama adalah [1.1.0] bertanggal" "$(grep -m1 '^## \['
 ok "CHANGELOG.md: [1.0.0] memuat entri dari PR #53 (Added dan Changed)" "$(awk '/^## \[1\.0\.0\]/{p=1;next} /^## \[/{p=0} p' CHANGELOG.md | grep -c '(#53)')" 2
 ok "CHANGELOG.md: [1.1.0] memuat entri dari PR #65 (Changed) dan Behavior changes" "$(awk '/^## \[1\.1\.0\]/{p=1;next} /^## \[/{p=0} p' CHANGELOG.md | grep -c '(#65)')|$(awk '/^## \[1\.1\.0\]/{p=1;next} /^## \[/{p=0} p' CHANGELOG.md | grep -c '^### Behavior changes')" '3|1'
 cv="$(bash scripts/check-version.sh v1.1.0 2>&1)"; ok "check-version v1.1.0: lolos tanpa ::warning:: (versi sinkron, bagian CHANGELOG ada)" "$(printf '%s\n' "$cv" | grep -c '^ok:')|$(printf '%s\n' "$cv" | grep -c '::warning::')" '1|0'
+
+# 3t. sinkronisasi kartu kanban oleh kode (#69): card_status (tabel), board_ref, unsat_blockers, board.sh --sync-cards
+cs() { ( . "$root/scripts/lib/card-status.sh"; card_status "$@" ); }
+INT="integrated di-integrasi"
+ok "card_status: integrated -> skip"            "$(cs 'bug integrated' 0 none 0 Ready "$INT")" skip:integrated
+ok "card_status: alias lama di-integrasi -> skip" "$(cs 'di-integrasi' 0 none 0 Ready "$INT")" skip:integrated
+ok "card_status: dua PR merged -> skip"         "$(cs '' 0 multi-merged 0 Ready "$INT")" skip:multi-merged-pr
+ok "card_status: PR terbuka -> In review"       "$(cs '' 0 open 0 'In progress' "$INT")" 'In review'
+ok "card_status: PR non-draft menang atas label" "$(cs 'in-progress' 0 open 0 Ready "$INT")" 'In review'
+ok "card_status: label in-progress"             "$(cs 'in-progress' 0 none 0 Ready "$INT")" 'In progress'
+ok "card_status: worktree aktif"                "$(cs '' 0 none 1 Backlog "$INT")" 'In progress'
+ok "card_status: PR draft"                      "$(cs '' 0 draft 0 Ready "$INT")" 'In progress'
+ok "card_status: blocker terbuka -> Backlog"    "$(cs '' 2 none 0 Ready "$INT")" Backlog
+ok "card_status: tanpa blocker -> Ready"        "$(cs '' 0 none 0 Backlog "$INT")" Ready
+ok "card_status: kartu tanpa status -> Ready"   "$(cs '' 0 none 0 '' "$INT")" Ready
+ok "card_status: needs-principal -> skip"       "$(cs 'needs-principal' 0 none 0 Backlog "$INT")" skip:needs-principal
+ok "card_status: tanpa kartu -> skip"           "$(cs '' 0 none 0 - "$INT")" skip:no-card
+ok "card_status: tidak mundur dari In review"   "$(cs '' 0 none 0 'In review' "$INT")" 'In review'
+ok "card_status: tidak mundur dari In progress" "$(cs '' 3 none 0 'In progress' "$INT")" 'In progress'
+ok "card_status: In review tidak turun ke In progress" "$(cs 'in-progress' 0 none 0 'In review' "$INT")" 'In review'
+ok "card_status: Done dibiarkan"                "$(cs '' 0 none 0 Done "$INT")" Done
+ok "card_status: in-progress menang atas needs-principal" "$(cs 'needs-principal in-progress' 0 none 0 Ready "$INT")" 'In progress'
+
+br() { ( . "$root/scripts/lib/board-ref.sh"; printf '%s\n' "$1" | board_ref ); }
+ok "board_ref: GitHub Project owner/nomor"      "$(br '- Kanban board: GitHub Project goeroeku/3, status bawaan')" 'goeroeku 3'
+ok "board_ref: none -> kosong"                  "$(br '- Kanban board: none')" ''
+ok "board_ref: tanpa baris -> kosong"           "$(br '- Profile: light')" ''
+ok "board_ref: placeholder templat -> kosong"   "$(br '- Kanban board: {{none | GitHub Project <owner>/<nomor>}}')" ''
+
+OPEN='[{"number":1,"body":""},{"number":2,"body":"## Blocked by\n- #1\n- other/repo#9\n- #2\n\n## Lain\n#7"},{"number":3,"body":"## Blocked by\n#4"}]'
+ub() { ( . "$root/scripts/lib/blockers.sh"; unsat_blockers "$OPEN" "$1" | tr '\n' ' ' ); }
+ok "unsat_blockers: blocker terbuka dihitung; lintas repo, diri sendiri, dan bagian lain diabaikan" "$(ub 2)" '1 '
+ok "unsat_blockers: blocker yang tidak terbuka terpenuhi" "$(ub 3)" ''
+
+# board.sh --sync-cards: gh palsu (REST untuk PR, header GraphQL), repo git asli dengan worktree kc-wt-8
+mkdir -p "$tmp/kc/docs" "$tmp/kcb"; git init -q "$tmp/kc"; git -C "$tmp/kc" -c user.email=a@b -c user.name=n commit -q --allow-empty -m i; git -C "$tmp/kc" worktree add -q "$tmp/kc-wt-8" -b issue-8 2>/dev/null
+cat > "$tmp/kcb/gh" <<'KCEOF'
+#!/usr/bin/env bash
+echo "$*" >> "$FAKE/calls"
+case "$*" in
+  "api graphql -i"*) printf 'HTTP/2 200\r\nx-ratelimit-remaining: %s\r\n\r\n{}\n' "${FAKE_REM:-4200}" ;;
+  "repo view"*) echo o/r ;;
+  "project view"*) echo PID ;;
+  "project field-list"*) echo '{"fields":[{"name":"Status","id":"F1","options":[{"name":"Backlog","id":"OB"},{"name":"Ready","id":"OR"},{"name":"In progress","id":"OP"},{"name":"In review","id":"OV"},{"name":"Done","id":"OD"}]}]}' ;;
+  "project item-list"*) echo '{"items":[{"id":"I1","status":"Ready","content":{"number":1,"type":"Issue"}},{"id":"I2","status":"Backlog","content":{"number":2,"type":"Issue"}},{"id":"I3","status":"Ready","content":{"number":3,"type":"Issue"}},{"id":"I4","status":"Ready","content":{"number":4,"type":"Issue"}},{"id":"I5","status":"In progress","content":{"number":5,"type":"Issue"}},{"id":"I6","status":"Backlog","content":{"number":6,"type":"Issue"}},{"id":"I8","status":"Backlog","content":{"number":8,"type":"Issue"}},{"id":"I9","status":"In review","content":{"number":9,"type":"Issue"}},{"id":"I10","status":"Backlog","content":{"number":10,"type":"Issue"}}]}' ;;
+  "issue list"*"--state open"*) echo '[{"number":1,"body":"","labels":[{"name":"di-integrasi"}]},{"number":2,"body":"","labels":[]},{"number":3,"body":"## Blocked by\n- #2","labels":[]},{"number":4,"body":"","labels":[{"name":"in-progress"}]},{"number":5,"body":"","labels":[]},{"number":6,"body":"","labels":[{"name":"needs-principal"}]},{"number":7,"body":"","labels":[]},{"number":8,"body":"","labels":[]},{"number":9,"body":"","labels":[]},{"number":10,"body":"","labels":[{"name":"epic"}]}]' ;;
+  "api repos/o/r/pulls"*) echo '[{"number":50,"draft":false,"state":"open","merged_at":null,"head":{"ref":"issue-5"}}]' ;;
+esac
+KCEOF
+chmod +x "$tmp/kcb/gh"; export FAKE="$tmp/kc"; : > "$FAKE/calls"
+kcs() { (cd "$tmp/kc" && PATH="$tmp/kcb:$PATH" bash "$root/scripts/board.sh" o 3 --sync-cards "$@"); }
+export FAKE_REM=4200
+dry="$(kcs --dry-run 2>&1)"
+ok "sync-cards --dry-run: selisih tepat" "$(grep '^#' <<<"$dry" | tr '\n' '|')" '#2: Backlog -> Ready|#3: Ready -> Backlog|#4: Ready -> In progress|#5: In progress -> In review|#8: Backlog -> In progress|'
+ok "sync-cards --dry-run: ringkasan Indonesia dengan sisa graphql" "$(grep '^board:' <<<"$dry")" 'board: 5 kartu akan diubah, 3 dilewati (integrated 1, needs-principal 1, no-card 1), graphql sisa 4200'
+ok "sync-cards --dry-run: nol penulisan" "$(grep -c 'item-edit' "$FAKE/calls")" 0
+: > "$FAKE/calls"; kcs >/dev/null 2>&1
+ok "sync-cards: lima kartu ditulis" "$(grep -c 'item-edit' "$FAKE/calls")" 5
+: > "$FAKE/calls"; low="$(FAKE_REM=100 kcs 2>&1)"; rc=$?
+ok "sync-cards: batas GraphQL rendah -> dilewati, exit 0, nol penulisan" "$rc|$(grep -c 'item-edit' "$FAKE/calls")|$(grep -c 'sisa 100' <<<"$low")" '0|0|1'
 
 # 3s. nama teknis Inggris (#55): pemeta alias WORKFLOW (kunci, nilai, idempoten)
 cd "$root" || exit 1
