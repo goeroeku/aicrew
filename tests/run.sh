@@ -26,7 +26,7 @@ case "$*" in
   *"pr diff"*) [ -n "${DIFFFAIL:-}" ] && exit 1; printf '%s\n' "${DIFF:-}" ;;
   *baseRefName*) echo "$BASE" ;;
   *headRefOid*) echo "${HEAD:-abc1234567}" ;;
-  *comments*) jq -n --arg a "${COMM:-}" --arg b "${COMM2:-}" '{comments:([$a,$b]|map(select(.!=""))|map({body:.}))}' ;;
+  *comments*) jq -n --arg a "${COMM:-}" --arg b "${COMM2:-}" --arg x "${ASSOC-OWNER}" --arg y "${ASSOC2-OWNER}" '{comments:([{body:$a,authorAssociation:$x},{body:$b,authorAssociation:$y}]|map(select(.body!=""))|map(if .authorAssociation=="-" then del(.authorAssociation) else . end))}' ;;
   *"issue view"*) [ -n "${ISSFAIL:-}" ] && exit 1; v="ISSL_$3"; echo "${!v:-${ISSL:-}}" ;;
   *closingIssuesReferences*) for n in ${CLOSING:-}; do echo "$n"; done ;;
   *labels*) printf '%s\n' "${PRL:-}" ;;
@@ -2197,5 +2197,18 @@ err="$(cd "$tmp/mm/w" && AICREW_MERGE_MODE=Agent-After-QA bash "$tmp/mm/single/s
 ok "mode merge (#97): salinan skrip tunggal (tanpa helper) menormalkan env dan memperingatkan di stderr" "$(jq -e '.permissions.allow|index("Bash(gh pr merge:*)")' "$tmp/mm/s2.json" >/dev/null && echo terpasang || echo hilang)|$(grep -c 'merge-mode' <<<"$err")" 'terpasang|1'
 rm -rf "$tmp/mm/w/.claude"; printf '%s\n' '- Merge PR to integration branch: owner' > "$tmp/mm/w/docs/WORKFLOW.md"
 ok "mode merge (#97): env AICREW_MERGE_MODE menang atas WORKFLOW" "$(bash -c 'source "$1/scripts/lib/merge-mode.sh"; merge_mode "$2"' _ "$root" "$tmp/mm/w/docs/WORKFLOW.md" | tr -d '\n')|$(AICREW_MERGE_MODE=agent-after-qa bash -c 'source "$1/scripts/lib/merge-mode.sh"; merge_mode "$2"' _ "$root" "$tmp/mm/w/docs/WORKFLOW.md" | tr -d '\n')" 'owner|agent-after-qa'
+
+# 3c-11. gerbang: vonis dan waiver hanya dari komentar OWNER/MEMBER/COLLABORATOR (#99)
+for a in OWNER MEMBER COLLABORATOR; do qg ASSOC=$a COMM='Laporan qa: lulus Commit: abc1234' >/dev/null; ok "gerbang penulis (#99): vonis dari $a diterima" $? 0; done
+for a in NONE CONTRIBUTOR FIRST_TIMER FIRST_TIME_CONTRIBUTOR MANNEQUIN owner ''; do qg ASSOC="$a" COMM='Laporan qa: lulus Commit: abc1234' >/dev/null; ok "gerbang penulis (#99): vonis dari '$a' ditolak" $? 1; done
+qg ASSOC=- COMM='Laporan qa: lulus Commit: abc1234' >/dev/null; ok "gerbang penulis (#99): tanpa authorAssociation -> ditolak (gagal tertutup)" $? 1
+qg ASSOC=NONE COMM='Laporan qa: lulus Commit: abc1234' ASSOC2=OWNER COMM2='Laporan qa: lulus Commit: abc1234' >/dev/null; ok "gerbang penulis (#99): komentar tak tepercaya diabaikan, yang tepercaya cukup" $? 0
+qg ASSOC=OWNER COMM='Laporan qa: lulus Commit: abc1234' ASSOC2=NONE COMM2='Laporan qa: gagal Commit: abc1234' >/dev/null; ok "gerbang penulis (#99): 'gagal' dari orang luar tidak membatalkan lulus tepercaya" $? 0
+qg ASSOC=OWNER COMM='Laporan qa: lulus Commit: abc1234' ASSOC2=OWNER COMM2='Laporan qa: gagal Commit: abc1234' >/dev/null; ok "gerbang penulis (#99): 'gagal' tepercaya tetap menang" $? 1
+qg ISSL=needs-security ASSOC=NONE COMM='Laporan security: lulus Commit: abc1234' ASSOC2=OWNER COMM2='Laporan qa: lulus Commit: abc1234' >/dev/null; ok "gerbang penulis (#99): security lulus dari orang luar ditolak" $? 1
+WV='Pengecualian disetujui owner (perf): alasan uji (Commit: abc1234)'
+qg ISSL=needs-perf ASSOC=OWNER COMM="$WV" ASSOC2=OWNER COMM2='Laporan qa: lulus Commit: abc1234' >/dev/null; ok "gerbang penulis (#99): waiver perf dari OWNER diterima" $? 0
+qg ISSL=needs-perf ASSOC=NONE COMM="$WV" ASSOC2=OWNER COMM2='Laporan qa: lulus Commit: abc1234' >/dev/null; ok "gerbang penulis (#99): waiver perf dari orang luar ditolak" $? 1
+grep -qF 'COLLABORATOR' "$root/README.md"; ok "README (#99): menyebut komentar tepercaya" $? 0
 
 [ "$fails" = 0 ] && echo "SEMUA LULUS" || { echo "$fails GAGAL"; exit 1; }
