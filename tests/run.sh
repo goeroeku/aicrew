@@ -1118,7 +1118,7 @@ grep -q 'Private packages:' templates/WORKFLOW.md; ok "templat WORKFLOW memuat '
 grep -q 'Private packages:' PRIVACY.md && grep -q '~/.npmrc' PRIVACY.md; ok "PRIVACY: sumber pola dan ~/.npmrc tidak dibaca" $? 0
 grep -q 'Private packages:' README.md; ok "README menyebut 'Private packages:'" $? 0
 grep -q 'Paket privat' skills/cve-audit/SKILL.md; ok "skill cve-audit menyebut paket privat" $? 0
-grep -q '"version": "1.1.0"' .claude-plugin/plugin.json; ok "plugin.json versi 1.1.0" $? 0
+grep -q '"version": "1.2.0"' .claude-plugin/plugin.json; ok "plugin.json versi 1.2.0" $? 0
 # 0.12.0: watchdog idle autopilot terdokumentasi (#48, #17)
 grep -q 'Mode tanpa pengawasan (autopilot)' skills/orchestrate/SKILL.md && grep -q 'exec claude' skills/orchestrate/SKILL.md; ok "orchestrate: subbagian Mode tanpa pengawasan (autopilot) memuat aturan exec claude" $? 0
 grep -q 'Idle watchdog' README.md && grep -q -- '--idle-limit' README.md; ok "README: Idle watchdog menyebut --idle-limit" $? 0
@@ -1709,7 +1709,7 @@ idn_hits() { if [ -f "$1" ]; then strip_code "$1" | grep -ciE "$IDN" || true; el
 miss=0; wrong=0
 while read -r v d; do [ -n "$v" ] || continue; grep -qE "^## \\[$v\\] - $d$" CHANGELOG.md 2>/dev/null || miss=$((miss+1)); done <<<"$TAGDATES"
 ok "CHANGELOG.md: satu bagian '## [X.Y.Z] - tanggal-tag' untuk tiap tag 0.1.0-0.12.0 (25), tanggal dari commit tag" "$miss" 0
-n="$(grep -cE '^## \[' CHANGELOG.md 2>/dev/null || true)"; ok "CHANGELOG.md: tidak ada bagian di luar tag yang ada (tanpa [Unreleased])" "$([ "${n:-0}" -le 27 ] && ! grep -q 'Unreleased' CHANGELOG.md 2>/dev/null && echo ok || echo salah)" ok
+n="$(grep -cE '^## \[' CHANGELOG.md 2>/dev/null || true)"; ok "CHANGELOG.md: tidak ada bagian di luar tag yang ada (tanpa [Unreleased])" "$([ "${n:-0}" -le 28 ] && ! grep -q 'Unreleased' CHANGELOG.md 2>/dev/null && echo ok || echo salah)" ok
 ok "CHANGELOG.md: tanpa blok tautan perbandingan di dasar berkas" "$(grep -cE '^\[[0-9][^]]*\]: http' CHANGELOG.md 2>/dev/null || true)" 0
 ok "README: tanpa judul atau paragraf bertanda versi (0.x.y)" "$(grep -cE '\(0\.[0-9]+\.[0-9]+[;)]' README.md)" 0
 for f in README.md PRIVACY.md CHANGELOG.md; do ok "bahasa publik: $f tanpa kata fungsi/judul Indonesia di luar kode" "$(idn_hits "$f")" 0; done
@@ -1725,12 +1725,13 @@ for v in 0.1.2 0.2.0 0.3.0 0.4.0 0.7.0 0.8.0 0.9.0 0.10.0 0.11.1 0.12.0; do awk 
 grep -q 'none yet' README.md && grep -q 'Deprecated aliases' README.md; ok "README: 'Merge into main' = none yet; bagian Deprecated aliases" $? 0
 for k in 'does not reject' 'is never deleted' 'report-only' 'response headers' 'not yet proven' 'through chat'; do grep -qF -- "$k" README.md; ok "README mempertahankan rincian: '$k'" $? 0; done
 
-# 3r. rilis 1.1.0 (#55): bagian [1.1.0] hasil release-notes.sh, heading pertama, versi sinkron; [1.0.0] (#34) tetap utuh
+# 3r. rilis 1.2.0 (#67): bagian [1.2.0] hasil release-notes.sh, heading pertama, versi sinkron; [1.1.0] (#55) dan [1.0.0] (#34) tetap utuh
 cd "$root" || exit 1
-ok "CHANGELOG.md: bagian pertama adalah [1.1.0] bertanggal" "$(grep -m1 '^## \[' CHANGELOG.md | grep -cE '^## \[1\.1\.0\] - [0-9]{4}-[0-9]{2}-[0-9]{2}$')" 1
+ok "CHANGELOG.md: bagian pertama adalah [1.2.0] bertanggal" "$(grep -m1 '^## \[' CHANGELOG.md | grep -cE '^## \[1\.2\.0\] - [0-9]{4}-[0-9]{2}-[0-9]{2}$')" 1
 ok "CHANGELOG.md: [1.0.0] memuat entri dari PR #53 (Added dan Changed)" "$(awk '/^## \[1\.0\.0\]/{p=1;next} /^## \[/{p=0} p' CHANGELOG.md | grep -c '(#53)')" 2
 ok "CHANGELOG.md: [1.1.0] memuat entri dari PR #65 (Changed) dan Behavior changes" "$(awk '/^## \[1\.1\.0\]/{p=1;next} /^## \[/{p=0} p' CHANGELOG.md | grep -c '(#65)')|$(awk '/^## \[1\.1\.0\]/{p=1;next} /^## \[/{p=0} p' CHANGELOG.md | grep -c '^### Behavior changes')" '3|1'
-cv="$(bash scripts/check-version.sh v1.1.0 2>&1)"; ok "check-version v1.1.0: lolos tanpa ::warning:: (versi sinkron, bagian CHANGELOG ada)" "$(printf '%s\n' "$cv" | grep -c '^ok:')|$(printf '%s\n' "$cv" | grep -c '::warning::')" '1|0'
+ok "CHANGELOG.md: [1.2.0] memuat entri dari PR #70, #72, #74, #76, #77, #82 dan Behavior changes (exit 5 dan 6)" "$(for n in 70 72 74 76 77 82; do awk '/^## \[1\.2\.0\]/{p=1;next} /^## \[/{p=0} p' CHANGELOG.md | grep -q "(#$n)" && printf x; done)|$(awk '/^## \[1\.2\.0\]/{p=1;next} /^## \[/{p=0} p' CHANGELOG.md | grep -c 'exit code [56]')" 'xxxxxx|2'
+cv="$(bash scripts/check-version.sh v1.2.0 2>&1)"; ok "check-version v1.2.0: lolos tanpa ::warning:: (versi sinkron, bagian CHANGELOG ada)" "$(printf '%s\n' "$cv" | grep -c '^ok:')|$(printf '%s\n' "$cv" | grep -c '::warning::')" '1|0'
 
 # 3v. ringkasan tindakan owner (#57): owner-actions.sh dan pemanggilan autopilot saat menunggu owner
 mkdir -p "$tmp/oa/.aicrew" "$tmp/oab"

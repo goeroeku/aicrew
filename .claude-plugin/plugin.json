@@ -1,7 +1,7 @@
 {
   "name": "aicrew",
   "displayName": "aiCrew",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Brainstorm, PRD, break down into issues, and run parallel execution by role (principal, senior-coder, qa, security, perf, devops, ui-ux).",
   "author": {
     "name": "goeroeku"
