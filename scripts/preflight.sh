@@ -14,6 +14,16 @@ for f in .github/workflows/*.y*ml; do [ -f "$f" ] || continue
   grep -qE '^[[:space:]]*push:' "$f" && grep -qE 'branches:.*(main|master)|^[[:space:]]*-[[:space:]]*(main|master)[[:space:]]*$' "$f" \
     && say AWAS "$f jalan saat push ke main/master: merge ke main memicunya (deploy?)"
 done
+# izin subagen (#58): subagen unattended ditolak diam-diam bila aturan Bash tak ada; baca settings efektif, sebut aturan yang hilang
+sets="$HOME/.claude/settings.json $HOME/.claude/settings.local.json .claude/settings.json .claude/settings.local.json"
+if grep -qsF 'bypassPermissions' $sets; then say info "izin subagen: mode bypassPermissions aktif, aturan Bash tidak diperiksa"
+else
+  need="Bash(git worktree|Bash(git commit|Bash(git push"; [ "$backend" = github ] && need="$need|Bash(gh pr|Bash(gh issue"
+  [ -f Makefile ] && need="$need|Bash(make"; [ -f go.mod ] && need="$need|Bash(go test"
+  miss=""; while IFS= read -r r; do grep -qsF "$r" $sets || miss="$miss $r:*)"; done <<<"$(tr "|" "\n" <<<"$need")"
+  if [ -z "$miss" ]; then say ok "izin subagen: aturan Bash yang dibutuhkan ada"
+  else say AWAS "izin subagen: aturan hilang:$miss. Subagen tanpa aturan ini ditolak (QA 'no tests executed', PR menggantung). Pasang dari template: ! bash $(dirname "$0")/install-permissions.sh (template belum memuat make/go test: tambahkan manual)"; fi
+fi
 case "$PWD$(git worktree list 2>/dev/null)" in *orca/workspaces/*) say AWAS "workspace Orca: Orca meluncurkan agen dengan --dangerously-skip-permissions secara bawaan, sehingga aturan deny di settings TIDAK ditegakkan; matikan flag itu di pengaturan agen Orca" ;; esac
 
 case "$backend" in

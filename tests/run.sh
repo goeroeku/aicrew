@@ -424,6 +424,21 @@ mkdir -p "$tmp/home/orca/workspaces/p" "$tmp/plain"; git init -q "$tmp/home/orca
 out="$(cd "$tmp/home/orca/workspaces/p" && bash "$root/scripts/preflight.sh" 2>&1)"; case "$out" in *dangerously-skip-permissions*) r=ada ;; *) r=tidak ;; esac; ok "preflight: di workspace Orca -> peringatan" $r ada
 out="$(cd "$tmp/plain" && bash "$root/scripts/preflight.sh" 2>&1)"; case "$out" in *dangerously-skip-permissions*) r=ada ;; *) r=tidak ;; esac; ok "preflight: repo biasa tanpa peringatan Orca" $r tidak
 
+# 3c-2. preflight: aturan izin untuk subagen (#58) dibaca dari settings efektif, menyebut aturan yang hilang
+mkdir -p "$tmp/pp/h" "$tmp/pp/r1" "$tmp/pp/r2"; git init -q "$tmp/pp/r1"; git init -q "$tmp/pp/r2"; : > "$tmp/pp/r1/Makefile"; : > "$tmp/pp/r1/go.mod"
+pfp() { (cd "$1" && HOME="$tmp/pp/h" bash "$root/scripts/preflight.sh" 2>&1); }
+out="$(pfp "$tmp/pp/r1")"
+ok "preflight izin: tanpa settings -> AWAS menyebut git worktree, git commit, git push, make, go test" "$(grep '^AWAS.*izin subagen' <<<"$out" | grep -c 'Bash(git worktree.*Bash(git commit.*Bash(git push.*Bash(make.*Bash(go test')" 1
+ok "preflight izin: AWAS menyebut install-permissions.sh" "$(grep -c '^AWAS.*izin subagen.*install-permissions.sh' <<<"$out")" 1
+out="$(pfp "$tmp/pp/r2")"
+ok "preflight izin: repo tanpa Makefile/go.mod -> make dan go test tidak diminta" "$(grep '^AWAS.*izin subagen' <<<"$out" | grep -c 'Bash(make\|Bash(go test')" 0
+mkdir -p "$tmp/pp/r1/.claude"; printf '{"permissions":{"allow":["Bash(git worktree:*)","Bash(git commit:*)","Bash(git push:*)","Bash(make:*)","Bash(go test:*)"]}}' > "$tmp/pp/r1/.claude/settings.local.json"
+out="$(pfp "$tmp/pp/r1")"
+ok "preflight izin: semua aturan ada -> ok dan tanpa AWAS izin" "$(grep -c '^ok.*izin subagen' <<<"$out")|$(grep -c '^AWAS.*izin subagen' <<<"$out")" '1|0'
+mkdir -p "$tmp/pp/r2/.claude"; printf '{"permissions":{"defaultMode":"bypassPermissions"}}' > "$tmp/pp/r2/.claude/settings.local.json"
+out="$(pfp "$tmp/pp/r2")"
+ok "preflight izin: mode bypassPermissions -> info, bukan AWAS" "$(grep -c '^info.*izin subagen.*bypassPermissions' <<<"$out")|$(grep -c '^AWAS.*izin subagen' <<<"$out")" '1|0'
+
 # 3d. install-permissions: basis worktree absolut, izin merge per mode, deny baru
 IP() { (cd "$1" && bash "$root/scripts/install-permissions.sh" "$2" >/dev/null); }
 mkdir -p "$tmp/ip1/docs" "$tmp/ip2/docs"; git init -q "$tmp/ip1"; git init -q "$tmp/ip2"
