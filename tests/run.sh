@@ -2212,4 +2212,32 @@ qg ISSL=needs-perf ASSOC=OWNER COMM="$WV" ASSOC2=OWNER COMM2='Laporan qa: lulus 
 qg ISSL=needs-perf ASSOC=NONE COMM="$WV" ASSOC2=OWNER COMM2='Laporan qa: lulus Commit: abc1234' >/dev/null; ok "gerbang penulis (#99): waiver perf dari orang luar ditolak" $? 1
 grep -qF 'COLLABORATOR' "$root/README.md"; ok "README (#99): menyebut komentar tepercaya" $? 0
 
+# 3c-12. ci-classify.sh (#80): kegagalan infrastruktur CI (billing, tanpa runner) dibedakan dari kegagalan kode
+CC="$tmp/cc"; mkdir -p "$CC"
+cc() { printf '%s' "$1" | bash "$root/scripts/ci-classify.sh" --json - 2>"$CC/err"; }
+cc_run() { jq -nc --arg c "$1" --arg m "$2" --argjson r "$3" --arg s "$4" --arg e "$5" \
+  '{name:"j",status:"completed",conclusion:$c,started_at:$s,completed_at:$e,runner_id:$r,runner_name:(if $r==null then "" else "r1" end),output:{title:"",summary:$m}}'; }
+T0=2026-01-01T00:00:00Z; T1=2026-01-01T00:00:02Z; T9=2026-01-01T00:02:00Z
+BILL='The job was not started because recent account payments have failed or your spending limit needs to be increased.'
+mkjson() { jq -nc --argjson a "[$(IFS=,; echo "$*")]" '{total_count:($a|length),check_runs:$a}'; }
+out="$(cc "$(mkjson "$(cc_run failure "$BILL" null $T0 $T1)")")"; st=$?
+ok "ci-classify (#80): pesan billing -> infrastructure, exit 0" "$st|$(head -1 <<<"$out")" '0|infrastructure'
+ok "ci-classify (#80): baris owner-action memuat anotasi" "$(grep -c '^owner-action: CI cannot start: .*spending limit.*\. Fix account/runner; waiting\.$' <<<"$out")" 1
+ok "ci-classify (#80): tanpa runner dan < 5 s -> infrastructure" "$(cc "$(mkjson "$(cc_run failure 'Process completed' null $T0 $T1)")" | head -1)" infrastructure
+ok "ci-classify (#80): runner ada, gagal cepat -> code" "$(cc "$(mkjson "$(cc_run failure 'lint failed' 7 $T0 $T1)")" | head -1)" code
+ok "ci-classify (#80): tanpa runner tapi lama (>= 5 s) -> code" "$(cc "$(mkjson "$(cc_run failure 'boom' null $T0 $T9)")" | head -1)" code
+ok "ci-classify (#80): campuran gagal kode + infra -> code" "$(cc "$(mkjson "$(cc_run failure "$BILL" null $T0 $T1)" "$(cc_run failure 'tests failed' 7 $T0 $T9)")" | head -1)" code
+ok "ci-classify (#80): kode tidak mencetak owner-action" "$(cc "$(mkjson "$(cc_run failure 'x' 7 $T0 $T9)")" | grep -c '^owner-action')" 0
+ok "ci-classify (#80): belum selesai -> pending" "$(cc '{"check_runs":[{"name":"j","status":"in_progress","conclusion":null}]}' | head -1)" pending
+ok "ci-classify (#80): anotasi dari array annotations dikenali" "$(cc "$(jq -nc --arg m "$BILL" '{check_runs:[{status:"completed",conclusion:"failure",annotations:[{message:$m}]}]}')" | head -1)" infrastructure
+ok "ci-classify (#80): kata 'billing' di log tes yang gagal tetap code" "$(cc "$(mkjson "$(cc_run failure 'FAIL TestBillingInvoice: billing total mismatch' 7 $T0 $T9)")" | head -1)" code
+ok "ci-classify (#80): 'billing' tanpa runner tapi lama tetap code" "$(cc "$(mkjson "$(cc_run failure 'billing module panic' null $T0 $T9)")" | head -1)" code
+cc 'bukan json {' >"$CC/o"; st=$?
+ok "ci-classify (#80): JSON rusak -> exit non-nol, tanpa 'infrastructure' (fail-closed)" "$([ $st != 0 ] && echo nonzero)|$(grep -c infrastructure "$CC/o")" 'nonzero|0'
+cc '{"foo":1}' >"$CC/o"; st=$?
+ok "ci-classify (#80): JSON tanpa check_runs -> exit non-nol" "$([ $st != 0 ] && echo nonzero)|$(grep -c infrastructure "$CC/o")" 'nonzero|0'
+bash "$root/scripts/ci-classify.sh" --bogus </dev/null >/dev/null 2>&1; ok "ci-classify (#80): opsi salah -> exit 64" $? 64
+printf '%s' "$(mkjson "$(cc_run failure "$BILL" null $T0 $T1)")" | bash "$root/scripts/ci-classify.sh" | head -1 | grep -qx infrastructure; ok "ci-classify (#80): stdin tanpa opsi" $? 0
+for k in 'ci-classify.sh' 'infrastructure'; do grep -qF -- "$k" "$root/skills/orchestrate/SKILL.md"; ok "orchestrate (#80): menyebut $k" $? 0; grep -qF -- "$k" "$root/README.md"; ok "README (#80): menyebut $k" $? 0; done
+
 [ "$fails" = 0 ] && echo "SEMUA LULUS" || { echo "$fails GAGAL"; exit 1; }
