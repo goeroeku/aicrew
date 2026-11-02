@@ -2267,4 +2267,24 @@ MK; G checkout -q -b issue-9-r2 main; echo nine > "$CL/w/nine.txt"; G add -A; G 
 ok "cleanup #78: worktree issue-9-r2 ter-merge dan bersih -> hapus (bersufiks ikut --issue 9)" "$(CLN --no-fetch --issue 9 | cut -f1,2,5 | grep -c '^worktree.w-wt-9-r2.hapus$')" 1
 echo dirty > "$CL/w-wt-9-r2/d.txt"; ok "cleanup #78: worktree bersufiks kotor -> lewati:kotor" "$(CLN --no-fetch --issue 9 | cut -f1,2,5 | grep -c '^worktree.w-wt-9-r2.lewati:kotor$')" 1
 
+# 3c-14. autopilot single-instance lock (#115): second start refused (exit 6), stale lock taken over, lock released on exit and on signals
+AP3OPEN='[{"number":1,"state":"OPEN","labels":[{"name":"role:qa"}]}]'
+printf 'idle\n' > "$AP3FX/script"; rm -f "$AP3FX/n"; echo "$AP3OPEN" > "$AP3FX/issues.json"; rm -rf "$AP3/w/.aicrew"
+(cd "$AP3/w" && exec env PATH="$AP3/bin:$PATH" AP3FX="$AP3FX" AICREW_CAFF=1 AICREW_CLAUDE=claude AICREW_TRANSCRIPT_DIR="$AP3/tr" AICREW_IDLE_LIMIT=100 AICREW_IDLE_POLL=1 perl -e '$SIG{INT}="DEFAULT"; exec @ARGV' bash "$root/scripts/autopilot.sh" --sleep 0 --stuck 79 >"$AP3/out1" 2>&1) &
+apid=$!; /bin/sleep 3; cpid="$(pgrep -P "$apid" | head -1)"
+lk="$AP3/w/.aicrew/autopilot.lock"
+AP3KEEP=1 ap3 "$AP3OPEN" noop; rc=$?
+ok "autopilot lock (#115): second start refused with exit 6 and the first pid" "$rc|$(grep -c "autopilot already running (pid $apid, started " "$AP3/out")" '6|1'
+AP3KEEP=1 ap3 "$AP3OPEN" noop --retry-stuck; rc=$?
+ok "autopilot lock (#115): --retry-stuck against a running instance refused with exit 6" "$rc|$(grep -c "autopilot already running (pid $apid" "$AP3/out")" '6|1'
+ok "autopilot lock (#115): refused start leaves the first lock intact" "$(cut -d' ' -f1 "$lk" 2>/dev/null)" "$apid"
+kill -INT "$cpid" "$apid" 2>/dev/null; wait "$apid" 2>/dev/null
+ok "autopilot lock (#115): lock released after a signal (Ctrl-C)" "$([ -e "$lk" ] && echo present || echo gone)" gone
+mkdir -p "$AP3/w/.aicrew"; echo "99999999 2020-01-01 00:00:00" > "$lk"; rm -f "$AP3FX/n"
+AP3KEEP=1 ap3 "$AP3OPEN" close; rc=$?
+ok "autopilot lock (#115): stale lock (dead pid) taken over, run completes" "$rc|$(cat "$AP3FX/n")" '0|1'
+ok "autopilot lock (#115): lock released after normal exit" "$([ -e "$lk" ] && echo present || echo gone)" gone
+ap3 "$AP3OPEN" close; rc=$?
+ok "autopilot lock (#115): restart after a normal exit works" "$rc" 0
+
 [ "$fails" = 0 ] && echo "SEMUA LULUS" || { echo "$fails GAGAL"; exit 1; }
