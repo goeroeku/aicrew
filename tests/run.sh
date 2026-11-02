@@ -1535,6 +1535,7 @@ ok "autopilot status: baris pertama autopilot.status tidak berubah (putaran 1: .
 ok "autopilot status: akhir sukses -> fase selesai" "$(jq -r .fase "$AP3/w/.aicrew/autopilot.json")" selesai
 ap3 '[{"number":1,"state":"OPEN","labels":[{"name":"needs-principal"}]}]' close; rc=$?
 ok "autopilot status: hanya needs-principal -> exit 3 dan fase menunggu-owner" "$rc|$(jq -r .fase "$AP3/w/.aicrew/autopilot.json")" '3|menunggu-owner'
+ok "autopilot: menunggu owner -> ringkasan tindakan owner ditulis dan path-nya ada di log (#57)" "$(grep -c 'needs-principal' "$AP3/w/.aicrew/owner-actions.md" 2>/dev/null)|$(grep -c 'tindakan owner: .*owner-actions.md' "$AP3/w/.aicrew/autopilot.log")" '1|1'
 ap3 "$AP3OPEN" $'limit\nclose'; rc=$?
 ok "autopilot status: tidur karena limit -> fase tidur-limit tercatat saat tidur" "$rc|$(grep -c '"fase":"tidur-limit"' "$AP3FX/sleeps")" '0|1'
 AP3ENV="AICREW_IDLE_LIMIT=100 AICREW_IDLE_POLL=30" ap3 "$AP3OPEN" slowclose   # claude hidup 2 dtk: pemantau sedang di dalam sleep 30 saat dihentikan (stub instan membuat tes ini tak bermakna, #73)
@@ -1730,6 +1731,37 @@ ok "CHANGELOG.md: bagian pertama adalah [1.1.0] bertanggal" "$(grep -m1 '^## \['
 ok "CHANGELOG.md: [1.0.0] memuat entri dari PR #53 (Added dan Changed)" "$(awk '/^## \[1\.0\.0\]/{p=1;next} /^## \[/{p=0} p' CHANGELOG.md | grep -c '(#53)')" 2
 ok "CHANGELOG.md: [1.1.0] memuat entri dari PR #65 (Changed) dan Behavior changes" "$(awk '/^## \[1\.1\.0\]/{p=1;next} /^## \[/{p=0} p' CHANGELOG.md | grep -c '(#65)')|$(awk '/^## \[1\.1\.0\]/{p=1;next} /^## \[/{p=0} p' CHANGELOG.md | grep -c '^### Behavior changes')" '3|1'
 cv="$(bash scripts/check-version.sh v1.1.0 2>&1)"; ok "check-version v1.1.0: lolos tanpa ::warning:: (versi sinkron, bagian CHANGELOG ada)" "$(printf '%s\n' "$cv" | grep -c '^ok:')|$(printf '%s\n' "$cv" | grep -c '::warning::')" '1|0'
+
+# 3v. ringkasan tindakan owner (#57): owner-actions.sh dan pemanggilan autopilot saat menunggu owner
+mkdir -p "$tmp/oa/.aicrew" "$tmp/oab"
+cat > "$tmp/oab/gh" <<'OAEOF'
+#!/usr/bin/env bash
+case "$*" in
+  "issue list"*) cat "$OA_ISSUES" ;;
+  "pr list"*) cat "$OA_PRS" ;;
+  "repo view"*) echo o/r ;;
+  "api repos/o/r/issues/3/comments"*) echo '[{"body":"owner-action: run chmod +x scripts/x.sh in worktree issue-3 | chmod +x scripts/x.sh | git mode is an owner-only change"},{"body":"lain"}]' ;;
+  "api repos/o/r/issues/"*) echo '[]' ;;
+esac
+OAEOF
+chmod +x "$tmp/oab/gh"
+export OA_ISSUES="$tmp/oa/issues.json" OA_PRS="$tmp/oa/prs.json"
+echo '[{"number":3,"title":"Pick storage","labels":[{"name":"needs-principal"}]},{"number":4,"title":"Add export","labels":[]},{"number":5,"title":"Draft thing","labels":[]}]' > "$OA_ISSUES"
+echo '[{"number":9,"title":"Export","headRefName":"issue-4","headRefOid":"abc123","isDraft":false,"labels":[{"name":"risk:L2"}]},{"number":10,"title":"Draft","headRefName":"issue-5","headRefOid":"def456","isDraft":true,"labels":[]},{"number":11,"title":"Other","headRefName":"feature-x","headRefOid":"fff","isDraft":false,"labels":[]}]' > "$OA_PRS"
+oa_out="$(cd "$tmp/oa" && PATH="$tmp/oab:$PATH" GH_REPO=o/r bash "$root/scripts/owner-actions.sh" "$tmp/oa/.aicrew")"
+OAF="$tmp/oa/.aicrew/owner-actions.md"
+ok "owner-actions: mencetak path dan jumlah item" "$oa_out" "$OAF (2 item)"
+ok "owner-actions: issue needs-principal -> satu baris dengan perintah" "$(grep -c '^- #3 .*gh issue edit 3 --remove-label needs-principal' "$OAF")" 1
+ok "owner-actions: PR terbuka dari issue-N -> perintah merge dengan SHA kepala dan alasan L2" "$(grep -c '^- PR #9 (issue #4) .*gh pr merge 9 --merge --match-head-commit abc123.*risk:L2' "$OAF")" 1
+ok "owner-actions: PR draft dan PR non-issue dilewati" "$(grep -c 'PR #10\|PR #11' "$OAF")" 0
+ok "owner-actions: komentar 'owner-action:' agen ikut sebagai catatan" "$(grep -c 'agent note: run chmod +x scripts/x.sh' "$OAF")" 1
+echo '[]' > "$OA_ISSUES"; echo '[]' > "$OA_PRS"
+oa_out="$(cd "$tmp/oa" && PATH="$tmp/oab:$PATH" GH_REPO=o/r bash "$root/scripts/owner-actions.sh" "$tmp/oa/.aicrew")"
+ok "owner-actions: tanpa item -> (0 item) dan berkas menyebut tidak ada" "$oa_out|$(grep -c 'No owner actions' "$OAF")" "$OAF (0 item)|1"
+unset OA_ISSUES OA_PRS
+
+grep -qF 'owner-action: <tindakan> | <perintah> | <alasan>' "$root/skills/orchestrate/SKILL.md"; ok "orchestrate (#57): komentar owner-action: dengan format tindakan|perintah|alasan" $? 0
+grep -qF '.aicrew/owner-actions.md' "$root/README.md"; ok "README (#57): menyebut .aicrew/owner-actions.md" $? 0
 
 # 3t-0. keputusan owner terbaru dibaca sebelum needs-principal dipasang lagi (#62)
 SK="$root/skills/orchestrate/SKILL.md"
