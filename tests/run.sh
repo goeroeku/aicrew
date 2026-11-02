@@ -81,6 +81,9 @@ sc "$(D .env '+X=1')"; ok "scan: berkas .env -> exit 1" $rc 1
 sc "$(D .env.example '+X=1')"; ok "scan: .env.example lolos" $rc 0
 sc "$(D a.go '-pass''word = "supersecretvalue123"')"; ok "scan: baris yang dihapus tidak dihitung" $rc 0
 sc "$(D scripts/a.sh '+sync || true')"; ok "scan: sync || true -> peringatan, exit 0" $rc 0; ok "scan: sync || true bertanda PERINGATAN" "$(has PERINGATAN)" ada
+DH() { printf 'diff --git a/%s b/%s\n--- a/%s\n+++ b/%s\n@@ -10,2 +20,3 @@\n ctx1\n%s\n ctx2\n' "$1" "$1" "$1" "$1" "$2"; }
+sc "$(DH scripts/a.sh '+sync || true')"; ok "scan: peringatan '|| true' menyebut berkas dan nomor baris (berkas:21)" "$(has 'scripts/a.sh:21')" ada
+sc "$(DH scripts/a.sh '+pass''word = abcdefghijklmnopqrstu')"; ok "scan: peringatan nilai mirip kredensial menyebut berkas:baris" "$(has 'scripts/a.sh:21')" ada
 sc "$(D go.mod $'+\tgithub.com/foo/bar v1.2.3')"; ok "scan: dependensi go.mod tak disebut -> PERINGATAN" "$(has github.com/foo/bar)" ada
 sc "$(D go.mod $'+\tgithub.com/foo/bar v1.2.3')" 0 "$tmp/mentioned.txt"; ok "scan: dependensi disebut di badan PR -> tanpa peringatan" "$(has PERINGATAN)" tidak
 BUMP() { printf 'diff --git a/%s b/%s\n--- a/%s\n+++ b/%s\n@@ -1 +1 @@\n-%s\n+%s\n' "$1" "$1" "$1" "$1" "$2" "$3"; }
@@ -1940,6 +1943,30 @@ ga2 ISSL=risk:L1 FILES_JSON='[{"filename":"README.md","status":"modified"}]' >/d
 (env BASE='x&ref=main' BODY="Closes #1" HEAD=abc1234567 ISSL=risk:L1 PATH="$tmp/pmb:$PATH" bash "$root/scripts/pr-merge-check.sh" 9 'x&ref=main' --auto >/dev/null 2>&1); ok "gerbang izin: nama cabang tujuan berkarakter khusus ditolak" $? 1
 env BASE=integrasi BODY="Closes #1" HEAD=abc1234567 ISSL=risk:L2 FILES_JSON='[{"filename":"docs/WORKFLOW.md","status":"modified"}]' WFTEXT="$(wfg "$exp_ok")" PATH="$tmp/pmb:$PATH" bash "$root/scripts/pr-merge-check.sh" 9 integrasi --auto >/dev/null 2>&1; ok "gerbang izin: izin aktif tidak melonggarkan larangan menyentuh WORKFLOW.md" $? 1
 env BASE=integrasi BODY="Closes #1" HEAD=abc1234567 ISSL=risk:L2 PATH="$tmp/pmb:$PATH" bash "$root/scripts/pr-merge-check.sh" 9 integrasi >/dev/null 2>&1; ok "gerbang izin: merge manual tanpa --auto tidak berubah (L2 tidak ditahan)" $? 0
+# 3w-2. gerbang --auto menuntut vonis QA untuk head (PR bukan dokumentasi saja), format fleksibel dan tak peka huruf (#86)
+qg() { env BASE=integrasi BODY="Closes #1" HEAD=abc1234567 FILES_JSON='[{"filename":"src/a.go","status":"modified"}]' "$@" PATH="$tmp/pmb:$PATH" bash "$root/scripts/pr-merge-check.sh" 9 integrasi --auto 2>&1; }
+out="$(qg)"; rc=$?
+ok "gerbang QA: PR kode tanpa vonis QA -> ditolak" "$rc" 1
+ok "gerbang QA: pesan memuat contoh format (dua baris dan satu baris)" "$(grep -c "Laporan qa: lulus" <<<"$out")|$(grep -c 'Commit: <sha head>' <<<"$out")|$(grep -c 'satu baris' <<<"$out")" '1|1|1'
+qg COMM=$'Laporan qa: lulus\nCommit: abc1234' >/dev/null; ok "gerbang QA: vonis QA lulus dua baris untuk head -> lulus" $? 0
+qg COMM='Laporan qa: lulus Commit: abc1234' >/dev/null; ok "gerbang QA: vonis dan Commit satu baris diterima" $? 0
+qg COMM=$'Laporan QA: LULUS\ncommit: abc1234' >/dev/null; ok "gerbang QA: huruf besar/kecil pada label, vonis, dan Commit diterima" $? 0
+qg COMM=$'Laporan qa: gagal\nCommit: abc1234' >/dev/null; ok "gerbang QA: vonis gagal -> ditolak" $? 1
+qg COMM=$'Laporan qa: lulus\nCommit: def4567' >/dev/null; ok "gerbang QA: lulus untuk commit lama -> ditolak" $? 1
+qg COMM=$'Laporan qa: lulus\nCommit: abc1234' COMM2=$'Laporan qa: gagal\nCommit: abc1234' >/dev/null; ok "gerbang QA: vonis terakhir menang (lulus lalu gagal -> ditolak)" $? 1
+qg COMM=$'Laporan qa: gagal\nCommit: abc1234' COMM2=$'Laporan qa: lulus\nCommit: abc1234' >/dev/null; ok "gerbang QA: gagal lalu lulus -> lulus" $? 0
+qg FILES_JSON='[{"filename":"README.md","status":"modified"},{"filename":"docs/x.md","status":"added"}]' >/dev/null; ok "gerbang QA: PR dokumentasi saja tanpa QA -> lulus" $? 0
+qg FILES_JSON='[{"filename":"README.md","status":"modified"},{"filename":"skills/a/SKILL.md","status":"modified"}]' >/dev/null; ok "gerbang QA: SKILL.md bukan dokumentasi -> butuh QA" $? 1
+for f in README.sh readme.py changelog.js license.go privacy; do qg FILES_JSON="[{\"filename\":\"$f\",\"status\":\"added\"}]" >/dev/null; ok "gerbang QA: $f bukan berkas dokumentasi -> butuh QA" $? 1; done
+for f in README.md CHANGELOG.md LICENSE PRIVACY.md README.txt docs/a/b.png; do qg FILES_JSON="[{\"filename\":\"$f\",\"status\":\"modified\"}]" >/dev/null; ok "gerbang QA: $f dokumentasi -> tanpa QA lulus" $? 0; done
+qg FILES_JSON='[{"filename":null,"status":"modified"}]' >/dev/null; ok "gerbang QA: daftar file janggal (filename null) -> gagal tertutup, butuh QA" $? 1
+qg COMM='Laporan qa: lulusxyz Commit: abc1234' >/dev/null; ok "gerbang QA: kata vonis tanpa batas ('lulusxyz') ditolak" $? 1
+env BASE=integrasi BODY="Closes #1" HEAD=abc1234567 PATH="$tmp/pmb:$PATH" bash "$root/scripts/pr-merge-check.sh" 9 integrasi >/dev/null 2>&1; ok "gerbang QA: tanpa --auto (owner) tetap tidak menuntut QA" $? 0
+qg ISSL=needs-security COMM='Laporan security: lulus Commit: abc1234' COMM2='Laporan qa: lulus Commit: abc1234' >/dev/null; ok "gerbang QA: vonis security satu baris diterima" $? 0
+qg ISSL=needs-security COMM='Laporan security: lulus Commit: abc1234' >/dev/null; ok "gerbang QA: security lulus tanpa QA -> ditolak (kasus Nexora)" $? 1
+qg ISSL=needs-security COMM='Laporan SECURITY: lulus' >/dev/null; ok "gerbang QA: security tanpa Commit -> ditolak dan pesannya memuat contoh" "$(qg ISSL=needs-security COMM='Laporan SECURITY: lulus' | grep -c 'satu baris')" 1
+for k in 'Laporan qa: lulus' 'case-insensitive' 'documentation-only' 'file:line'; do grep -qF -- "$k" "$root/README.md"; ok "README (#86): gerbang vonis menyebut '$k'" $? 0; done
+grep -qF 'Laporan qa: lulus' "$root/skills/orchestrate/SKILL.md" && grep -qF 'Laporan qa: lulus' "$root/agents/qa.md"; ok "skill orchestrate dan agen qa (#86): format vonis QA" $? 0
 
 grep -q '^## Temporary grants' "$root/templates/WORKFLOW.md" && grep -q 'expires=EXAMPLE' "$root/templates/WORKFLOW.md"; ok "template (#61): bagian Temporary grants dengan contoh tak sah (expires=EXAMPLE)" $? 0
 ( . "$root/scripts/lib/grants.sh"; grants_lines "$(cat "$root/templates/WORKFLOW.md")" | while IFS= read -r l; do grant_parse "$l" >/dev/null 2>&1 && echo sah; done ) | grep -q sah; ok "template (#61): contoh di template tidak pernah menjadi izin sah" $? 1

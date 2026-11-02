@@ -11,14 +11,16 @@ while [ $# -gt 0 ]; do case "$1" in
 t="$(mktemp -d)"; trap 'rm -rf "$t"' EXIT
 # F = berkas yang disentuh; A = baris tambahan "berkas<TAB>teks". Header (+++) hanya diakui antara `diff --git` dan `@@` pertama,
 # sehingga baris tambahan berawalan "++ " di dalam hunk tidak bisa dibaca sebagai header. Path berkutip git (non-ASCII) dibuka kutipnya.
-awk -v F="$t/f" -v A="$t/a" -v R="$t/r" '
+awk -v F="$t/f" -v A="$t/a" -v R="$t/r" -v N="$t/an" '
   /^diff --git /{hdr=1; next}
-  hdr && /^@@/{hdr=0; next}
+  hdr && /^@@/{hdr=0; m=$0; sub(/^@@ -[0-9,]+ \+/,"",m); sub(/[ ,].*/,"",m); n=m+0; next}
+  /^@@/{m=$0; sub(/^@@ -[0-9,]+ \+/,"",m); sub(/[ ,].*/,"",m); n=m+0; next}
   hdr && /^\+\+\+ /{p=substr($0,5); sub(/^"/,"",p); sub(/"$/,"",p); sub(/^b\//,"",p); f=p; print f > F; next}
   hdr{next}
-  /^\+/{print f "\t" substr($0,2) > A}
-  /^-/{print f "\t" substr($0,2) > R}'
-touch "$t/f" "$t/a" "$t/r"
+  /^\+/{print f "\t" substr($0,2) > A; print n > N; n++; next}
+  /^-/{print f "\t" substr($0,2) > R; next}
+  /^ /{n++}'
+touch "$t/f" "$t/a" "$t/r" "$t/an"
 blok=0
 secret() { # <nama> <regex>: BLOK per berkas yang cocok; blok ditetapkan dari ada-tidaknya cocokan, bukan dari nama berkas
   grep -Eiq "$2" "$t/a" || return 0; blok=1
@@ -31,10 +33,12 @@ secret "kredensial literal" "(password|passwd|secret|token|api[_-]?key)[A-Za-z_]
 grep -E '(^|/)\.env(\.[^/]*)?$' "$t/f" | grep -Eiv '\.(example|sample|template)$' > "$t/e"
 [ -s "$t/e" ] && blok=1
 while IFS= read -r f; do echo "BLOK: berkas .env ditambahkan: $f"; done < "$t/e"
-grep -Ei '(password|passwd|secret|api[_-]?key|token)[A-Za-z_]*[[:space:]]*[:=][[:space:]]*[A-Za-z0-9/+_=.-]{16,}[[:space:]]*$' "$t/a" | cut -f1 | sort -u \
-  | while IFS= read -r f; do echo "PERINGATAN: nilai tanpa kutip mirip kredensial di $f (periksa; tidak diblokir karena rawan positif palsu)"; done
-grep -Ei '(sync|fsync|auth|verif).*\|\|[[:space:]]*true' "$t/a" | cut -f1 | sort -u \
-  | while IFS= read -r f; do echo "PERINGATAN: '|| true' membungkam kegagalan pada jalur sync/auth/verify di $f"; done
+where() { # <regex>: berkas:baris (baris di sisi baru) untuk tiap baris tambahan yang cocok, unik (#86)
+  grep -Ein "$1" "$t/a" | cut -d: -f1 | while IFS= read -r i; do printf '%s:%s\n' "$(sed -n "${i}p" "$t/a" | cut -f1)" "$(sed -n "${i}p" "$t/an")"; done | sort -u; }
+where '(password|passwd|secret|api[_-]?key|token)[A-Za-z_]*[[:space:]]*[:=][[:space:]]*[A-Za-z0-9/+_=.-]{16,}[[:space:]]*$' \
+  | while IFS= read -r l; do echo "PERINGATAN: nilai tanpa kutip mirip kredensial di $l (periksa; tidak diblokir karena rawan positif palsu)"; done
+where '(sync|fsync|auth|verif).*\|\|[[:space:]]*true' \
+  | while IFS= read -r l; do echo "PERINGATAN: '|| true' membungkam kegagalan pada jalur sync/auth/verify di $l"; done
 depname() { # <berkas> <teks>: nama dependensi bila baris itu mendeklarasikannya, kosong bila bukan
   local b="${1##*/}" x="$2" n=""
   case "$b" in
