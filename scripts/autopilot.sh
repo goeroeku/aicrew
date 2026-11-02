@@ -33,8 +33,9 @@ set_phase() { command -v jq >/dev/null 2>&1 || return 0; local t="$d/autopilot.j
     '{phase:$p,round:$r,idle_seconds:$i,heartbeat:$t,current:$cur,last_completed:$lc,fase:$f,putaran:$r,idle_sejak_detik:$i,detak:$t}' > "$t" 2>/dev/null && mv "$t" "$d/autopilot.json"; return 0; }   # alias-usang
 note() { log "$*"; command -v jq >/dev/null && jq -n --arg m "$*" '{message:$m}' | bash "$here/notify.sh"; return 0; }
 fingerprint() { local a b c f top; top="$(git rev-parse --show-toplevel 2>/dev/null)" || top=.   # #79: yang bisa diubah owner tanpa menyentuh issue (WORKFLOW.md, berkas izin efektif) ikut sidik jari
-  c=""; for f in "$top/docs/WORKFLOW.md" "$top/.claude/settings.json" "$top/.claude/settings.local.json" "$HOME/.claude/settings.json"; do c="$c$f $(shasum < "$f" 2>/dev/null)
-"; done
+  # WORKFLOW.md utuh; berkas settings hanya bagian .permissions (Claude Code menulis kunci lain sendiri, itu bukan perubahan owner). Berkas tak ada = "tak ada", beda dari berkas kosong.
+  c="$(h() { { [ -f "$1" ] || { echo none; return 0; }; if [ "$2" = perm ] && command -v jq >/dev/null 2>&1; then jq -S -c '.permissions // {}' "$1" 2>/dev/null | shasum; else shasum < "$1"; fi; } 2>/dev/null; }
+    printf 'wf %s\n' "$(h "$top/docs/WORKFLOW.md" all)"; for f in "$top/.claude/settings.json" "$top/.claude/settings.local.json" "$HOME/.claude/settings.json"; do printf '%s %s\n' "$f" "$(h "$f" perm)"; done)"
   a="$(gh issue list --state all --limit 200 --json number,state,labels)" && b="$(gh pr list --state all --limit 200 --json number,state)" || return 1; printf '%s\n%s\n%s\n' "$a" "$b" "$c" | shasum | cut -d' ' -f1; }   # gagal = tidak ada sidik jari (bukan hash keluaran kosong, #73)
 
 # ringkasan per putaran (#63): satu baris di autopilot.log setelah putaran selesai: durasi, rc, PR yang digabung selama putaran, PR terbuka dengan sha7, total. Hanya hasil pengamatan skrip (gh), tidak pernah fatal.

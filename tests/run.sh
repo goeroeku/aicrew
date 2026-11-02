@@ -2114,6 +2114,12 @@ stuck79; echo '{}' > "$AP3/w/.claude/settings.local.json"; again79 >/dev/null; r
 ok "buntu #79: .claude/settings.local.json muncul -> putaran jalan" "$([ "$rc" != 5 ] && echo jalan || echo diam)" jalan
 stuck79; echo '{}' > "$AP3/home/.claude/settings.json"; again79 >/dev/null; rc=$?
 ok "buntu #79: ~/.claude/settings.json muncul -> putaran jalan" "$([ "$rc" != 5 ] && echo jalan || echo diam)" jalan
+stuck79; again79 >/dev/null; ok "buntu #79: berkas settings tidak ada -> tanpa galat 'No such file' di keluaran" "$(grep -c 'No such file' "$AP3/out")" 0
+echo '{"x":1}' > "$AP3/w/.claude/settings.local.json"; AP3ENV="HOME=$AP3/home" ap3 "$AP3OPEN" $'noop\nnoop\nnoop\nnoop' --stuck 3 >/dev/null
+echo '{"x":2}' > "$AP3/w/.claude/settings.local.json"; again79 >/dev/null; rc=$?
+ok "buntu #79: perubahan di luar bagian permissions (kunci lain) tidak mengubah sidik jari -> tetap exit 5" "$rc" 5
+echo '{"x":2,"permissions":{"allow":["Bash(y)"]}}' > "$AP3/w/.claude/settings.local.json"; again79 >/dev/null; rc=$?
+ok "buntu #79: permissions berubah -> putaran jalan" "$([ "$rc" != 5 ] && echo jalan || echo diam)" jalan
 rm -f "$AP3/home/.claude/settings.json" "$AP3/w/.claude/settings.local.json"
 for k in '--retry-stuck' '15 minutes' 'WORKFLOW.md'; do grep 'restarted while still stuck (5)' "$root/README.md" | grep -qF -- "$k"; ok "README (#79): paragraf exit 5 menyebut $k" $? 0; done
 
