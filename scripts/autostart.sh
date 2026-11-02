@@ -75,7 +75,7 @@ status)
   [ -f "$d/autostart.lock" ] && echo "kunci: pid $(cat "$d/autostart.lock")" || echo "kunci: tidak ada"
   [ -f "$d/autostart.log" ] && { echo "log terakhir:"; tail -n 5 "$d/autostart.log"; } ;;
 resume)
-  rm -f "$d/halted"; echo "autostart: halted dihapus; tick berikutnya menjalankan autopilot lagi" ;;
+  rm -f "$d/halted" "$d/stuck"; echo "autostart: halted dan penanda buntu dihapus; tick berikutnya menjalankan autopilot lagi" ;;
 run)
   cd "$repo" || exit 0; mkdir -p "$d"
   log() { printf '%s %s\n' "$(date '+%F %T')" "$*" >> "$d/autostart.log"; }

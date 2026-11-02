@@ -28,7 +28,7 @@ log() { printf '%s %s\n' "$(date '+%F %T')" "$*" | tee -a "$d/autopilot.log"; pr
 set_phase() { command -v jq >/dev/null 2>&1 || return 0; local t="$d/autopilot.json.tmp.$$"
   jq -nc --arg f "$1" --argjson r "${2:-$cur_round}" --argjson i "${3:-0}" --argjson t "$(date +%s)" '{fase:$f,putaran:$r,idle_sejak_detik:$i,detak:$t}' > "$t" 2>/dev/null && mv "$t" "$d/autopilot.json"; return 0; }
 note() { log "$*"; command -v jq >/dev/null && jq -n --arg m "$*" '{message:$m}' | bash "$here/notify.sh"; return 0; }
-fingerprint() { { gh issue list --state all --limit 200 --json number,state,labels; gh pr list --state all --limit 200 --json number,state; } | shasum | cut -d' ' -f1; }
+fingerprint() { local a b; a="$(gh issue list --state all --limit 200 --json number,state,labels)" && b="$(gh pr list --state all --limit 200 --json number,state)" || return 1; printf '%s\n%s\n' "$a" "$b" | shasum | cut -d' ' -f1; }   # gagal = tidak ada sidik jari (bukan hash keluaran kosong, #73)
 
 # semua issue terbuka hanya menunggu manusia: needs-principal, atau punya PR terbuka (cabang issue-N, konvensi yang sama dengan resume.sh)
 has_open_pr() { [ "$(gh pr list --head "issue-$1" --state open --json number,state -q '[.[]|select(.state=="OPEN")]|length' 2>/dev/null)" -ge 1 ] 2>/dev/null; }
@@ -111,13 +111,13 @@ trap 'stop_watch; rm -f "$d/idle-interrupt"' EXIT
 # INT dari pemantau (penanda ada) = putaran idle diakhiri, autopilot lanjut; selain itu Ctrl-C pemilik: matikan pemantau dan sesi, keluar 130
 trap 'if [ -f "$d/idle-interrupt" ]; then :; else stop_watch; pkill -INT -P $$ 2>/dev/null; exit 130; fi' INT
 rm -f "$d/idle-interrupt"   # penanda basi dari proses yang mati tidak boleh menelan Ctrl-C
-errs=0; same=0; was_limit=0; last="$(fingerprint)"
+errs=0; same=0; was_limit=0; last="$(fingerprint)" || last=""
 # sidik jari akhir putaran terakhir tersimpan: setelah restart (laptop mati) tanpa perubahan, langsung menunggu, tidak membakar putaran claude
-[ "$(cat "$d/last-round-fp" 2>/dev/null)" = "$last" ] && same=1
+[ -n "$last" ] && [ "$(cat "$d/last-round-fp" 2>/dev/null)" = "$last" ] && same=1
 # buntu berulang (#56): sidik jari saat berhenti buntu disimpan di $d/stuck. Start ulang (supervisor/loop luar) dengan keadaan sama = langsung exit 5 tanpa putaran claude;
 # keadaan berubah atau --retry-stuck menghapus penanda.
 if [ "$retry_stuck" = 1 ]; then rm -f "$d/stuck"
-elif [ -f "$d/stuck" ]; then
+elif [ -f "$d/stuck" ] && [ -n "$last" ]; then   # sidik jari tak terbaca (gh gagal): penanda dibiarkan
   if [ "$(cat "$d/stuck")" = "$last" ]; then
     set_phase stuck 0; log "autopilot: masih buntu: keadaan issue/PR sama seperti saat berhenti buntu terakhir; tidak ada putaran dijalankan (ubah sesuatu, atau pakai --retry-stuck)"; exit 5
   else rm -f "$d/stuck"; fi
@@ -146,7 +146,7 @@ for ((i=1; i<=max_rounds; i++)); do
         [ -f "$wf.timeout" ] || { : > "$wf.timeout"; note "autopilot: menunggu owner melewati batas $((wait_max/86400)) hari; berhenti"; }
         exit 3
       fi
-      sleep "$wait_s"; now="$(fingerprint)"; [ "$now" != "$last" ] && break
+      sleep "$wait_s"; now="$(fingerprint)" || now=""; [ -n "$now" ] && [ "$now" != "$last" ] && break
     done
     rm -f "$wf" "$wf.timeout"; last="$now"; same=0; log "autopilot: ada perubahan saat menunggu (mis. merge oleh owner); lanjut putaran"; continue
   fi
@@ -185,8 +185,11 @@ for ((i=1; i<=max_rounds; i++)); do
     sleep "${AICREW_ERR_SLEEP:-60}"; continue
   fi
   errs=0
-  now="$(fingerprint)"; printf '%s' "$now" > "$d/last-round-fp"
-  if [ "$now" = "$last" ]; then same=$((same+1)); else same=0; last="$now"; fi
-  [ "$same" -ge "$stuck_max" ] && { printf '%s' "$now" > "$d/stuck"; set_phase stuck "$i"; note "autopilot: buntu, $stuck_max putaran tanpa perubahan di issue/PR; berhenti"; exit 2; }
+  now="$(fingerprint)" || now=""
+  if [ -n "$now" ]; then   # gh gagal di sini = keadaan tak diketahui: jangan dihitung maju/buntu dan jangan menulis penanda
+    printf '%s' "$now" > "$d/last-round-fp"
+    if [ "$now" = "$last" ]; then same=$((same+1)); else same=0; last="$now"; fi
+    [ "$same" -ge "$stuck_max" ] && { printf '%s' "$now" > "$d/stuck"; set_phase stuck "$i"; note "autopilot: buntu, $stuck_max putaran tanpa perubahan di issue/PR; berhenti"; exit 2; }
+  fi
 done
 note "autopilot: batas putaran ($max_rounds) tercapai"; exit 1

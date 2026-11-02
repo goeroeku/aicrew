@@ -296,6 +296,8 @@ echo 2 > "$AP_RC"; R; ok "autostart run: exit 2 (buntu) membuat halted" "$([ -f 
 grep -q 'rc=2' "$RP/.aicrew/halted"; ok "autostart run: halted mencatat rc" $? 0
 n=$(calls); R; ok "autostart run: halted -> tidak memanggil autopilot lagi" "$(calls)" "$n"
 AICREW_NO_LAUNCHCTL=1 $AS resume "$RP" >/dev/null 2>&1; ok "autostart: resume menghapus halted" "$([ -f "$RP/.aicrew/halted" ] && echo ada || echo tidak)" tidak
+mkdir -p "$RP/.aicrew"; echo 2 > "$AP_RC"; R; echo fp > "$RP/.aicrew/stuck"
+AICREW_NO_LAUNCHCTL=1 $AS resume "$RP" >/dev/null 2>&1; ok "autostart: resume juga menghapus penanda buntu autopilot (#73)" "$([ -f "$RP/.aicrew/stuck" ] && echo ada || echo tidak)" tidak
 echo 0 > "$AP_RC"; n=$(calls); R; ok "autostart run: setelah resume autopilot dipanggil lagi" "$(calls)" $((n+1))
 echo 1 > "$AP_RC"; R; ok "autostart run: exit 1 (gagal beruntun) membuat halted" "$([ -f "$RP/.aicrew/halted" ] && echo ada || echo tidak)" ada; rm -f "$RP/.aicrew/halted"; echo 0 > "$AP_RC"
 echo 2 > "$AP_SLEEP"; n=$(calls); AICREW_AUTOPILOT="$tmp/fakeap.sh" AICREW_MAX_TOTAL=50 AICREW_ENV_FILE=/nonexistent PATH="$FB:$PATH" $AS run "$RP" >/dev/null 2>&1 &
@@ -1486,6 +1488,7 @@ AP3="$tmp/ap3"; mkdir -p "$AP3/bin" "$AP3/w" "$AP3/fx" "$AP3/tr"; git init -q "$
 cat > "$AP3/bin/gh" <<'GHEOF'
 #!/usr/bin/env bash
 echo "$*" >> "$AP3FX/calls"
+[ -f "$AP3FX/ghfail" ] && exit 1
 c="$1 $2"; q=""; head=""; st=""; prev=""
 for a in "$@"; do [ "$prev" = -q ] && q="$a"; [ "$prev" = --head ] && head="$a"; [ "$prev" = --state ] && st="$a"; prev="$a"; done
 if [ "$c" = "pr list" ]; then data="$(cat "$AP3FX/pr.json" 2>/dev/null || echo '[]')"
@@ -1506,6 +1509,8 @@ case "$(sed -n "${n}p" "$AP3FX/script")" in
   peek) cp .aicrew/autopilot.json "$AP3FX/peek.json"; head -1 .aicrew/autopilot.status > "$AP3FX/peek.status"; closeall; echo ok ;;
   limit) echo "Claude usage limit reached. Your limit will reset at 5pm."; exit 1 ;;
   noop) echo noop ;;
+  slowclose) /bin/sleep 2; closeall; echo ok ;;
+  breakgh) touch "$AP3FX/ghfail"; echo noop ;;
   idle) echo "menunggu owner"; exec /bin/sleep 20 ;;
   active) trap 'exit 130' INT; i=0; while [ "$i" -lt 6 ]; do touch "$AICREW_TRANSCRIPT_DIR/t.jsonl"; /bin/sleep 1; i=$((i+1)); done; closeall; echo ok ;;
   child) /bin/sleep 5 & wait; closeall; echo ok ;;
@@ -1531,7 +1536,7 @@ ap3 '[{"number":1,"state":"OPEN","labels":[{"name":"needs-principal"}]}]' close;
 ok "autopilot status: hanya needs-principal -> exit 3 dan fase menunggu-owner" "$rc|$(jq -r .fase "$AP3/w/.aicrew/autopilot.json")" '3|menunggu-owner'
 ap3 "$AP3OPEN" $'limit\nclose'; rc=$?
 ok "autopilot status: tidur karena limit -> fase tidur-limit tercatat saat tidur" "$rc|$(grep -c '"fase":"tidur-limit"' "$AP3FX/sleeps")" '0|1'
-AP3ENV="AICREW_IDLE_LIMIT=100 AICREW_IDLE_POLL=30" ap3 "$AP3OPEN" close
+AP3ENV="AICREW_IDLE_LIMIT=100 AICREW_IDLE_POLL=30" ap3 "$AP3OPEN" slowclose   # claude hidup 2 dtk: pemantau sedang di dalam sleep 30 saat dihentikan (stub instan membuat tes ini tak bermakna, #73)
 ok "autopilot: pemantau yang dihentikan tidak mencetak 'Terminated' (#63)" "$(grep -c 'Terminated' "$AP3/out")" 0
 
 # 3p-4. buntu berulang (#56): sidik jari buntu disimpan; start ulang dengan keadaan sama tidak menjalankan putaran (exit 5)
@@ -1544,6 +1549,13 @@ AP3KEEP=1 ap3 "$AP3OPEN" $'noop\nnoop\nnoop\nnoop' --stuck 3 --retry-stuck; rc=$
 ok "buntu: --retry-stuck menghapus penanda dan menjalankan putaran lagi (exit 2 lagi)" "$rc|$([ "$(cat "$AP3FX/n")" -gt 3 ] && echo jalan || echo diam)" '2|jalan'
 AP3KEEP=1 ap3 '[{"number":1,"state":"OPEN","labels":[{"name":"role:qa"}]},{"number":2,"state":"OPEN","labels":[{"name":"role:qa"}]}]' $'noop\nnoop\nnoop\nnoop' --stuck 3; rc=$?
 ok "buntu: keadaan berubah (issue baru) -> penanda diabaikan, putaran jalan" "$([ "$rc" != 5 ] && echo jalan || echo diam)" jalan
+
+# 3p-4b. fingerprint kosong karena gh gagal bukan 'keadaan': penanda buntu tidak dihapus/ditulis (#73)
+ap3 "$AP3OPEN" $'noop\nnoop\nnoop\nnoop' --stuck 3 >/dev/null; stk="$(cat "$AP3/w/.aicrew/stuck")"
+touch "$AP3FX/ghfail"; AP3KEEP=1 ap3 "$AP3OPEN" $'noop' --stuck 3 >/dev/null; rm -f "$AP3FX/ghfail"
+ok "autopilot: gh gagal saat start -> penanda buntu tidak dihapus" "$(cat "$AP3/w/.aicrew/stuck" 2>/dev/null)" "$stk"
+ap3 "$AP3OPEN" $'breakgh\nnoop' --stuck 1 >/dev/null; rm -f "$AP3FX/ghfail"
+ok "autopilot: gh gagal di akhir putaran -> last-round-fp bukan hash keluaran kosong dan stuck tidak ditulis" "$([ "$(cat "$AP3/w/.aicrew/last-round-fp" 2>/dev/null)" = da39a3ee5e6b4b0d3255bfef95601890afd80709 ] && echo hash-kosong || echo ok)|$([ -e "$AP3/w/.aicrew/stuck" ] && echo ada || echo tidak)" 'ok|tidak'
 
 # 3p-5. sinkron kartu kanban dari autopilot (#69): sekali per iterasi bila papan aktif; tidak fatal; dapat dimatikan
 mkdir -p "$AP3/w/docs"; BSH="$AP3FX/fakeboard.sh"
