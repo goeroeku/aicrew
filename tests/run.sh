@@ -1264,6 +1264,14 @@ jq -e '.permissions.deny|map(select(startswith("Bash(git merge")))|length==0' te
 PF() { (cd "$CL/w" && GH_REPO=o/r PATH="$CL/bin:$PATH" bash "$root/scripts/preflight.sh" github 2>&1); }
 MK; out="$(DBM=false PF)"; ok "preflight: delete_branch_on_merge=false -> AWAS beserta perintah PATCH" "$(grep -c '^AWAS.*delete_branch_on_merge=false.*gh api -X PATCH repos/o/r -F delete_branch_on_merge=true' <<<"$out")" 1
 out="$(DBM=true PF)"; ok "preflight: delete_branch_on_merge=true -> ok" "$(grep -c '^ok.*cabang dihapus otomatis saat merge' <<<"$out")|$(grep -c 'delete_branch_on_merge=false' <<<"$out")" '1|0'
+# 3k-5. preflight (#66 D): aturan 'gh pr merge' dituntut sesuai mode merge (agent-after-qa -> AWAS, owner -> info)
+PFM() { (cd "$CL/w" && HOME="$tmp/pp/h" AICREW_MERGE_MODE="$1" GH_REPO=o/r PATH="$CL/bin:$PATH" DBM=true bash "$root/scripts/preflight.sh" github 2>&1); }
+rm -rf "$CL/w/.claude"; out="$(PFM agent-after-qa)"; ok "preflight (#66): mode agent-after-qa tanpa aturan gh pr merge -> AWAS" "$(grep -c '^AWAS.*agent-after-qa.*gh pr merge' <<<"$out")|$(grep -c '^info.*gh pr merge' <<<"$out")" '1|0'
+out="$(PFM owner)"; ok "preflight (#66): mode owner tanpa aturan gh pr merge -> tetap info" "$(grep -c '^info.*gh pr merge' <<<"$out")|$(grep -c '^AWAS.*gh pr merge' <<<"$out")" '1|0'
+mkdir -p "$CL/w/.claude"; printf '{"permissions":{"allow":["Bash(gh pr merge:*)"]}}' > "$CL/w/.claude/settings.local.json"; out="$(PFM agent-after-qa)"
+ok "preflight (#66): mode agent-after-qa dengan aturan -> ok, tanpa AWAS gh pr merge" "$(grep -c "^ok.*'gh pr merge' ada" <<<"$out")|$(grep -c '^AWAS.*gh pr merge' <<<"$out")" '1|0'
+grep -qF 'merge mode `agent-after-qa`' "$root/README.md"; ok "README (#66): preflight dan mode merge agent-after-qa" $? 0
+rm -rf "$CL/w/.claude"; out="$(AICREW_MERGE_MODE= PFM '')"; ok "preflight (#66): mode kosong -> owner (info)" "$(grep -c '^info.*gh pr merge' <<<"$out")" 1
 ok "preflight: ada cabang ter-merge -> info jumlah (bukti offline)" "$(DBM=true PF | grep -c '^info.* 7 cabang ter-merge')" 1
 rm -f "$CL/ghlog"; DBM=true GHLOG="$CL/ghlog" PF >/dev/null; ok "preflight: tidak memanggil REST pulls (bukti offline saja)" "$(grep -c 'pulls' "$CL/ghlog" 2>/dev/null; true)" 0
 G remote remove origin; ok "preflight: tanpa remote -> tanpa baris info jumlah" "$(DBM=true PF | grep -c 'cabang ter-merge')" 0
