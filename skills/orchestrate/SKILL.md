@@ -96,6 +96,8 @@ dua kali gagal, persyaratan ambigu, perlu mengubah tes yang ada atau menambah de
    auth/uang/data pribadi, atau sulit dibalik (server baru, akun, migrasi). Tandai issue, tulis konkret apa yang
    bertentangan dengan bagian PRD mana, lewati, lanjut ke issue lain, dan kabari owner.
 Ragu antara keduanya → eskalasi.
+
+**Sebelum memasang `needs-principal` (atau memasangnya lagi), baca komentar issue.** "komentar owner terbaru" = komentar terbaru yang bukan tulisan agen: bukan berawalan `**Keputusan otomatis (principal)**`, `terblokir:`, atau `aicrew-progress`, dan bila `WORKFLOW.md` menyebut pemilik, penulisnya orang itu (akun gh sama dengan agen tidak membuat komentar agen menjadi keputusan owner). Bila komentar itu sudah memutuskan pertanyaan yang akan diajukan (mis. dependensi disetujui dengan pin persis), anggap terjawab: jangan pasang label dan jangan bertanya ulang. Pengecualian: kekhawatiran tingkat 2 baru tetap dieskalasi (keputusan lama tidak menutupnya), begitu juga bila owner sudah mencabut atau mengubah keputusannya. Kendala nyata yang bukan keputusan owner (implementasi belum ada, kriteria selesai belum terpenuhi, lingkungan mati seperti daemon Docker, dua kali gagal setelah keputusan owner) dilaporkan apa adanya sebagai `terblokir: <sebab>` di komentar issue dan laporan sesi, tanpa `needs-principal`; issue dilewati dan dicoba lagi di putaran berikut. Jangan ulangi komentar `terblokir:` bila sebabnya sama dengan komentar agen sebelumnya (autopilot berhenti sebagai buntu bila keadaan tidak berubah).
 Agen dilarang melonggarkan sandbox atau mengubah tes yang ada tanpa izin. Kena limit (Codex/agen lain) →
 ambil alih dengan model Claude sesuai bobot tugas dan sebutkan di laporan.
 

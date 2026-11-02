@@ -1731,6 +1731,11 @@ ok "CHANGELOG.md: [1.0.0] memuat entri dari PR #53 (Added dan Changed)" "$(awk '
 ok "CHANGELOG.md: [1.1.0] memuat entri dari PR #65 (Changed) dan Behavior changes" "$(awk '/^## \[1\.1\.0\]/{p=1;next} /^## \[/{p=0} p' CHANGELOG.md | grep -c '(#65)')|$(awk '/^## \[1\.1\.0\]/{p=1;next} /^## \[/{p=0} p' CHANGELOG.md | grep -c '^### Behavior changes')" '3|1'
 cv="$(bash scripts/check-version.sh v1.1.0 2>&1)"; ok "check-version v1.1.0: lolos tanpa ::warning:: (versi sinkron, bagian CHANGELOG ada)" "$(printf '%s\n' "$cv" | grep -c '^ok:')|$(printf '%s\n' "$cv" | grep -c '::warning::')" '1|0'
 
+# 3t-0. keputusan owner terbaru dibaca sebelum needs-principal dipasang lagi (#62)
+SK="$root/skills/orchestrate/SKILL.md"
+for k in 'Sebelum memasang `needs-principal`' 'komentar owner terbaru' 'jangan pasang label' 'terblokir: <sebab>' 'tanpa `needs-principal`' 'Keputusan otomatis (principal)' 'tingkat 2 baru tetap dieskalasi' 'dua kali gagal setelah keputusan owner' 'Jangan ulangi komentar'; do
+  grep -qF -- "$k" "$SK"; ok "orchestrate (#62): memuat '$k'" $? 0; done
+
 # 3t. sinkronisasi kartu kanban oleh kode (#69): card_status (tabel), board_ref, unsat_blockers, board.sh --sync-cards
 cs() { ( . "$root/scripts/lib/card-status.sh"; card_status "$@" ); }
 INT="integrated di-integrasi"
