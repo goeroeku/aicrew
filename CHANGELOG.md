@@ -4,6 +4,29 @@ All notable changes to aiCrew are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Entries before 0.11.0 were reconstructed from tags, merged pull requests and commit history.
 
+## [1.2.0] - 2026-11-02
+
+### Added
+
+- `board.sh --sync-cards` moves task cards (Backlog, Ready, In progress, In review) from labels, PRs, worktrees and blockers; the autopilot runs it automatically when the board is enabled (#72)
+- the autopilot writes `.aicrew/owner-actions.md` (one line per owner action, with command and reason) when it starts waiting for the owner, and puts the path in the log and the notification (#82)
+
+### Changed
+
+- `orchestrate` reads the latest owner decision before applying `needs-principal` and reports implementation or environment blockers as `terblokir:` comments instead of an owner decision (#77)
+
+### Fixed
+
+- Autopilot restarted by a supervisor no longer burns model rounds while the issue/PR state is unchanged since it stopped as stuck: it exits 5 immediately (`--retry-stuck` overrides). (#70)
+- The idle watcher no longer prints `Terminated: 15 sleep` each round. (#70)
+- `autostart.sh resume` now recovers a repo that stopped as stuck (exit 5), and a failing `gh` at autopilot start no longer deletes the stuck marker (#74)
+- the autopilot no longer reads a failing `gh` as "only needs-principal left" (false exit 3); it retries with a pause and exits 6 after five consecutive failures (#76)
+
+### Behavior changes
+
+- autopilot has a new exit code 5 (still stuck on restart); supervisors that treat every non-zero exit alike are unaffected. (#70)
+- the autopilot has a new exit code 6 (`gh` unreadable five times in a row); `autostart.sh` treats it like 3 and retries on the next tick. (#76)
+
 ## [1.1.0] - 2026-11-02
 
 ### Changed
