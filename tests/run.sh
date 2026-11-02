@@ -1771,6 +1771,41 @@ unset OA_ISSUES OA_PRS
 grep -qF 'owner-action: <tindakan> | <perintah> | <alasan>' "$root/skills/orchestrate/SKILL.md"; ok "orchestrate (#57): komentar owner-action: dengan format tindakan|perintah|alasan" $? 0
 grep -qF '.aicrew/owner-actions.md' "$root/README.md"; ok "README (#57): menyebut .aicrew/owner-actions.md" $? 0
 
+# 3x. breakdown mendeteksi dua issue yang menyentuh berkas sama (#60): scripts/file-overlap.sh
+fo() { printf '%s' "$1" | bash "$root/scripts/file-overlap.sh" --json - 2>&1; }
+IA='{"number":1,"labels":[],"body":"## Goal\nx\n\n## Related files\n- Reuse / read: a/y.go:3\n- Expected to touch: `contracts/gov.yaml`, tools/lint/main.go\n\n## Blocked by\nnone\n"}'
+IB='{"number":2,"labels":[],"body":"## Related files\n- Expected to touch: contracts/gov.yaml:12, other/z.go\n\n## Blocked by\nnone\n"}'
+IC='{"number":3,"labels":[],"body":"## Related files\n- Expected to touch: only/c.go\n"}'
+out="$(fo "[$IA,$IB,$IC]")"; rc=$?
+ok "file-overlap: dua issue pada berkas sama tanpa urutan -> exit 1 dan satu baris overlap" "$rc|$(grep -c '^overlap: contracts/gov.yaml #1 #2' <<<"$out")|$(grep -c '#3' <<<"$out")" '1|1|0'
+ok "file-overlap: baris overlap menyarankan Blocked by" "$(grep -c 'Blocked by' <<<"$out")" 1
+IB2="${IB/\\n\\n## Blocked by\\nnone\\n/\\n\\n## Blocked by\\n#1\\n}"
+out="$(fo "[$IA,$IB2,$IC]")"; rc=$?; ok "file-overlap: issue sudah Blocked by yang lain -> tidak ada overlap (exit 0)" "$rc|$out" '0|'
+ID='{"number":4,"labels":[],"body":"## Related files\n- Expected to touch: tools/lint/main.go\n\n## Blocked by\n#2\n"}'
+out="$(fo "[$IA,$IB2,$ID]")"; rc=$?; ok "file-overlap: urutan transitif (4 <- 2 <- 1) -> tidak ada overlap" "$rc|$out" '0|'
+IE='{"number":5,"labels":[{"name":"epic"}],"body":"## Related files\n- Expected to touch: contracts/gov.yaml\n"}'
+out="$(fo "[$IA,$IE]")"; rc=$?; ok "file-overlap: epic diabaikan" "$rc|$out" '0|'
+IP='{"number":6,"labels":[],"body":"## Related files\n- Expected to touch: {{path}}\n"}'
+IQ='{"number":7,"labels":[],"body":"## Related files\n- Expected to touch: {{path}}\n"}'
+out="$(fo "[$IP,$IQ]")"; rc=$?; ok "file-overlap: placeholder templat {{path}} tidak dihitung" "$rc|$out" '0|'
+IR='{"number":8,"labels":[],"body":"tanpa bagian file"}'
+out="$(fo "[$IA,$IR]")"; rc=$?; ok "file-overlap: issue tanpa bagian Related files diabaikan" "$rc|$out" '0|'
+out="$(fo '[]')"; rc=$?; ok "file-overlap: daftar kosong -> exit 0" "$rc|$out" '0|'
+out="$(fo 'bukan json')"; rc=$?; ok "file-overlap: masukan tak terurai -> exit 2 (bukan lolos diam-diam)" "$rc" 2
+IS='{"number":9,"labels":[],"body":"## Related files\n- Expected to touch: contracts/gov.yaml\n"}'
+out="$(fo "[$IA,$IB,$IS]")"; ok "file-overlap: tiga issue pada berkas sama -> tiga pasangan" "$(grep -c '^overlap: contracts/gov.yaml' <<<"$out")" 3
+IX1='{"number":1,"labels":[],"body":"## Related files\n- Expected to touch: a/x.go\n"}'
+IX3='{"number":3,"labels":[],"body":"## Related files\n- Expected to touch: a/x.go\n\n## Blocked by\nother/repo#1\n"}'
+out="$(fo "[$IX1,$IX3]")"; ok "file-overlap: Blocked by lintas repo (other/repo#1) bukan urutan" "$(grep -c '^overlap: a/x.go #1 #3' <<<"$out")" 1
+IV1='{"number":1,"labels":[],"body":"## related files\n* expected to touch: a/x.go\n"}'
+IV2='{"number":2,"labels":[],"body":"## Related Files\n- Expected To Touch: a/x.go\n"}'
+out="$(fo "[$IV1,$IV2]")"; ok "file-overlap: huruf besar/kecil dan bullet * tidak mengubah hasil" "$(grep -c '^overlap: a/x.go #1 #2' <<<"$out")" 1
+IN1='{"number":1,"labels":[],"body":"## Related files\n- Expected to touch: ./a/x.go\n"}'
+IN2='{"number":2,"labels":[],"body":"## Related files\n- Expected to touch: a/x.go.\n"}'
+out="$(fo "[$IN1,$IN2]")"; ok "file-overlap: ./ di depan dan titik di akhir dinormalkan" "$(grep -c '^overlap: a/x.go #1 #2' <<<"$out")" 1
+grep -qF 'file-overlap.sh' "$root/skills/breakdown/SKILL.md"; ok "breakdown (#60): memakai file-overlap.sh" $? 0
+grep -qF 'every file you create or edit' "$root/templates/ISSUE.md"; ok "template ISSUE (#60): Expected to touch memuat setiap berkas yang dibuat atau diubah" $? 0
+
 # 3t-0. keputusan owner terbaru dibaca sebelum needs-principal dipasang lagi (#62)
 SK="$root/skills/orchestrate/SKILL.md"
 for k in 'Sebelum memasang `needs-principal`' 'komentar owner terbaru' 'jangan pasang label' 'terblokir: <sebab>' 'tanpa `needs-principal`' 'Keputusan otomatis (principal)' 'tingkat 2 baru tetap dieskalasi' 'dua kali gagal setelah keputusan owner' 'Jangan ulangi komentar'; do
