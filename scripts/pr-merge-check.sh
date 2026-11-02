@@ -42,8 +42,9 @@ else
       pj="$(gh api "repos/$acr/pulls/$pr/files?per_page=100&page=$pg")" || fail "daftar file PR #$pr tak terbaca"
       jq -e 'type=="array"' <<<"$pj" >/dev/null 2>&1 || fail "daftar file PR #$pr tak terurai"
       jq -e 'any(.[]; (.filename|ascii_downcase)=="docs/workflow.md" or ((.previous_filename // "")|ascii_downcase)=="docs/workflow.md")' <<<"$pj" >/dev/null 2>&1 && fail "PR menyentuh docs/WORKFLOW.md; auto-merge ditolak (izin sementara hanya dari owner); minta owner merge"
-      # dokumentasi saja = semua berkas (dan nama lamanya) di docs/ atau berkas induk README/CHANGELOG/LICENSE/PRIVACY; selain itu butuh vonis QA (#86). Daftar kosong = tidak ada yang diubah.
-      jq -e 'any(.[]; ([.filename, (.previous_filename // empty)] | map(ascii_downcase) | any(.[]; (test("^docs/") or test("^(readme|changelog|license|privacy)[^/]*$")) | not)))' <<<"$pj" >/dev/null 2>&1 && nondoc=1
+      # dokumentasi saja = semua berkas (dan nama lamanya) di docs/ atau README/CHANGELOG/PRIVACY berekstensi md/txt/rst, atau LICENSE; selain itu butuh vonis QA (#86). Daftar kosong = tidak ada yang diubah.
+      # Gagal tertutup: jq error (mis. nama berkas null) dianggap bukan dokumentasi.
+      jq -e 'any(.[]; ([.filename, (.previous_filename // empty)] | map(ascii_downcase) | any(.[]; (test("^docs/") or test("^(readme|changelog|privacy)\\.(md|txt|rst)$") or test("^license(\\.(md|txt))?$")) | not)))' <<<"$pj" >/dev/null 2>&1; [ $? = 1 ] || nondoc=1
       [ "$(jq length <<<"$pj")" -ge 100 ] || break
       pg=$((pg+1)); [ "$pg" -le 30 ] || fail "PR punya lebih dari 3000 file; auto-merge ditolak"
     done
@@ -65,11 +66,11 @@ else
     while IFS= read -r cj; do
       b="$(jq -r .body <<<"$cj")"
       # label, vonis, dan "Commit" tak peka huruf; Commit boleh di baris sendiri atau di baris vonis yang sama (#86)
-      grep -Eiq "^$1 (lulus|gagal)" <<<"$b" || continue
+      grep -Eiq "^$1 (lulus|gagal)([^[:alnum:]_]|$)" <<<"$b" || continue
       cs="$(sed -nE 's/^[Cc][Oo][Mm][Mm][Ii][Tt]: *([0-9a-fA-F]+).*/\1/p' <<<"$b" | head -1)"
-      [ -n "$cs" ] || cs="$(grep -Ei "^$1 (lulus|gagal)" <<<"$b" | head -1 | sed -nE 's/.*[Cc][Oo][Mm][Mm][Ii][Tt]: *([0-9a-fA-F]+).*/\1/p')"
+      [ -n "$cs" ] || cs="$(grep -Ei "^$1 (lulus|gagal)([^[:alnum:]_]|$)" <<<"$b" | head -1 | sed -nE 's/.*[Cc][Oo][Mm][Mm][Ii][Tt]: *([0-9a-fA-F]+).*/\1/p')"
       sha_ok "$(tr 'A-F' 'a-f' <<<"$cs")" || continue
-      if grep -Eiq "^$1 gagal" <<<"$b"; then res=1; continue; fi
+      if grep -Eiq "^$1 gagal([^[:alnum:]_]|$)" <<<"$b"; then res=1; continue; fi
       if [ "$2" != 0 ] && ! { grep -Eq '^Angka sebelum/sesudah:.*[0-9]' <<<"$b" && grep -Eq '^Tuning: *[^ ]' <<<"$b"; }; then res=1; continue; fi
       res=0
     done < <(jq -c '.comments[]' <<<"$comments")

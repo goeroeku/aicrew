@@ -1957,6 +1957,10 @@ qg COMM=$'Laporan qa: lulus\nCommit: abc1234' COMM2=$'Laporan qa: gagal\nCommit:
 qg COMM=$'Laporan qa: gagal\nCommit: abc1234' COMM2=$'Laporan qa: lulus\nCommit: abc1234' >/dev/null; ok "gerbang QA: gagal lalu lulus -> lulus" $? 0
 qg FILES_JSON='[{"filename":"README.md","status":"modified"},{"filename":"docs/x.md","status":"added"}]' >/dev/null; ok "gerbang QA: PR dokumentasi saja tanpa QA -> lulus" $? 0
 qg FILES_JSON='[{"filename":"README.md","status":"modified"},{"filename":"skills/a/SKILL.md","status":"modified"}]' >/dev/null; ok "gerbang QA: SKILL.md bukan dokumentasi -> butuh QA" $? 1
+for f in README.sh readme.py changelog.js license.go privacy; do qg FILES_JSON="[{\"filename\":\"$f\",\"status\":\"added\"}]" >/dev/null; ok "gerbang QA: $f bukan berkas dokumentasi -> butuh QA" $? 1; done
+for f in README.md CHANGELOG.md LICENSE PRIVACY.md README.txt docs/a/b.png; do qg FILES_JSON="[{\"filename\":\"$f\",\"status\":\"modified\"}]" >/dev/null; ok "gerbang QA: $f dokumentasi -> tanpa QA lulus" $? 0; done
+qg FILES_JSON='[{"filename":null,"status":"modified"}]' >/dev/null; ok "gerbang QA: daftar file janggal (filename null) -> gagal tertutup, butuh QA" $? 1
+qg COMM='Laporan qa: lulusxyz Commit: abc1234' >/dev/null; ok "gerbang QA: kata vonis tanpa batas ('lulusxyz') ditolak" $? 1
 env BASE=integrasi BODY="Closes #1" HEAD=abc1234567 PATH="$tmp/pmb:$PATH" bash "$root/scripts/pr-merge-check.sh" 9 integrasi >/dev/null 2>&1; ok "gerbang QA: tanpa --auto (owner) tetap tidak menuntut QA" $? 0
 qg ISSL=needs-security COMM='Laporan security: lulus Commit: abc1234' COMM2='Laporan qa: lulus Commit: abc1234' >/dev/null; ok "gerbang QA: vonis security satu baris diterima" $? 0
 qg ISSL=needs-security COMM='Laporan security: lulus Commit: abc1234' >/dev/null; ok "gerbang QA: security lulus tanpa QA -> ditolak (kasus Nexora)" $? 1
