@@ -26,13 +26,18 @@ grant_epoch() {
 # baris "- Grant: " (kolom 0) di bagian "## Temporary grants" persis; blok kode, komentar HTML, dan bagian lain diabaikan
 grants_lines() {
   printf '%s\n' "$1" | awk '
-    BEGIN { sec = 0; fence = 0; com = 0 }
+    BEGIN { sec = 0; seen = 0; fence = 0; com = 0 }
     { line = $0
       if (com) { if (line ~ /-->/) com = 0; next }
-      if (line ~ /^ ? ? ?(```|~~~)/) { fence = !fence; next }
+      if (match(line, /^ ? ? ?(```+|~~~+)/)) {     # fence: ditutup hanya oleh karakter sama, panjang >= pembuka, tanpa teks lain
+        m = substr(line, RSTART, RLENGTH); gsub(/^ +/, "", m); rest = substr(line, RSTART + RLENGTH)
+        if (!fence) { fence = 1; fc = substr(m, 1, 1); fl = length(m) }
+        else if (substr(m, 1, 1) == fc && length(m) >= fl && rest ~ /^[ \t]*$/) fence = 0
+        next
+      }
       if (fence) next
       if (line ~ /<!--/) { if (line !~ /-->/) com = 1; next }
-      if (line ~ /^#[#]? /) { sec = (line == "## Temporary grants"); next }
+      if (line ~ /^#+([ \t]|$)/) { sec = (line == "## Temporary grants" && !seen); if (sec) seen = 1; next }   # judul apa pun mengakhiri bagian; hanya kemunculan pertama berlaku
       if (sec && line ~ /^- Grant: /) print line
     }'
 }

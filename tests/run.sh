@@ -1811,6 +1811,11 @@ ok "grant_allows: di dalam komentar HTML multi-baris -> 1" "$(ga L2 integration 
 ok "grant_allows: berindentasi -> 1" "$(ga L2 integration "$(printf '## Temporary grants\n  %s\n' "$GV")")" 1
 ok "grant_allows: blockquote -> 1" "$(ga L2 integration "$(printf '## Temporary grants\n> %s\n' "$GV")")" 1
 ok "grant_allows: setelah blok kode ditutup, baris sah berlaku -> 0" "$(ga L2 integration "$(printf '## Temporary grants\n```\nx\n```\n%s\n' "$GV")")" 0
+ok "grant_allows: subjudul ### mengakhiri bagian -> 1" "$(ga L2 integration "$(printf '## Temporary grants\n### Catatan\n%s\n' "$GV")")" 1
+ok "grant_allows: fence 3 backtick tidak ditutup oleh tilde -> 1" "$(ga L2 integration "$(printf '## Temporary grants\n```\n~~~\n%s\n' "$GV")")" 1
+ok "grant_allows: fence 4 backtick tidak ditutup oleh 3 backtick -> 1" "$(ga L2 integration "$(printf '## Temporary grants\n````\n```\n%s\n' "$GV")")" 1
+ok "grant_allows: fence 4 backtick ditutup 4 backtick lalu izin sah -> 0" "$(ga L2 integration "$(printf '## Temporary grants\n````\nx\n````\n%s\n' "$GV")")" 0
+ok "grant_allows: judul Temporary grants kedua tidak berlaku -> 1" "$(ga L2 integration "$(printf '## Temporary grants\n## Lain\n## Temporary grants\n%s\n' "$GV")")" 1
 ok "grant_allows: satu baris rusak + satu sah -> 0" "$(ga L2 integration "$(printf '## Temporary grants\n- Grant: scope=merge; risk=L2\n%s\n' "$GV")")" 0
 
 # gerbang --auto: bagian WORKFLOW dari cabang tujuan lewat REST, daftar file PR, validasi cabang
@@ -1826,6 +1831,7 @@ ga2 ISSL=risk:L2 >/dev/null; ok "gerbang izin: L2 tanpa izin -> ditolak" $? 1
 ga2 ISSL=risk:L2 WF_FAIL=1 WFTEXT="$(wfg "$exp_ok")" >/dev/null; ok "gerbang izin: WORKFLOW tak terbaca -> ditolak (gagal tertutup)" $? 1
 ga2 ISSL=risk:L1 FILES_JSON='[{"filename":"docs/WORKFLOW.md","status":"modified"}]' >/dev/null; ok "gerbang izin: --auto menolak PR yang menyentuh docs/WORKFLOW.md" $? 1
 ga2 ISSL=risk:L1 FILES_JSON='[{"filename":"x.md","previous_filename":"docs/WORKFLOW.md","status":"renamed"}]' >/dev/null; ok "gerbang izin: rename dari docs/WORKFLOW.md juga ditolak" $? 1
+ga2 ISSL=risk:L1 FILES_JSON='[{"filename":"docs/workflow.md","status":"added"}]' >/dev/null; ok "gerbang izin: docs/workflow.md (beda huruf) juga ditolak" $? 1
 ga2 ISSL=risk:L1 FILES_FAIL=1 >/dev/null; ok "gerbang izin: daftar file PR tak terbaca -> ditolak" $? 1
 ga2 ISSL=risk:L1 FILES_JSON='[{"filename":"README.md","status":"modified"}]' >/dev/null; ok "gerbang izin: PR biasa tetap lulus" $? 0
 (env BASE='x&ref=main' BODY="Closes #1" HEAD=abc1234567 ISSL=risk:L1 PATH="$tmp/pmb:$PATH" bash "$root/scripts/pr-merge-check.sh" 9 'x&ref=main' --auto >/dev/null 2>&1); ok "gerbang izin: nama cabang tujuan berkarakter khusus ditolak" $? 1

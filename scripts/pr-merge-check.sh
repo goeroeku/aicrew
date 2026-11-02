@@ -41,7 +41,7 @@ else
     while :; do
       pj="$(gh api "repos/$acr/pulls/$pr/files?per_page=100&page=$pg")" || fail "daftar file PR #$pr tak terbaca"
       jq -e 'type=="array"' <<<"$pj" >/dev/null 2>&1 || fail "daftar file PR #$pr tak terurai"
-      jq -e 'any(.[]; .filename=="docs/WORKFLOW.md" or .previous_filename=="docs/WORKFLOW.md")' <<<"$pj" >/dev/null 2>&1 && fail "PR menyentuh docs/WORKFLOW.md; auto-merge ditolak (izin sementara hanya dari owner); minta owner merge"
+      jq -e 'any(.[]; (.filename|ascii_downcase)=="docs/workflow.md" or ((.previous_filename // "")|ascii_downcase)=="docs/workflow.md")' <<<"$pj" >/dev/null 2>&1 && fail "PR menyentuh docs/WORKFLOW.md; auto-merge ditolak (izin sementara hanya dari owner); minta owner merge"
       [ "$(jq length <<<"$pj")" -ge 100 ] || break
       pg=$((pg+1)); [ "$pg" -le 30 ] || fail "PR punya lebih dari 3000 file; auto-merge ditolak"
     done
