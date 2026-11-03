@@ -52,6 +52,7 @@ Persetujuan berlaku untuk berkas yang disebut, tidak terikat head tertentu; fiel
 - Penguraian komentar: baris mana pun, tak peka huruf, argumen kosong = menyetujui nol berkas; komentar issue dimuat sekali di awal.
 - `owner-hold` memakai `$labels` yang sudah ada (label PR + issue tertaut), hanya menolak di `--auto` (merge manual owner tidak diblokir, seperti #109).
 - "Satu catatan" = satu pemanggilan `note` per keadaan. Tes: semua issue `owner-hold` -> exit 3; campuran `owner-hold` + `needs-principal`. Teks "semuanya needs-principal" dan `has_open_pr`/`unsat_blockers` di autopilot ikut diperbarui.
+- Berkas tes berstatus `modified` dengan `additions` > 0, `deletions` 0, dan tanpa `previous_filename` tidak butuh persetujuan (#132); lainnya tetap, termasuk biner dan perubahan mode (additions 0). Batas diketahui: baris tambahan bisa melemahkan tes lama (mis. `exit` di awal), jadi vonis QA wajib membaca diff tes.
 
 ## Kriteria selesai
 - [ ] issue `owner-hold`: autopilot melewatinya tiap putaran; semua tersisa ditahan -> exit 3

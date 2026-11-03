@@ -2736,4 +2736,31 @@ ok "blocked-list (#107): blocked-by-permission: followed by blocked: -> later wi
 echo '[{"number":4,"labels":[{"name":"blocked"}],"comments":[{"body":"note: blocked-by-permission: git merge"},{"body":"also blocked: not at start"}]}]' > "$BM/issues.json"
 ok "blocked-list (#107): comment not starting with prefix is ignored" "$(bmk blocked-list.sh | tr '\t\n' '~|')" '#4~-|'
 
+# 3c-28. Test file that only adds lines (modified, additions > 0, deletions 0) needs no approval (#132).
+REQ='Existing test changes require approval'
+ohg FILES_JSON='[{"filename":"tests/existing.sh","status":"modified","additions":3,"deletions":0}]' >/dev/null
+ok "test additions (#132): modified test with additions and deletions 0 passes without approval" $? 0
+out="$(ohg FILES_JSON='[{"filename":"tests/existing.sh","status":"modified","additions":3,"deletions":1}]')"; rc=$?
+ok "test additions (#132): modified test with deletions 1 requires approval" "$rc|$(grep -c "$REQ" <<<"$out")" '1|1'
+out="$(ohg FILES_JSON='[{"filename":"src/new.sh","previous_filename":"tests/old.sh","status":"renamed","additions":3,"deletions":0}]')"; rc=$?
+ok "test additions (#132): renamed test with deletions 0 still requires approval" "$rc|$(grep -c "$REQ" <<<"$out")" '1|1'
+out="$(ohg FILES_JSON='[{"filename":"tests/existing.sh","status":"removed","additions":0,"deletions":4}]')"; rc=$?
+ok "test additions (#132): removed test still requires approval" "$rc|$(grep -c "$REQ" <<<"$out")" '1|1'
+out="$(ohg FILES_JSON='[{"filename":"tests/existing.sh","status":"modified","additions":3}]')"; rc=$?
+ok "test additions (#132): modified test without deletions field fails closed" "$rc|$(grep -c "$REQ" <<<"$out")" '1|1'
+out="$(ohg FILES_JSON='[{"filename":"tests/existing.sh","status":"modified","deletions":0}]')"; rc=$?
+ok "test additions (#132): modified test without additions field fails closed" "$rc|$(grep -c "$REQ" <<<"$out")" '1|1'
+out="$(ohg FILES_JSON='[{"filename":"tests/existing.sh","status":"modified","additions":3,"deletions":"0"}]')"; rc=$?
+ok "test additions (#132): non-numeric deletions string fails closed" "$rc|$(grep -c "$REQ" <<<"$out")" '1|1'
+out="$(ohg FILES_JSON='[{"filename":"testdata/blob.bin","status":"modified","additions":0,"deletions":0}]')"; rc=$?
+ok "test additions (#132): binary or mode-only change (additions 0, deletions 0) still requires approval" "$rc|$(grep -c "$REQ" <<<"$out")" '1|1'
+for st in copied unchanged changed; do
+  out="$(ohg FILES_JSON="[{\"filename\":\"tests/existing.sh\",\"status\":\"$st\",\"additions\":3,\"deletions\":0}]")"; rc=$?
+  ok "test additions (#132): status $st still requires approval" "$rc|$(grep -c "$REQ" <<<"$out")" '1|1'
+done
+out="$(ohg FILES_JSON='[{"filename":"tests/existing.sh","previous_filename":"tests/old.sh","status":"modified","additions":3,"deletions":0}]')"; rc=$?
+ok "test additions (#132): modified entry that carries previous_filename still requires approval" "$rc|$(grep -c "$REQ" <<<"$out")" '1|1'
+ohg FILES_JSON='[{"filename":"tests/existing.sh","status":"modified","additions":3,"deletions":0}]' APPROVAL_JSON="$(oha "$OH_APPROVAL")" >/dev/null
+ok "test additions (#132): addition-only test with an approval present still passes" $? 0
+
 [ "$fails" = 0 ] && echo "SEMUA LULUS" || { echo "$fails GAGAL"; exit 1; }
