@@ -4,7 +4,7 @@
 # Item deterministik (tanpa model): issue berlabel needs-principal, dan PR terbuka bukan-draft dari cabang issue-<n> (menunggu merge owner).
 # Catatan agen: komentar terbaru berawalan "owner-action: <tindakan> | <perintah> | <alasan>" pada issue/PR itu ikut sebagai catatan (ditulis orchestrator, lihat skill orchestrate).
 set -u
-here="$(cd "$(dirname "$0")" && pwd)"; source "$here/ghx.sh"
+here="$(cd "$(dirname "$0")" && pwd)"; source "$here/ghx.sh"; source "$here/lib/ci-infra.sh"
 d="${1:-.aicrew}"; mkdir -p "$d"; f="$d/owner-actions.md"
 command -v jq >/dev/null 2>&1 || { rm -f "$f"; exit 0; }   # tanpa jq tidak bisa menyusun; berkas basi tidak dibiarkan
 issues="$(gh issue list --state open --limit 200 --json number,title,labels 2>/dev/null)" || { rm -f "$f"; exit 0; }   # gh gagal: jangan tinggalkan berkas basi
@@ -22,6 +22,14 @@ while IFS=$'\t' read -r num text; do
   n=$((n+1)); out="$out"$'\n'"$text"
   nt="$(note_of "$num")"; [ -z "$nt" ] || out="$out"$'\n'"  - agent note: $nt"
 done <<<"$lines"
+# CI that cannot start (billing, no runner; #80): one line per such open issue PR; the file is rewritten each run, so never duplicated
+if [ -n "$repo" ]; then
+  while IFS=$'\t' read -r pn sha; do
+    [ -n "$pn" ] || continue
+    ln="$(ci_infra_line "$repo" "$sha")" || continue
+    n=$((n+1)); out="$out"$'\n'"- PR #$pn — $ln"
+  done < <(jq -r '.[]?|select(.isDraft==false and .isCrossRepository==false and (.headRefName|test("^issue-[0-9]+$")))|"\(.number)\t\(.headRefOid)"' <<<"$prs" 2>/dev/null)
+fi
 [ "$n" -gt 0 ] || out="$out"$'\n'"No owner actions found."
 printf '%s\n' "$out" > "$f.tmp" && mv "$f.tmp" "$f"
 printf '%s (%s item)\n' "$f" "$n"

@@ -1542,6 +1542,7 @@ cat > "$AP3/bin/gh" <<'GHEOF'
 #!/usr/bin/env bash
 echo "$*" >> "$AP3FX/calls"
 [ -f "$AP3FX/ghfail" ] && exit 1
+case "$*" in "api repos/"*"/check-runs"*) cat "$AP3FX/checks.json" 2>/dev/null || exit 1; exit 0 ;; esac   # CI check-runs fake (#80)
 if [ -s "$AP3FX/ghfailn" ]; then k=$(cat "$AP3FX/ghfailn"); if [ "$k" -gt 0 ]; then echo $((k-1)) > "$AP3FX/ghfailn"; exit 1; fi; fi   # gagal k kali lalu pulih
 c="$1 $2"; q=""; head=""; st=""; prev=""
 for a in "$@"; do [ "$prev" = -q ] && q="$a"; [ "$prev" = --head ] && head="$a"; [ "$prev" = --state ] && st="$a"; prev="$a"; done
@@ -1579,7 +1580,7 @@ chmod +x "$AP3/bin/gh" "$AP3/bin/sleep" "$AP3/bin/claude"
 AP3OPEN='[{"number":1,"state":"OPEN","labels":[{"name":"role:qa"}]}]'
 # SIGINT: suite sering dijalankan sebagai pekerjaan latar (SIGINT diabaikan, aturan POSIX); perl mengembalikannya ke bawaan agar tes watchdog menguji SIGINT sungguhan
 # ap3 <issues-json> <skrip-per-putaran> [argumen autopilot...]; env tambahan lewat variabel AP3ENV (string "K=V ...")
-ap3() { printf '%s\n' "$2" > "$AP3FX/script"; [ -n "${AP3KEEP:-}" ] || rm -f "$AP3FX/n"; rm -f "$AP3FX/sleeps" "$AP3FX/peek.json" "$AP3FX/peek.status" "$AP3FX/calls" "$AP3FX/pr.json"; echo "$1" > "$AP3FX/issues.json"; [ -n "${AP3KEEP:-}" ] || rm -rf "$AP3/w/.aicrew"
+ap3() { printf '%s\n' "$2" > "$AP3FX/script"; [ -n "${AP3KEEP:-}" ] || rm -f "$AP3FX/n"; rm -f "$AP3FX/sleeps" "$AP3FX/peek.json" "$AP3FX/peek.status" "$AP3FX/calls" "$AP3FX/pr.json"; [ -z "${AP3PR:-}" ] || echo "$AP3PR" > "$AP3FX/pr.json"; echo "$1" > "$AP3FX/issues.json"; [ -n "${AP3KEEP:-}" ] || rm -rf "$AP3/w/.aicrew"
   (cd "$AP3/w" && env PATH="$AP3/bin:$PATH" AP3FX="$AP3FX" AICREW_CAFF="${AP3CAFF-1}" AICREW_ERR_SLEEP=0 AICREW_CLAUDE=claude AICREW_TRANSCRIPT_DIR="$AP3/tr" $AP3ENV perl -e '$SIG{INT}="DEFAULT"; exec @ARGV' bash "$root/scripts/autopilot.sh" --sleep 0 "${@:3}" >"$AP3/out" 2>&1); }
 ap3 "$AP3OPEN" close --idle-limit 5 --round-timeout 9; ok "autopilot: --idle-limit dan --round-timeout diterima (bukan exit 64)" $? 0
 AP3ENV="AICREW_IDLE_LIMIT=7 AICREW_ROUND_TIMEOUT=11" ap3 "$AP3OPEN" close; ok "autopilot: AICREW_IDLE_LIMIT/AICREW_ROUND_TIMEOUT dibaca dari lingkungan" $? 0
@@ -2358,5 +2359,20 @@ out="$(rg PRFAIL=1 REST_REM=3)"; ok "gerbang REST (#113): kegagalan REST biasa -
 out="$(env BASE=integrasi PRSTATE=open PATH="$tmp/pmb:$PATH" bash "$root/scripts/pr-merge-check.sh" 9 integrasi --after 2>&1)"; rc=$?
 ok "gerbang REST (#113): --after PR belum merged -> gagal" "$rc|$(grep -c 'belum MERGED' <<<"$out")" '1|1'
 grep -qF 'GraphQL' "$root/README.md" && grep -qF 'closingIssuesReferences' "$root/README.md"; ok "README (#113): gerbang lewat REST, closingIssuesReferences dan cadangan saat GraphQL habis" $? 0
+
+# 3c-17. autopilot x ci-classify (#80): infrastructure CI failure on the only open PR = waiting for the owner, no orchestrator round
+AP3PR='[{"number":5,"head":"issue-1","headRefName":"issue-1","headRefOid":"abc1234","state":"OPEN","isDraft":false,"isCrossRepository":false}]'
+BILL='The job was not started because recent account payments have failed or your spending limit needs to be increased.'
+jq -nc --arg m "$BILL" '{total_count:1,check_runs:[{name:"j",status:"completed",conclusion:"failure",started_at:"2026-01-01T00:00:00Z",completed_at:"2026-01-01T00:00:02Z",runner_id:null,runner_name:"",output:{title:"",summary:$m}}]}' > "$AP3FX/checks.json"
+AP3ENV="GH_REPO=o/r" ap3 "$AP3OPEN" noop $WO; rc=$?
+ok "autopilot ci-infra (#80): infrastructure failure on the only open PR -> exit 3, no claude round" "$rc|$(cat "$AP3FX/n" 2>/dev/null || echo 0)" '3|0'
+ok "autopilot ci-infra (#80): exactly one 'CI cannot start' owner-action line" "$(grep -c 'CI cannot start' "$AP3/w/.aicrew/owner-actions.md")" 1
+jq -nc '{total_count:1,check_runs:[{name:"j",status:"completed",conclusion:"failure",started_at:"2026-01-01T00:00:00Z",completed_at:"2026-01-01T00:02:00Z",runner_id:7,runner_name:"r1",output:{title:"",summary:"tests failed"}}]}' > "$AP3FX/checks.json"
+AP3ENV="GH_REPO=o/r" ap3 "$AP3OPEN" noop $WO; rc=$?
+ok "autopilot ci-infra (#80): code failure -> behaviour unchanged (claude rounds run)" "$([ "$(cat "$AP3FX/n" 2>/dev/null || echo 0)" -ge 1 ] && echo ran)" ran
+rm -f "$AP3FX/checks.json"
+AP3ENV="GH_REPO=o/r" ap3 "$AP3OPEN" noop $WO; rc=$?
+ok "autopilot ci-infra (#80): check-runs unreadable -> fail-closed, claude rounds run" "$([ "$(cat "$AP3FX/n" 2>/dev/null || echo 0)" -ge 1 ] && echo ran)" ran
+AP3PR=""
 
 [ "$fails" = 0 ] && echo "SEMUA LULUS" || { echo "$fails GAGAL"; exit 1; }
