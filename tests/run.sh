@@ -31,8 +31,9 @@ case "$*" in
   "api repos/o/r") echo '{"default_branch":"main"}' ;;
   "repo view"*) echo o/r ;;
   *v3.diff*) [ -n "${DIFFFAIL:-}" ] && exit 1; printf '%s\n' "${DIFF:-}" ;;
-  "api repos/o/r/pulls/"*) [ -n "${PRFAIL:-}" ] && exit 1; jq -n --arg base "${BASE:-}" --arg body "${BODY:-}" --arg head "${HEAD:-abc1234567}" --arg prl "${PRL:-}" --arg st "${PRSTATE:-open}" --arg mc "${MERGECOMMIT:-}" '{state:$st,base:{ref:$base},head:{sha:$head},body:$body,merged_at:(if $mc=="" then null else "2026-01-01T00:00:00Z" end),merge_commit_sha:(if $mc=="" then null else $mc end),labels:($prl|split("\n")|map(select(.!=""))|map({name:.}))}' ;;
-  *"issues/"*"/comments"*) [ -n "${COMMFAIL:-}" ] && exit 1; jq -nc --arg a "${COMM:-}" --arg b "${COMM2:-}" --arg x "${ASSOC-OWNER}" --arg y "${ASSOC2-OWNER}" '[{body:$a,authorAssociation:($x|if startswith("[") then fromjson else . end)},{body:$b,authorAssociation:$y}]|map(select(.body!=""))|map(if .authorAssociation=="-" then del(.authorAssociation) else . end)|.[]' ;;
+  "api repos/o/r/pulls/"*) [ -n "${PRFAIL:-}" ] && exit 1; jq -n --arg pra "${PRAUTHOR:-aic}" --arg pat "${PR_AT:-2025-12-31T00:00:00Z}" --arg base "${BASE:-}" --arg body "${BODY:-}" --arg head "${HEAD:-abc1234567}" --arg prl "${PRL:-}" --arg st "${PRSTATE:-open}" --arg mc "${MERGECOMMIT:-}" '{user:{login:$pra},created_at:$pat,state:$st,base:{ref:$base},head:{sha:$head},body:$body,merged_at:(if $mc=="" then null else "2026-01-01T00:00:00Z" end),merge_commit_sha:(if $mc=="" then null else $mc end),labels:($prl|split("\n")|map(select(.!=""))|map({name:.}))}' ;;
+  "api repos/o/r/issues/9/comments"*) [ -n "${COMMFAIL:-}" ] && exit 1; jq -nc --arg a "${COMM:-}" --arg b "${COMM2:-}" --arg x "${ASSOC-OWNER}" --arg y "${ASSOC2-OWNER}" --arg ta "${COMM_AT:-2026-01-01T00:00:00Z}" --arg tb "${COMM2_AT:-2026-01-01T00:00:00Z}" --arg la "${COMM_LOGIN:-aic}" --arg lb "${COMM2_LOGIN:-aic}" '[{body:$a,authorAssociation:($x|if startswith("[") then fromjson else . end),created_at:$ta,login:$la,url:"u1"},{body:$b,authorAssociation:$y,created_at:$tb,login:$lb,url:"u2"}]|map(select(.body!=""))|map(if .authorAssociation=="-" then del(.authorAssociation) else . end)|.[]' ;;
+  "api repos/o/r/issues/"*"/comments"*) [ -n "${ICOMM_FAIL:-}" ] && exit 1; if [ -n "${ICOMM:-}" ]; then jq -nc --arg a "$ICOMM" --arg x "${ICOMM_ASSOC-OWNER}" --arg t "${ICOMM_AT:-2026-01-02T00:00:00Z}" --arg u "${ICOMM_UPD:-}" '{body:$a,authorAssociation:$x,created_at:$t,updated_at:(if $u=="" then $t else $u end),login:"aic",url:"iu"}'; fi ;;
   *"issues/"*"/timeline"*) [ -n "${TLFAIL:-}" ] && exit 1; for e in ${TIMELINE:-}; do echo "$e"; done ;;
   "api repos/o/r/issues/"*) [ -n "${ISSFAIL:-}" ] && exit 1; v="ISSL_${2##*/}"; printf '%s\n' "${!v:-${ISSL:-}}" ;;
   *closingIssuesReferences*) [ -n "${GQLERR:-}" ] && { echo "boom" >&2; exit 1; }; [ -n "${GQLFAIL:-}" ] && { echo "GraphQL: API rate limit already exceeded for user ID 1." >&2; exit 1; }; for n in ${CLOSING:-}; do echo "$n"; done ;;
@@ -2428,6 +2429,55 @@ env BASE=integrasi BODY="Closes #1" HEAD=abc1234567 COMPARE_FAIL=1 PATH="$tmp/pm
 out="$(tg BEHIND=2 COMM='')"; ok "gerbang target (#109): pesan perbarui cabang muncul lebih dulu daripada tuntutan vonis QA" "$(grep -c 'tertinggal 2 commit' <<<"$out")|$(grep -c 'Laporan qa' <<<"$out")" '1|0'
 out="$(tg BEHIND=1 BASE=lain)"; ok "gerbang target (#109): basis salah tetap ditolak lebih dulu" "$(grep -c '^GAGAL: basis' <<<"$out")" 1
 grep -qF 'behind' "$root/README.md" && grep -qF 'skipped' "$root/README.md"; ok "README (#109): syarat tertinggal dan CI hijau, pengecualian dokumentasi" $? 0
+
+# 3c-24. gerbang --auto: keputusan owner yang ditulis setelah vonis terakhir untuk head memblokir sampai diakui (#110)
+dg() { env BASE=integrasi BODY="Closes #1" HEAD=abc1234567 FILES_JSON='[{"filename":"src/a.go","status":"modified"}]' COMM='Laporan qa: lulus Commit: abc1234' COMM_AT=2026-01-01T12:00:00Z "$@" PATH="$tmp/pmb:$PATH" bash "$root/scripts/pr-merge-check.sh" 9 integrasi --auto 2>&1; }
+dg >/dev/null; ok "keputusan owner (#110): tanpa komentar baru -> lulus seperti biasa" $? 0
+out="$(dg ICOMM='Constraint skema harus ditambah dalam bentuk lebih aman')"; rc=$?
+ok "keputusan owner (#110): komentar owner di issue terkait setelah vonis -> ditolak dan teksnya dicetak" "$rc|$(grep -c 'Constraint skema harus ditambah' <<<"$out")|$(grep -c 'Decision applied' <<<"$out")" '1|1|1'
+dg ICOMM='Ubah' ICOMM_AT=2026-01-01T06:00:00Z >/dev/null; ok "keputusan owner (#110): komentar lebih lama dari vonis -> lulus" $? 0
+dg ICOMM='Ubah' ICOMM_ASSOC=NONE >/dev/null; ok "keputusan owner (#110): komentar dari orang luar diabaikan" $? 0
+dg ICOMM='Ubah' ICOMM_ASSOC=COLLABORATOR >/dev/null; ok "keputusan owner (#110): komentar COLLABORATOR juga dihitung" $? 1
+dg ICOMM='Ubah' COMM2='Decision applied: constraint sudah ditambah' COMM2_AT=2026-01-02T01:00:00Z >/dev/null; ok "keputusan owner (#110): 'Decision applied' dari penulis PR setelah keputusan -> lulus" $? 0
+dg ICOMM='Ubah' COMM2='Decision applied: sudah' COMM2_AT=2026-01-02T01:00:00Z COMM2_LOGIN=orang-lain >/dev/null; ok "keputusan owner (#110): 'Decision applied' dari bukan penulis PR tidak menghapus" $? 1
+dg ICOMM='Ubah' COMM2='Decision applied: sudah' COMM2_AT=2026-01-01T13:00:00Z >/dev/null; ok "keputusan owner (#110): 'Decision applied' lebih lama dari keputusan tidak menghapus" $? 1
+dg ICOMM='owner-action: merge | gh pr merge 9 | siap' >/dev/null; ok "keputusan owner (#110): catatan owner-action mesin tidak memblokir" $? 0
+dg ICOMM='terblokir: izin git merge ditolak' >/dev/null; ok "keputusan owner (#110): catatan berhenti orchestrator (terblokir:) memblokir sampai diakui" $? 1
+dg ICOMM='Ubah' ICOMM_AT=2025-12-30T00:00:00Z >/dev/null; ok "keputusan owner (#110): komentar sebelum PR dibuat tidak memblokir" $? 0
+dg COMM2='Tolong ganti nama fungsi' COMM2_AT=2026-01-02T00:00:00Z >/dev/null; ok "keputusan owner (#110): komentar owner di PR setelah vonis memblokir" $? 1
+dg FILES_JSON='[{"filename":"docs/a.md","status":"modified"}]' COMM='' ICOMM='Ubah dokumen ini' ICOMM_AT=2026-01-01T00:00:00Z >/dev/null; ok "keputusan owner (#110): PR dokumentasi tanpa vonis memakai waktu PR dibuat sebagai batas" $? 1
+dg ICOMM='Laporan qa: ubah X sebelum merge' >/dev/null; ok "keputusan owner (#110): awalan 'Laporan qa:' tanpa vonis sah untuk sebuah commit tidak lolos sebagai komentar mesin" $? 1
+dg COMM2='Decision applied: tapi ganti Y' COMM2_AT=2026-01-02T00:00:00Z COMM2_LOGIN=orang-lain >/dev/null; ok "keputusan owner (#110): 'Decision applied:' dari bukan penulis PR dihitung sebagai komentar biasa (memblokir)" $? 1
+dg ICOMM='owner-action: tolong ubah desainnya' >/dev/null; ok "keputusan owner (#110): owner-action tanpa bentuk terstruktur tiga bagian memblokir" $? 1
+dg ICOMM='Pengecualian disetujui owner: ubah dulu' >/dev/null; ok "keputusan owner (#110): waiver tanpa bentuk sah memblokir" $? 1
+dg ICOMM='Pengecualian disetujui owner (perf): angka tak relevan (Commit: abc1234)' >/dev/null; ok "keputusan owner (#110): waiver berbentuk sah tidak memblokir" $? 0
+dg ICOMM='Ubah' ICOMM_AT=2025-12-31T01:00:00Z ICOMM_UPD=2026-01-02T00:00:00Z >/dev/null; ok "keputusan owner (#110): komentar lama yang DIEDIT setelah vonis dihitung (updated_at)" $? 1
+dg ICOMM_FAIL=1 >/dev/null; ok "keputusan owner (#110): komentar issue tak terbaca -> gagal tertutup" $? 1
+env BASE=integrasi BODY="Closes #1" HEAD=abc1234567 ICOMM='Ubah' PATH="$tmp/pmb:$PATH" bash "$root/scripts/pr-merge-check.sh" 9 integrasi >/dev/null 2>&1; ok "keputusan owner (#110): merge manual oleh owner tidak diblokir" $? 0
+grep -qF 'Decision applied' "$root/README.md"; ok "README (#110): keputusan owner setelah vonis dan 'Decision applied'" $? 0
+
+# 3c-21. ketahanan delegasi Codex: probe, prompt dari issue, keputusan hasil (#112)
+cx="$tmp/cx"; mkdir -p "$cx/ok" "$cx/nonet" "$cx/noauth" "$cx/badissue"
+cxfake() { # dir ghauth curl issue
+  printf '#!/bin/bash\nif [ "$1 $2" = "auth status" ]; then exit %s; fi\nif [ "$1 $2" = "issue view" ]; then if [ %s = 0 ]; then printf %%s "$ISSUE_JSON"; exit 0; fi; echo boom >&2; exit 1; fi\nexit 0\n' "$2" "$4" > "$1/gh"
+  printf '#!/bin/bash\nexit %s\n' "$3" > "$1/curl"; chmod +x "$1/gh" "$1/curl"; }
+cxfake "$cx/ok" 0 0 0; cxfake "$cx/nonet" 0 6 0; cxfake "$cx/noauth" 1 0 0; cxfake "$cx/badissue" 0 0 1
+out="$(PATH="$cx/ok:$PATH" bash "$root/scripts/codex-probe.sh" 2>&1)"; ok "codex-probe (#112): jaringan dan auth baik -> codex-ready exit 0" "$?|$out" '0|codex-ready'
+out="$(PATH="$cx/nonet:$PATH" bash "$root/scripts/codex-probe.sh" 2>&1)"; ok "codex-probe (#112): api.github.com tak terjangkau -> unavailable exit 1" "$?|$(grep -c '^codex-unavailable: .*api.github.com' <<<"$out")" '1|1'
+out="$(PATH="$cx/noauth:$PATH" bash "$root/scripts/codex-probe.sh" 2>&1)"; ok "codex-probe (#112): gh auth gagal -> unavailable exit 1" "$?|$(grep -c '^codex-unavailable: .*auth' <<<"$out")" '1|1'
+CXJ='{"title":"Do thing","body":"Body text\n- [ ] criterion one","comments":[{"authorAssociation":"OWNER","body":"owner note"},{"authorAssociation":"NONE","body":"stranger note"},{"authorAssociation":"COLLABORATOR","body":"collab note"}]}'
+out="$(ISSUE_JSON="$CXJ" PATH="$cx/ok:$PATH" bash "$root/scripts/codex-prompt.sh" 7 2>&1)"; rc=$?
+ok "codex-prompt (#112): memuat judul, isi, kriteria, komentar owner/collaborator; tanpa komentar asing" "$rc|$(grep -c 'Do thing' <<<"$out")|$(grep -c 'criterion one' <<<"$out")|$(grep -c 'owner note' <<<"$out")|$(grep -c 'collab note' <<<"$out")|$(grep -c 'stranger note' <<<"$out")" '0|1|1|1|1|0'
+out="$(PATH="$cx/badissue:$PATH" bash "$root/scripts/codex-prompt.sh" 7 2>&1)"; ok "codex-prompt (#112): issue tak terbaca -> gagal dengan pesan" "$?|$(grep -c 'cannot read issue' <<<"$out")" '1|1'
+bash "$root/scripts/codex-prompt.sh" >/dev/null 2>&1; ok "codex-prompt (#112): tanpa argumen -> gagal" $? 2
+cxw="$tmp/cxw"; git init -q "$cxw"; git -C "$cxw" -c user.email=a@b -c user.name=a commit -q --allow-empty -m init
+out="$(bash "$root/scripts/codex-result.sh" "$cxw" 2>&1)"; ok "codex-result (#112): diff kosong -> exit 1 dan pesan" "$?|$out" '1|codex unavailable: empty diff'
+echo x > "$cxw/new.txt"; bash "$root/scripts/codex-result.sh" "$cxw" >/dev/null 2>&1; ok "codex-result (#112): berkas untracked -> exit 0" $? 0
+git -C "$cxw" add new.txt; bash "$root/scripts/codex-result.sh" "$cxw" >/dev/null 2>&1; ok "codex-result (#112): perubahan staged -> exit 0" $? 0
+bash "$root/scripts/codex-result.sh" "$tmp/nonexistent-wt" >/dev/null 2>&1; ok "codex-result (#112): worktree tak ada -> exit 1" $? 1
+for f in codex-probe codex-prompt codex-result; do [ "$(git -C "$root" ls-files -s scripts/$f.sh | cut -c1-6)" = 100755 ]; ok "mode eksekusi (#112): scripts/$f.sh 100755" $? 0; done
+grep -q 'codex-prompt.sh' "$root/skills/orchestrate/SKILL.md" && grep -q 'codex unavailable' "$root/skills/orchestrate/SKILL.md"; ok "orchestrate (#112): memuat alur probe/prompt/fallback" $? 0
+grep -q 'codex-probe' "$root/README.md"; ok "README (#112): menyebut codex-probe" $? 0
 
 # 3c-23. blocked items (#108): blocked-mark.sh marks once, blocked-list.sh lists, autopilot treats blocked as waiting on the owner (exit 3, never 5)
 BM="$tmp/bm"; mkdir -p "$BM/bin"
