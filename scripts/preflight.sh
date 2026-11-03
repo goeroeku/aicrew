@@ -54,6 +54,16 @@ case "$backend" in
         false) say AWAS "GitHub: delete_branch_on_merge=false, cabang ter-merge menumpuk dan PR bertumpuk bisa berbasis cabang induk yang sudah ter-merge (isinya tak masuk integrasi). Perbaiki: gh api -X PATCH repos/$rp -F delete_branch_on_merge=true" ;;
       esac
     fi
+    # labels (#111): label.sh owns the fixed names; warn when open issues carry a default/legacy name other than the configured one (agent-created duplicate)
+    if [ -n "${rp:-}" ]; then
+      used="$(gh api "repos/$rp/issues?state=open&per_page=100" 2>/dev/null | jq -r '.[].labels[]?.name' 2>/dev/null || true)"
+      for t in integrated:integrated:di-integrasi auto:auto-decision:keputusan-otomatis notsplit:unsplit:belum-dipecah noparent:no-parent:tanpa-induk waiting:awaiting-release:menunggu-rilis; do
+        IFS=: read -r k d1 d2 <<<"$t"; eff="$(bash "$(dirname "$0")/label.sh" "$k")"; known="$(bash "$(dirname "$0")/label.sh" "$k" --all)"
+        for d in $d1 $d2; do
+          grep -qxF "$d" <<<"$known" || ! grep -qxF "$d" <<<"$used" || say AWAS "label '$d' is on open issues but the configured $k label is '$eff': agent-created duplicate? Use: bash scripts/label.sh $k"
+        done
+      done
+    fi
     if git remote -v 2>/dev/null | grep -q .; then
       n="$(bash "$(dirname "$0")/cleanup.sh" --count 2>/dev/null)"
       [ "${n:-0}" = 0 ] || say info "$n cabang ter-merge (bukti offline) belum dihapus; daftar dan pengecualian PR terbuka: bash scripts/cleanup.sh"

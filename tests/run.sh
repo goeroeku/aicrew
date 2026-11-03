@@ -2511,4 +2511,36 @@ ok "autopilot: blocked plus a runnable issue -> still runs rounds (exit 2, not 3
 [ -x "$root/scripts/blocked-mark.sh" ] && [ -x "$root/scripts/blocked-list.sh" ]; ok "blocked scripts are executable" $? 0
 grep -q 'blocked-mark.sh' "$root/skills/orchestrate/SKILL.md"; ok "orchestrate skill documents blocked-mark.sh" $? 0
 
+# 3c-22. agent-created labels (preflight), owner-only criteria rule, blocked-note.sh (#111, #107)
+mkdir -p "$tmp/bn/bin" "$tmp/bn/h" "$tmp/bn/r"; git init -q "$tmp/bn/r"
+cat > "$tmp/bn/bin/gh" <<'EOS'
+#!/usr/bin/env bash
+echo "$*" >> "$FAKE/calls"
+case "$*" in
+  "auth status"*) exit 0 ;;
+  *"/comments"*"-f body="*|*"/comments"*"-F body="*) exit 0 ;;
+  *"/issues/"*"/comments"*) printf '%s' "${COMMENTS:-[]}" ;;
+  *"/issues?state=open"*) printf '%s' "${LBL:-[]}" ;;
+esac
+exit 0
+EOS
+chmod +x "$tmp/bn/bin/gh"; export FAKE="$tmp/bn"; : > "$FAKE/calls"
+lp() { (cd "$tmp/bn/r" && GH_REPO=o/r "$@" HOME="$tmp/bn/h" PATH="$tmp/bn/bin:$PATH" bash "$root/scripts/preflight.sh" github 2>&1); }
+out="$(lp env LBL='[{"labels":[{"name":"integrated"},{"name":"role:qa"}]}]' AICREW_LABEL_INTEGRATED=done)"
+ok "preflight labels (#111): label default sementara yang dikonfigurasi 'done' -> AWAS menyebut kedua nama" "$(grep '^AWAS.*label' <<<"$out" | grep -c "integrated.*done")" 1
+out="$(lp env LBL='[{"labels":[{"name":"integrated"},{"name":"role:qa"}]}]')"
+ok "preflight labels (#111): nama default dan role:* -> tanpa AWAS label" "$(grep -c '^AWAS.*label' <<<"$out")" 0
+grep -qF 'label.sh' "$root/skills/orchestrate/SKILL.md" && grep -qiE 'never create labels' "$root/skills/orchestrate/SKILL.md"; ok "orchestrate (#111): aturan jangan membuat label, pakai label.sh" $? 0
+grep -qF 'Refs #N' "$root/skills/orchestrate/SKILL.md" && grep -qF 'owner only' "$root/skills/orchestrate/SKILL.md"; ok "orchestrate (#111): kriteria 'owner only' -> Refs bukan Closes" $? 0
+bnr() { env GH_REPO=o/r "$@" PATH="$tmp/bn/bin:$PATH" bash "$root/scripts/blocked-note.sh" 7 'git merge' 2>&1; }
+: > "$FAKE/calls"; out="$(bnr COMMENTS='[]')"
+ok "blocked-note (#107): tanpa komentar lama -> satu komentar blocked-by-permission: git merge" "$(grep -c 'api repos/o/r/issues/7/comments.*blocked-by-permission: git merge' "$FAKE/calls")" 1
+ok "blocked-note (#107): mencetak baris settings" "$(grep -c 'Bash(git merge:\*)' <<<"$out")" 1
+: > "$FAKE/calls"; out="$(bnr COMMENTS='[{"body":"blocked-by-permission: git merge"}]')"
+ok "blocked-note (#107): komentar sama sudah ada -> tidak menulis ulang tetapi tetap cetak baris settings" "$(grep -c -e '-f body=' "$FAKE/calls")|$(grep -c 'Bash(git merge:\*)' <<<"$out")" '0|1'
+: > "$FAKE/calls"; bnr COMMENTS='[{"body":"blocked-by-permission: git rebase"}]' >/dev/null
+ok "blocked-note (#107): komentar untuk perintah lain tidak menghalangi" "$(grep -c -e '-f body=' "$FAKE/calls")" 1
+[ -x "$root/scripts/blocked-note.sh" ]; ok "blocked-note (#107): berkas dapat dieksekusi" $? 0
+grep -qF 'blocked-by-permission' "$root/skills/orchestrate/SKILL.md" && grep -qF 'blocked-by-permission' "$root/README.md"; ok "blocked-note (#107): terdokumentasi di SKILL dan README" $? 0
+
 [ "$fails" = 0 ] && echo "SEMUA LULUS" || { echo "$fails GAGAL"; exit 1; }
