@@ -2456,4 +2456,27 @@ dg ICOMM_FAIL=1 >/dev/null; ok "keputusan owner (#110): komentar issue tak terba
 env BASE=integrasi BODY="Closes #1" HEAD=abc1234567 ICOMM='Ubah' PATH="$tmp/pmb:$PATH" bash "$root/scripts/pr-merge-check.sh" 9 integrasi >/dev/null 2>&1; ok "keputusan owner (#110): merge manual oleh owner tidak diblokir" $? 0
 grep -qF 'Decision applied' "$root/README.md"; ok "README (#110): keputusan owner setelah vonis dan 'Decision applied'" $? 0
 
+# 3c-21. ketahanan delegasi Codex: probe, prompt dari issue, keputusan hasil (#112)
+cx="$tmp/cx"; mkdir -p "$cx/ok" "$cx/nonet" "$cx/noauth" "$cx/badissue"
+cxfake() { # dir ghauth curl issue
+  printf '#!/bin/bash\nif [ "$1 $2" = "auth status" ]; then exit %s; fi\nif [ "$1 $2" = "issue view" ]; then if [ %s = 0 ]; then printf %%s "$ISSUE_JSON"; exit 0; fi; echo boom >&2; exit 1; fi\nexit 0\n' "$2" "$4" > "$1/gh"
+  printf '#!/bin/bash\nexit %s\n' "$3" > "$1/curl"; chmod +x "$1/gh" "$1/curl"; }
+cxfake "$cx/ok" 0 0 0; cxfake "$cx/nonet" 0 6 0; cxfake "$cx/noauth" 1 0 0; cxfake "$cx/badissue" 0 0 1
+out="$(PATH="$cx/ok:$PATH" bash "$root/scripts/codex-probe.sh" 2>&1)"; ok "codex-probe (#112): jaringan dan auth baik -> codex-ready exit 0" "$?|$out" '0|codex-ready'
+out="$(PATH="$cx/nonet:$PATH" bash "$root/scripts/codex-probe.sh" 2>&1)"; ok "codex-probe (#112): api.github.com tak terjangkau -> unavailable exit 1" "$?|$(grep -c '^codex-unavailable: .*api.github.com' <<<"$out")" '1|1'
+out="$(PATH="$cx/noauth:$PATH" bash "$root/scripts/codex-probe.sh" 2>&1)"; ok "codex-probe (#112): gh auth gagal -> unavailable exit 1" "$?|$(grep -c '^codex-unavailable: .*auth' <<<"$out")" '1|1'
+CXJ='{"title":"Do thing","body":"Body text\n- [ ] criterion one","comments":[{"authorAssociation":"OWNER","body":"owner note"},{"authorAssociation":"NONE","body":"stranger note"},{"authorAssociation":"COLLABORATOR","body":"collab note"}]}'
+out="$(ISSUE_JSON="$CXJ" PATH="$cx/ok:$PATH" bash "$root/scripts/codex-prompt.sh" 7 2>&1)"; rc=$?
+ok "codex-prompt (#112): memuat judul, isi, kriteria, komentar owner/collaborator; tanpa komentar asing" "$rc|$(grep -c 'Do thing' <<<"$out")|$(grep -c 'criterion one' <<<"$out")|$(grep -c 'owner note' <<<"$out")|$(grep -c 'collab note' <<<"$out")|$(grep -c 'stranger note' <<<"$out")" '0|1|1|1|1|0'
+out="$(PATH="$cx/badissue:$PATH" bash "$root/scripts/codex-prompt.sh" 7 2>&1)"; ok "codex-prompt (#112): issue tak terbaca -> gagal dengan pesan" "$?|$(grep -c 'cannot read issue' <<<"$out")" '1|1'
+bash "$root/scripts/codex-prompt.sh" >/dev/null 2>&1; ok "codex-prompt (#112): tanpa argumen -> gagal" $? 2
+cxw="$tmp/cxw"; git init -q "$cxw"; git -C "$cxw" -c user.email=a@b -c user.name=a commit -q --allow-empty -m init
+out="$(bash "$root/scripts/codex-result.sh" "$cxw" 2>&1)"; ok "codex-result (#112): diff kosong -> exit 1 dan pesan" "$?|$out" '1|codex unavailable: empty diff'
+echo x > "$cxw/new.txt"; bash "$root/scripts/codex-result.sh" "$cxw" >/dev/null 2>&1; ok "codex-result (#112): berkas untracked -> exit 0" $? 0
+git -C "$cxw" add new.txt; bash "$root/scripts/codex-result.sh" "$cxw" >/dev/null 2>&1; ok "codex-result (#112): perubahan staged -> exit 0" $? 0
+bash "$root/scripts/codex-result.sh" "$tmp/nonexistent-wt" >/dev/null 2>&1; ok "codex-result (#112): worktree tak ada -> exit 1" $? 1
+for f in codex-probe codex-prompt codex-result; do [ "$(git -C "$root" ls-files -s scripts/$f.sh | cut -c1-6)" = 100755 ]; ok "mode eksekusi (#112): scripts/$f.sh 100755" $? 0; done
+grep -q 'codex-prompt.sh' "$root/skills/orchestrate/SKILL.md" && grep -q 'codex unavailable' "$root/skills/orchestrate/SKILL.md"; ok "orchestrate (#112): memuat alur probe/prompt/fallback" $? 0
+grep -q 'codex-probe' "$root/README.md"; ok "README (#112): menyebut codex-probe" $? 0
+
 [ "$fails" = 0 ] && echo "SEMUA LULUS" || { echo "$fails GAGAL"; exit 1; }
