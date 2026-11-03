@@ -29,6 +29,14 @@ ghx_explain_limit() {
   echo "Penyebab: batas GraphQL GitHub habis${t:+; reset $t UTC}. Tunggu lalu ulangi; gerbang tidak dilewati."
 }
 
+# dipakai pr-merge-check.sh saat menolak: hanya mencetak bila batas REST (core) benar-benar habis (#113); `gh api rate_limit` tidak memakai kuota
+ghx_explain_rest_limit() {
+  local r rem rst t; r="$(gh api rate_limit --jq '.resources.core | "\(.remaining) \(.reset)"' 2>/dev/null)" || return 0
+  read -r rem rst <<<"$r"; [ "${rem:-}" = 0 ] || return 0
+  t="$(_ghx_fmt "${rst:-}")"
+  echo "Penyebab: batas REST GitHub habis${t:+; reset $t UTC}. Tunggu lalu ulangi; gerbang tidak dilewati."
+}
+
 ghx_enter_rest() {
   local first=1; [ -s "$GHX_STATE" ] && first=0
   GHX_REST=1; export GHX_REST; echo 1 > "$GHX_STATE"

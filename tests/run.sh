@@ -18,19 +18,20 @@ $B bogus >/dev/null 2>&1; ok "budget: perintah asing -> exit 64" $? 64
 # 2. pr-merge-check.sh dengan gh palsu (BASE/BODY dari lingkungan)
 mkdir "$tmp/bin"; cat > "$tmp/bin/gh" <<'EOF'
 #!/usr/bin/env bash
+# gh palsu untuk gerbang: bacaan REST (#113) mengeluarkan hasil SETELAH --jq, seperti gh asli
+echo "$*" >> "${CALLS:-/dev/null}"
 case "$*" in
+  "api rate_limit"*) printf '%s %s\n' "${REST_REM:-4000}" "${REST_RESET:-1793490517}" ;;
   *"/pulls/"*"/files"*) [ -n "${FILES_FAIL:-}" ] && exit 1; echo "${FILES_JSON:-[]}" ;;
   *"contents/docs/WORKFLOW.md"*) [ -n "${WF_FAIL:-}" ] && exit 1; printf '%s\n' "${WFTEXT:-}" ;;
   "api repos/o/r") echo '{"default_branch":"main"}' ;;
   "repo view"*) echo o/r ;;
-  *"pr diff"*) [ -n "${DIFFFAIL:-}" ] && exit 1; printf '%s\n' "${DIFF:-}" ;;
-  *baseRefName*) echo "$BASE" ;;
-  *headRefOid*) echo "${HEAD:-abc1234567}" ;;
-  *comments*) jq -n --arg a "${COMM:-}" --arg b "${COMM2:-}" --arg x "${ASSOC-OWNER}" --arg y "${ASSOC2-OWNER}" '{comments:([{body:$a,authorAssociation:($x|if startswith("[") then fromjson else . end)},{body:$b,authorAssociation:$y}]|map(select(.body!=""))|map(if .authorAssociation=="-" then del(.authorAssociation) else . end))}' ;;
-  *"issue view"*) [ -n "${ISSFAIL:-}" ] && exit 1; v="ISSL_$3"; echo "${!v:-${ISSL:-}}" ;;
-  *closingIssuesReferences*) for n in ${CLOSING:-}; do echo "$n"; done ;;
-  *labels*) printf '%s\n' "${PRL:-}" ;;
-  *body*) printf '%s\n' "$BODY" ;;
+  *v3.diff*) [ -n "${DIFFFAIL:-}" ] && exit 1; printf '%s\n' "${DIFF:-}" ;;
+  "api repos/o/r/pulls/"*) [ -n "${PRFAIL:-}" ] && exit 1; jq -n --arg base "${BASE:-}" --arg body "${BODY:-}" --arg head "${HEAD:-abc1234567}" --arg prl "${PRL:-}" --arg st "${PRSTATE:-open}" --arg mc "${MERGECOMMIT:-}" '{state:$st,base:{ref:$base},head:{sha:$head},body:$body,merged_at:(if $mc=="" then null else "2026-01-01T00:00:00Z" end),merge_commit_sha:(if $mc=="" then null else $mc end),labels:($prl|split("\n")|map(select(.!=""))|map({name:.}))}' ;;
+  *"issues/"*"/comments"*) [ -n "${COMMFAIL:-}" ] && exit 1; jq -nc --arg a "${COMM:-}" --arg b "${COMM2:-}" --arg x "${ASSOC-OWNER}" --arg y "${ASSOC2-OWNER}" '[{body:$a,authorAssociation:($x|if startswith("[") then fromjson else . end)},{body:$b,authorAssociation:$y}]|map(select(.body!=""))|map(if .authorAssociation=="-" then del(.authorAssociation) else . end)|.[]' ;;
+  *"issues/"*"/timeline"*) [ -n "${TLFAIL:-}" ] && exit 1; for e in ${TIMELINE:-}; do echo "$e"; done ;;
+  "api repos/o/r/issues/"*) [ -n "${ISSFAIL:-}" ] && exit 1; v="ISSL_${2##*/}"; printf '%s\n' "${!v:-${ISSL:-}}" ;;
+  *closingIssuesReferences*) [ -n "${GQLERR:-}" ] && { echo "boom" >&2; exit 1; }; [ -n "${GQLFAIL:-}" ] && { echo "GraphQL: API rate limit already exceeded for user ID 1." >&2; exit 1; }; for n in ${CLOSING:-}; do echo "$n"; done ;;
 esac
 EOF
 chmod +x "$tmp/bin/gh"; mkdir "$tmp/pmb"; cp "$tmp/bin/gh" "$tmp/pmb/gh"; P="$tmp/bin:$PATH"; M="bash $root/scripts/pr-merge-check.sh"
@@ -854,12 +855,14 @@ ok "board <owner> <n> <issue> Done: batas -> PATCH opsi Done via REST" "$(export
 ok "board <owner> <n> <issue> Done: REST kartu 403 -> exit non-0 dengan petunjuk scope" "$([ $rc != 0 ] && echo gagal)|$(grep -c "scope 'project'" "$tmp/rl/err")" 'gagal|1'
 
 # 3i-6. pr-merge-check.sh: tetap menolak saat GraphQL habis, tetapi menjelaskan penyebab dan jam reset
-PM() { (cd "$tmp/rl/w" && PATH="$tmp/rl/bin:$PATH" bash "$root/scripts/pr-merge-check.sh" 15 main 2>&1); }
+PM() { (cd "$tmp/rl/w" && GH_REPO=o/r PATH="$tmp/rl/bin:$PATH" bash "$root/scripts/pr-merge-check.sh" 15 "${PMDST:-integ}" 2>&1); }
 out="$(export GHX_SIM=1; PM)"; rc=$?
-ok "pr-merge-check: GraphQL habis -> exit 1, GAGAL, batas GraphQL, jam reset" "$rc|$(grep -c '^GAGAL' <<<"$out")|$(grep -c 'batas GraphQL GitHub habis; reset 23:48:37 UTC' <<<"$out")" '1|1|1'
-out="$(export GHX_SIM=1 NORESET=1; PM)"; rc=$?
+ok "pr-merge-check (#113): GraphQL habis -> gerbang tetap lewat REST, lulus dengan PERINGATAN" "$rc|$(grep -c '^PERINGATAN: GraphQL habis' <<<"$out")|$(grep -c '^ok: gerbang lolos' <<<"$out")" '0|1|1'
+out="$(export GHX_SIM=1; PMDST=main PM)"; rc=$?
+ok "pr-merge-check (#113): GraphQL habis + basis salah -> tetap ditolak, jam reset dijelaskan" "$rc|$(grep -c '^GAGAL: basis' <<<"$out")|$(grep -c 'batas GraphQL GitHub habis; reset 23:48:37 UTC' <<<"$out")" '1|1|1'
+out="$(export GHX_SIM=1 NORESET=1; PMDST=main PM)"; rc=$?
 ok "pr-merge-check: header reset hilang -> tetap menolak, pesan batas tanpa jam" "$rc|$(grep -c 'batas GraphQL GitHub habis\. Tunggu' <<<"$out")|$(grep -c 'reset 23' <<<"$out")" '1|1|0'
-out="$(export REMAINING=7; PM)"; rc=$?
+out="$(export REMAINING=7; PMDST=main PM)"; rc=$?
 ok "pr-merge-check: kegagalan biasa (basis salah) -> tanpa baris Penyebab" "$rc|$(grep -c '^GAGAL: basis' <<<"$out")|$(grep -c '^Penyebab' <<<"$out")" '1|1|0'
 
 # 3i-7. README menjelaskan mode cadangan REST dan perilakunya
@@ -2325,6 +2328,37 @@ ok "autopilot lock (#115): stale lock (dead pid) taken over, run completes" "$rc
 ok "autopilot lock (#115): lock released after normal exit" "$([ -e "$lk" ] && echo present || echo gone)" gone
 ap3 "$AP3OPEN" close; rc=$?
 ok "autopilot lock (#115): restart after a normal exit works" "$rc" 0
+
+# 3c-18. gerbang membaca lewat REST dan tetap berjalan saat GraphQL habis (#113)
+rg() { env BASE=integrasi BODY="Closes #1" HEAD=abc1234567 "$@" PATH="$tmp/pmb:$PATH" bash "$root/scripts/pr-merge-check.sh" 9 integrasi 2>&1; }
+RS2=$'Laporan security: lulus\nCommit: abc1234'
+rg ISSL=needs-security GQLFAIL=1 >/dev/null; ok "gerbang REST (#113): GraphQL habis, issue di kata kunci sensitif tanpa laporan -> ditolak" $? 1
+out="$(rg ISSL=needs-security GQLFAIL=1 COMM="$RS2")"; rc=$?
+ok "gerbang REST (#113): GraphQL habis, laporan lulus untuk head -> lulus dengan PERINGATAN" "$rc|$(grep -c '^PERINGATAN: GraphQL habis' <<<"$out")" '0|1'
+rg GQLFAIL=1 TIMELINE=connected >/dev/null; ok "gerbang REST (#113): GraphQL habis + tautan sidebar tak terurai -> gagal tertutup" $? 1
+out="$(rg GQLFAIL=1 TIMELINE=connected)"; ok "gerbang REST (#113): pesan tautan sidebar menyebut tunggu reset" "$(grep -c 'tautan sidebar' <<<"$out")" 1
+rg GQLFAIL=1 TIMELINE='connected disconnected' >/dev/null; ok "gerbang REST (#113): tautan sidebar sudah dilepas -> lanjut" $? 0
+rg GQLFAIL=1 TLFAIL=1 >/dev/null; ok "gerbang REST (#113): timeline tak terbaca saat GraphQL habis -> gagal tertutup" $? 1
+rg ISSL_2=needs-security CLOSING=2 >/dev/null; ok "gerbang REST (#113): GraphQL tersedia, issue dari sidebar tetap diperiksa" $? 1
+rg GQLERR=1 >/dev/null; ok "gerbang REST (#113): galat GraphQL selain batas -> gagal tertutup" $? 1
+rg PRFAIL=1 >/dev/null; ok "gerbang REST (#113): PR tak terbaca lewat REST -> gagal" $? 1
+rg COMMFAIL=1 >/dev/null; ok "gerbang REST (#113): komentar tak terbaca lewat REST -> gagal" $? 1
+rg ISSFAIL=1 >/dev/null; ok "gerbang REST (#113): label issue tak terbaca lewat REST -> gagal" $? 1
+rg DIFFFAIL=1 >/dev/null; ok "gerbang REST (#113): diff tak terbaca lewat REST -> gagal" $? 1
+: > "$tmp/gcalls"; rg CALLS="$tmp/gcalls" CLOSING=2 >/dev/null
+ok "gerbang REST (#113): satu-satunya gh pr view adalah closingIssuesReferences, tanpa gh pr diff atau gh issue view" "$(grep -c '^pr view' "$tmp/gcalls")|$(grep '^pr view' "$tmp/gcalls" | grep -vc closingIssuesReferences)|$(grep -c '^pr diff\|^issue view' "$tmp/gcalls")" '1|0|0'
+for b in 'Fixes o/r#5' 'Closes https://github.com/o/r/issues/5' 'closes goeroeku/aicrew#5'; do rg GQLFAIL=1 BODY="$b" >/dev/null; ok "gerbang REST (#113): GraphQL habis + '$b' (lintas repo/URL) -> gagal tertutup" $? 1; done
+rg GQLFAIL=1 BODY=$'Closes\t#5' ISSL_5=needs-security >/dev/null; ok "gerbang REST (#113): GraphQL habis + kata kunci lalu tab lalu #5 -> issue 5 diperiksa" $? 1
+rg GQLFAIL=1 BODY=$'Closes\n#5' ISSL_5=needs-security >/dev/null; ok "gerbang REST (#113): GraphQL habis + #5 di baris berikutnya -> issue 5 diperiksa" $? 1
+rg GQLFAIL=1 BODY='Refs #5' ISSL_5=needs-security >/dev/null; ok "gerbang REST (#113): GraphQL habis -> semua #N di badan diperiksa (lebih ketat, hanya dalam cadangan)" $? 1
+rg BODY='Refs #5' ISSL_5=needs-security >/dev/null; ok "gerbang REST (#113): GraphQL tersedia -> 'Refs #5' tidak diperiksa seperti biasa" $? 0
+: > "$tmp/gcalls2"; rg CALLS="$tmp/gcalls2" >/dev/null; ok "gerbang REST (#113): gh pr view memakai -R repo yang sama dengan bacaan REST" "$(grep '^pr view' "$tmp/gcalls2" | grep -c -- '-R o/r')" 1
+out="$(rg PRFAIL=1 REST_REM=0)"; rc=$?
+ok "gerbang REST (#113): REST habis -> gagal, batas REST dan jam reset disebut" "$rc|$(grep -c 'batas REST GitHub habis; reset 23:48:37 UTC' <<<"$out")" '1|1'
+out="$(rg PRFAIL=1 REST_REM=3)"; ok "gerbang REST (#113): kegagalan REST biasa -> tanpa baris batas REST" "$(grep -c 'batas REST' <<<"$out")" 0
+out="$(env BASE=integrasi PRSTATE=open PATH="$tmp/pmb:$PATH" bash "$root/scripts/pr-merge-check.sh" 9 integrasi --after 2>&1)"; rc=$?
+ok "gerbang REST (#113): --after PR belum merged -> gagal" "$rc|$(grep -c 'belum MERGED' <<<"$out")" '1|1'
+grep -qF 'GraphQL' "$root/README.md" && grep -qF 'closingIssuesReferences' "$root/README.md"; ok "README (#113): gerbang lewat REST, closingIssuesReferences dan cadangan saat GraphQL habis" $? 0
 
 # 3c-17. autopilot x ci-classify (#80): infrastructure CI failure on the only open PR = waiting for the owner, no orchestrator round
 AP3PR='[{"number":5,"head":"issue-1","headRefName":"issue-1","headRefOid":"abc1234","state":"OPEN","isDraft":false,"isCrossRepository":false}]'
