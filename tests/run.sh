@@ -35,6 +35,7 @@ case "$*" in
   "api repos/o/r/issues/9/comments"*) [ -n "${COMMFAIL:-}" ] && exit 1; jq -nc --arg a "${COMM:-}" --arg b "${COMM2:-}" --arg x "${ASSOC-OWNER}" --arg y "${ASSOC2-OWNER}" --arg ta "${COMM_AT:-2026-01-01T00:00:00Z}" --arg tb "${COMM2_AT:-2026-01-01T00:00:00Z}" --arg la "${COMM_LOGIN:-aic}" --arg lb "${COMM2_LOGIN:-aic}" '[{body:$a,authorAssociation:($x|if startswith("[") then fromjson else . end),created_at:$ta,login:$la,url:"u1"},{body:$b,authorAssociation:$y,created_at:$tb,login:$lb,url:"u2"}]|map(select(.body!=""))|map(if .authorAssociation=="-" then del(.authorAssociation) else . end)|.[]' ;;
   "api repos/o/r/issues/"*"/comments"*) [ -n "${ICOMM_FAIL:-}" ] && exit 1; if [ -n "${ICOMM:-}" ]; then jq -nc --arg a "$ICOMM" --arg x "${ICOMM_ASSOC-OWNER}" --arg t "${ICOMM_AT:-2026-01-02T00:00:00Z}" --arg u "${ICOMM_UPD:-}" '{body:$a,authorAssociation:$x,created_at:$t,updated_at:(if $u=="" then $t else $u end),login:"aic",url:"iu"}'; fi ;;
   *"issues/"*"/timeline"*) [ -n "${TLFAIL:-}" ] && exit 1; for e in ${TIMELINE:-}; do echo "$e"; done ;;
+  "api repos/o/r/issues/"*"--jq .body"*) [ -n "${ISSBODYFAIL:-}" ] && exit 1; v="ISSB_${2##*/}"; printf '%s\n' "${!v:-${ISSB:-}}" ;;
   "api repos/o/r/issues/"*) [ -n "${ISSFAIL:-}" ] && exit 1; v="ISSL_${2##*/}"; printf '%s\n' "${!v:-${ISSL:-}}" ;;
   *closingIssuesReferences*) [ -n "${GQLERR:-}" ] && { echo "boom" >&2; exit 1; }; [ -n "${GQLFAIL:-}" ] && { echo "GraphQL: API rate limit already exceeded for user ID 1." >&2; exit 1; }; for n in ${CLOSING:-}; do echo "$n"; done ;;
 esac
@@ -2762,5 +2763,30 @@ out="$(ohg FILES_JSON='[{"filename":"tests/existing.sh","previous_filename":"tes
 ok "test additions (#132): modified entry that carries previous_filename still requires approval" "$rc|$(grep -c "$REQ" <<<"$out")" '1|1'
 ohg FILES_JSON='[{"filename":"tests/existing.sh","status":"modified","additions":3,"deletions":0}]' APPROVAL_JSON="$(oha "$OH_APPROVAL")" >/dev/null
 ok "test additions (#132): addition-only test with an approval present still passes" $? 0
+
+# 3c-29. Gate refuses in --auto and warns in manual mode when a PR closes an issue with an unchecked owner-only criterion (#111).
+out="$(dg BODY="Closes #4" CLOSING=4 ISSB_4=$'## Acceptance criteria\n- [ ] criterion (owner only)')"; rc=$?
+ok "owner-only (#111): unchecked owner-only criterion in closed issue -> --auto refuses" "$rc|$(grep -c 'marked owner only' <<<"$out")" '1|1'
+dg BODY="Closes #4" CLOSING=4 ISSB_4=$'## Acceptance criteria\n- [x] criterion (owner only)' >/dev/null
+ok "owner-only (#111): checked [x] owner-only criterion -> passes" $? 0
+dg BODY="Refs #4" CLOSING="" ISSB_4='- [ ] criterion (owner only)' >/dev/null
+ok "owner-only (#111): Refs #4 (non-closing) with unchecked owner-only criterion -> passes" $? 0
+out="$(rg BODY="Closes #4" CLOSING=4 ISSB_4='- [ ] criterion (owner only)')"; rc=$?
+ok "owner-only (#111): manual mode warns without blocking" "$rc|$(grep -c 'PERINGATAN: PR closes issue' <<<"$out")" '0|1'
+out="$(dg BODY="Closes #4" CLOSING=4 ISSBODYFAIL=1)"; rc=$?
+ok "owner-only (#111): issue body read failure fails closed" "$rc|$(grep -c 'body of issue #4 could not be read' <<<"$out")" '1|1'
+out="$(dg BODY="Closes #4" CLOSING=4 ISSB_4='  * [ ] check prod (owner-only)')"; rc=$?
+ok "owner-only (#111): hyphenated owner-only and * bullet refused in --auto" "$rc|$(grep -c 'marked owner only' <<<"$out")" '1|1'
+out="$(dg BODY="Closes #4" CLOSING=4 ISSB_4='- [ ] verify (OWNER ONLY)')"; rc=$?
+ok "owner-only (#111): uppercase OWNER ONLY refused in --auto" "$rc|$(grep -c 'marked owner only' <<<"$out")" '1|1'
+
+for fmt in '1. [ ] check prod (owner only)' '+ [ ] check prod (owner only)' '> - [ ] check prod (owner only)' '- [ ] check prod (owner  only)' '- [ ] check prod (owner_only)' '2) [ ] check prod (owner only)'; do
+  out="$(dg BODY="Closes #4" CLOSING=4 ISSB_4="$fmt")"; rc=$?
+  ok "owner-only (#111): format '$fmt' refused in --auto" "$rc|$(grep -c 'marked owner only' <<<"$out")" '1|1'
+done
+dg BODY="Closes #4" CLOSING=4 ISSB_4=$'- [ ] check prod (owner only)\r\n' >/dev/null
+ok "owner-only (#111): CRLF issue body is refused too" $? 1
+dg BODY="Closes #4" CLOSING=4 ISSB_4='' >/dev/null
+ok "owner-only (#111): empty issue body passes" $? 0
 
 [ "$fails" = 0 ] && echo "SEMUA LULUS" || { echo "$fails GAGAL"; exit 1; }
