@@ -105,10 +105,16 @@
       "Bash(rtk gh ssh-key:*)",
       "Bash(rtk gh gist:*)",
       "Bash(rtk gh auth token:*)",
-      "Bash(*autonomy.sh on*)",
-      "Bash(rtk *autonomy.sh on*)",
+      "Bash(*autonomy.sh *on*)",
+      "Bash(rtk *autonomy.sh *on*)",
       "Bash(*autonomy.sh _expire*)",
       "Bash(rtk *autonomy.sh _expire*)",
+      "Bash(git rebase * --exec*)",
+      "Bash(git rebase -x*)",
+      "Bash(rtk git rebase * --exec*)",
+      "Bash(rtk git rebase -x*)",
+      "Bash(gh pr merge * --admin*)",
+      "Bash(rtk gh pr merge * --admin*)",
       "Edit(.aicrew/autonomy.json)",
       "Write(.aicrew/autonomy.json)"
     ]
