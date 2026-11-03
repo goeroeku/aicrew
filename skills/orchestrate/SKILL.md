@@ -61,7 +61,7 @@ issue terbuka → laporkan penyumbatnya dan berhenti.
 2. Worktree: baca baris `Worktree:` di `WORKFLOW.md`.
    Sebelum membuat worktree: `bash ${CLAUDE_PLUGIN_ROOT}/scripts/worktree-for-issue.sh <n>` mendaftar worktree/cabang `issue-<n>` dan `issue-<n>-<sufiks>` yang sudah ada.
    Exit 1 = ada kerja uncommitted atau unpushed: **jangan buat worktree baru di sampingnya**, lanjutkan di path yang dicetak dan sebut di laporan putaran.
-   Cabang kanonik satu issue adalah `issue-<n>` (tanpa sufiks `-r2`, dst.); percobaan ulang memakai ulang cabang/worktree itu, bukan membuat yang baru.
+   Cabang kanonik satu issue adalah `issue-<n>` (tanpa sufiks `-r2`, dst.); percobaan ulang memakai ulang cabang/worktree itu, bukan membuat yang baru. Kode yang menegakkannya: `worktree-for-issue.sh <n> --ensure <path> <basis>` membuat (`create`), memakai ulang (`reuse`), melanjutkan dari commit percobaan pertama (`continue`), atau menggeser worktree bersih yang tertinggal tanpa commit sendiri ke `origin/<basis>` (`reset`, tanpa persetujuan); exit 1 bila ada worktree bersufiks dengan kerja belum aman. Pakai ini, bukan `git worktree add` langsung.
    - `dibuat orkestrator`: `git fetch origin <basis>` lalu `git worktree add ../<repo>-wt-<n> -b issue-<n> origin/<basis>` (basis = cabang integrasi bila ada, selain itu `main`).
      Bila baris `Worktree base:` berisi path absolut (mis. di dalam workspace Orca), pakai `<basis-worktree>/<repo>-wt-<n>` sebagai ganti `../<repo>-wt-<n>`; `install-permissions.sh` mengisi izin bacanya dari baris itu.
      Selalu dari `origin/<basis>`, bukan cabang lokal: cabang lokal bisa basi dan tidak memuat PR yang baru ter-merge.
