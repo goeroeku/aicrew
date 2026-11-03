@@ -76,7 +76,13 @@ else
       behind="$(gh api "repos/$acr/compare/$dst...$head" --jq '.behind_by')" || fail "PR tertinggal dari $dst tak dapat diperiksa (compare REST gagal; PR dari fork tidak di-merge otomatis)"
       [[ "$behind" =~ ^[0-9]+$ ]] || fail "behind_by dari compare $dst...$head tak terbaca"
       [ "$behind" = 0 ] || fail "PR tertinggal $behind commit dari $dst; perbarui cabang (merge $dst ke cabang PR) lalu tunggu CI untuk head baru; CI hijau pada head lama tidak membuktikan hasil merge"
-      crj="$(set -o pipefail; gh api "repos/$acr/commits/$head/check-runs?per_page=100" --paginate --jq '.check_runs[]' | jq -s '{check_runs: (group_by(.name) | map(max_by(.started_at // "")))}')" || fail "check-run CI untuk head $head tak terbaca (REST)"
+      crj="$(set -o pipefail; gh api "repos/$acr/commits/$head/check-runs?per_page=100" --paginate --jq '.check_runs[]' | jq -s '{check_runs: (group_by([.app.id, .name]) | map(max_by(.started_at // "9999-12-31T00:00:00Z")))}')" || fail "check-run CI untuk head $head tak terbaca (REST)"
+      # check-run tanpa nama tak dapat dideduplikasi dengan aman; run tanpa started_at (antre) dihitung terbaru; nama sama dari aplikasi berbeda tidak saling menutupi
+      jq -e 'all(.check_runs[]; (.name|type)=="string" and .name != "")' <<<"$crj" >/dev/null 2>&1 || fail "ada check-run CI tanpa nama untuk head $head; tak dapat dinilai"
+      # workflow run untuk head yang belum selesai (mis. workflow lambat yang check-run-nya belum terdaftar) = CI belum selesai
+      runs_open="$(gh api "repos/$acr/actions/runs?head_sha=$head&per_page=100" --jq '[.workflow_runs[]|select(.status!="completed")]|length')" || fail "workflow run untuk head $head tak terbaca (REST)"
+      [[ "$runs_open" =~ ^[0-9]+$ ]] || fail "jumlah workflow run belum selesai untuk head $head tak terbaca"
+      [ "$runs_open" = 0 ] || fail "CI belum selesai untuk head $head ($runs_open workflow run masih berjalan); tunggu lalu ulangi"
       if [ "$(jq '.check_runs|length' <<<"$crj" 2>/dev/null || echo x)" = 0 ]; then
         wfn="$(gh api "repos/$acr/actions/workflows" --jq '.total_count')" || fail "daftar workflow tak terbaca (CI belum dapat dipastikan)"
         [[ "$wfn" =~ ^[0-9]+$ ]] || fail "total workflow tak terbaca (CI belum dapat dipastikan)"
@@ -84,7 +90,8 @@ else
       else
         cv="$(printf '%s' "$crj" | bash "$(dirname "$0")/ci-classify.sh" 2>/dev/null)" || fail "klasifikasi CI untuk head $head gagal"
         case "$(head -1 <<<"$cv")" in
-          none) jq -e 'any(.check_runs[]; .conclusion=="success")' <<<"$crj" >/dev/null 2>&1 || fail "CI untuk head $head tidak punya check yang berhasil (semua dilewati atau netral)" ;;
+          none) jq -e 'all(.check_runs[]; .conclusion | IN("success","skipped","neutral"))' <<<"$crj" >/dev/null 2>&1 || fail "CI untuk head $head punya check dengan hasil yang belum dapat dianggap hijau (mis. action_required atau stale)"
+                jq -e 'any(.check_runs[]; .conclusion=="success")' <<<"$crj" >/dev/null 2>&1 || fail "CI untuk head $head tidak punya check yang berhasil (semua dilewati atau netral)" ;;
           pending) fail "CI belum selesai untuk head $head; tunggu lalu ulangi" ;;
           infrastructure) fail "CI tidak dapat mulai (infrastruktur, bukan kegagalan kode): $(sed -n 2p <<<"$cv"); perbaiki akun/runner lalu ulangi" ;;
           code) fail "CI gagal untuk head $head" ;;

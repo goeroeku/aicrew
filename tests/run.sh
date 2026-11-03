@@ -23,6 +23,7 @@ echo "$*" >> "${CALLS:-/dev/null}"
 case "$*" in
   *"/compare/"*) [ -n "${COMPARE_FAIL:-}" ] && exit 1; echo "${BEHIND:-0}" ;;
   *"/check-runs"*) [ -n "${CHECKRUNS_FAIL:-}" ] && exit 1; if [ "${CHECKRUNS+x}" = x ]; then printf '%s\n' "$CHECKRUNS"; else echo '{"name":"tests","status":"completed","conclusion":"success","started_at":"2026-01-01T00:00:00Z","completed_at":"2026-01-01T00:05:00Z"}'; fi ;;
+  *"actions/runs"*) [ -n "${RUNS_FAIL:-}" ] && exit 1; echo "${RUNS_PENDING:-0}" ;;
   *"actions/workflows"*) [ -n "${WORKFLOWS_FAIL:-}" ] && exit 1; echo "${WORKFLOWS:-1}" ;;
   "api rate_limit"*) printf '%s %s\n' "${REST_REM:-4000}" "${REST_RESET:-1793490517}" ;;
   *"/pulls/"*"/files"*) [ -n "${FILES_FAIL:-}" ] && exit 1; echo "${FILES_JSON:-[]}" ;;
@@ -2402,6 +2403,19 @@ tg CHECKRUNS='{"name":"tests","status":"completed","conclusion":"failure","start
 {"name":"tests","status":"completed","conclusion":"success","started_at":"2026-01-01T00:10:00Z"}' >/dev/null; ok "gerbang target (#109): re-run hijau menggantikan run gagal lama dengan nama sama -> lulus" $? 0
 tg CHECKRUNS='{"name":"tests","status":"completed","conclusion":"success","started_at":"2026-01-01T00:00:00Z"}
 {"name":"tests","status":"completed","conclusion":"failure","started_at":"2026-01-01T00:10:00Z"}' >/dev/null; ok "gerbang target (#109): run terbaru yang gagal menang atas hijau lama -> ditolak" $? 1
+tg CHECKRUNS='{"name":"tests","status":"completed","conclusion":"success","started_at":"2026-01-01T00:00:00Z"}
+{"name":"lint","status":"completed","conclusion":"action_required","started_at":"2026-01-01T00:00:00Z"}' >/dev/null; ok "gerbang target (#109): check action_required di samping yang hijau -> ditolak" $? 1
+tg CHECKRUNS='{"name":"tests","status":"completed","conclusion":"success","started_at":"2026-01-01T00:00:00Z"}
+{"name":"lint","status":"completed","conclusion":"stale","started_at":"2026-01-01T00:00:00Z"}' >/dev/null; ok "gerbang target (#109): check stale di samping yang hijau -> ditolak" $? 1
+tg CHECKRUNS='{"name":"tests","status":"completed","conclusion":"success","started_at":"2026-01-01T00:00:00Z"}
+{"name":"lint","status":"completed","conclusion":"neutral","started_at":"2026-01-01T00:00:00Z"}' >/dev/null; ok "gerbang target (#109): neutral di samping yang hijau -> lulus" $? 0
+tg CHECKRUNS='{"name":"tests","app":{"id":1},"status":"completed","conclusion":"failure","started_at":"2026-01-01T00:00:00Z"}
+{"name":"tests","app":{"id":2},"status":"completed","conclusion":"success","started_at":"2026-01-01T00:10:00Z"}' >/dev/null; ok "gerbang target (#109): nama sama dari aplikasi lain tidak menyembunyikan kegagalan -> ditolak" $? 1
+tg CHECKRUNS='{"name":"tests","status":"completed","conclusion":"success","started_at":"2026-01-01T00:00:00Z"}
+{"name":"tests","status":"queued","conclusion":null,"started_at":null}' >/dev/null; ok "gerbang target (#109): run baru tanpa started_at (antre) dianggap terbaru -> ditolak" $? 1
+tg CHECKRUNS='{"name":null,"status":"completed","conclusion":"success","started_at":"2026-01-01T00:00:00Z"}' >/dev/null; ok "gerbang target (#109): check-run tanpa nama -> ditolak" $? 1
+out="$(tg RUNS_PENDING=1)"; rc=$?; ok "gerbang target (#109): workflow run untuk head belum selesai meski check yang terdaftar hijau -> ditolak" "$rc|$(grep -c 'CI belum selesai' <<<"$out")" '1|1'
+tg RUNS_FAIL=1 >/dev/null; ok "gerbang target (#109): daftar workflow run tak terbaca -> gagal tertutup" $? 1
 out="$(tg CHECKRUNS='' WORKFLOWS=2)"; rc=$?; ok "gerbang target (#109): tanpa check-run tetapi repo punya workflow -> ditolak 'CI belum mulai'" "$rc|$(grep -c 'CI belum mulai' <<<"$out")" '1|1'
 tg CHECKRUNS='' WORKFLOWS=0 >/dev/null; ok "gerbang target (#109): tanpa check-run dan tanpa workflow (repo tanpa CI) -> lulus" $? 0
 tg CHECKRUNS='' WORKFLOWS_FAIL=1 >/dev/null; ok "gerbang target (#109): daftar workflow tak terbaca -> gagal tertutup" $? 1
