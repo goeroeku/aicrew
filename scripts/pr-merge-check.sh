@@ -8,34 +8,43 @@
 set -u
 GHX_STATE=/dev/null  # gerbang tidak memakai mode cadangan: tanpa berkas status
 source "$(dirname "$0")/lib/grants.sh"  # izin sementara terstruktur (#61)
-source "$(dirname "$0")/ghx.sh"  # hanya ghx_explain_limit: gerbang TIDAK pindah ke REST (closingIssuesReferences tak ada di REST)
+source "$(dirname "$0")/ghx.sh"  # ghx_repo, ghx_gql, ghx_explain_limit; semua bacaan gerbang lewat REST, kecuali closingIssuesReferences (#113)
 pr="${1:?pr}"; dst="${2:?cabang-tujuan}"
+fail() { echo "GAGAL: $*"; ghx_explain_limit; ghx_explain_rest_limit; exit 1; }  # fail-closed; bila penyebabnya batas GraphQL, jelaskan dan beri jam reset
+cr="$(ghx_repo)" && [ -n "$cr" ] || fail "repo tak dapat ditentukan"
+prj="$(gh api "repos/$cr/pulls/$pr")" && jq -e 'type=="object"' <<<"$prj" >/dev/null 2>&1 || fail "PR #$pr tak terbaca (REST)"
 if [ "${3:-}" = "--after" ]; then
-  read -r st oid < <(gh pr view "$pr" --json state,mergeCommit -q '[.state, .mergeCommit.oid // "-"] | @tsv')
+  read -r st oid < <(jq -r 'if .merged_at then "MERGED" else (.state|ascii_upcase) end as $s | [$s, (.merge_commit_sha // "-")] | @tsv' <<<"$prj")
   [ "$st" = MERGED ] || { echo "GAGAL: PR #$pr belum MERGED ($st)"; exit 1; }
   git fetch -q origin "$dst" && git merge-base --is-ancestor "$oid" "origin/$dst" \
     && echo "ok: PR #$pr ($oid) ada di $dst" || { echo "GAGAL: PR #$pr ter-merge tetapi $oid tidak ada di $dst"; exit 1; }
 else
-  base=$(gh pr view "$pr" --json baseRefName -q .baseRefName)
+  base="$(jq -r '.base.ref // empty' <<<"$prj")"
   echo "PR #$pr basis: $base"
-  fail() { echo "GAGAL: $*"; ghx_explain_limit; exit 1; }  # fail-closed; bila penyebabnya batas GraphQL, jelaskan dan beri jam reset
-  body="$(gh pr view "$pr" --json body -q .body)" || fail "badan PR #$pr tak terbaca"
+  body="$(jq -r '.body // ""' <<<"$prj")"
   grep -Eiq '(close[sd]?|fix(e[sd])?|resolve[sd]?) +#[0-9]+ *(,|&|and|dan) *#?[0-9]' <<<"$body" \
     && echo "PERINGATAN: satu kata kunci hanya menutup satu issue; tulis satu 'Closes #n' per baris"
   [ "$base" = "$dst" ] || fail "basis $base != $dst; jalankan: gh pr edit $pr --base $dst"
 
   # gerbang label: needs-security / needs-perf (label PR + semua issue pada baris berkata-kunci) wajib punya laporan lulus untuk head PR
-  head="$(gh pr view "$pr" --json headRefOid -q .headRefOid)" && [ -n "$head" ] || fail "head PR #$pr tak terbaca"
-  labels="$(gh pr view "$pr" --json labels -q '.labels[].name')" || fail "label PR #$pr tak terbaca"
-  closing="$(gh pr view "$pr" --json closingIssuesReferences -q '.closingIssuesReferences[].number')" || fail "closingIssuesReferences PR #$pr tak terbaca"
+  head="$(jq -r '.head.sha // empty' <<<"$prj")"; [ -n "$head" ] || fail "head PR #$pr tak terbaca"
+  labels="$(jq -r '.labels[]?.name' <<<"$prj")" || fail "label PR #$pr tak terbaca"
+  # closingIssuesReferences hanya ada di GraphQL (#113). Bila batas GraphQL habis (rc 75): kata kunci di badan PR (sudah diurai di bawah) + timeline REST;
+  # event `connected` (tautan sidebar) tak memuat nomor issue lewat REST, jadi ada tautan sidebar = gagal tertutup, tanpa tautan = lanjut dengan peringatan
+  closing="$(ghx_gql gh pr view "$pr" --json closingIssuesReferences -q '.closingIssuesReferences[].number')"; crc=$?
+  if [ "$crc" = 75 ]; then
+    closing=""; tl="$(gh api "repos/$cr/issues/$pr/timeline" --paginate --jq '.[] | select(.event=="connected" or .event=="disconnected") | .event')" || fail "timeline PR #$pr tak terbaca (REST); closingIssuesReferences tak dapat diperiksa saat GraphQL habis"
+    [ "$(grep -cx connected <<<"$tl" || true)" -le "$(grep -cx disconnected <<<"$tl" || true)" ] || fail "PR #$pr punya tautan sidebar (Development) yang tak dapat diurai lewat REST saat GraphQL habis; tunggu reset lalu ulangi"
+    echo "PERINGATAN: GraphQL habis; issue yang ditutup PR dibaca dari kata kunci di badan PR (tanpa tautan sidebar)"
+  elif [ "$crc" != 0 ]; then fail "closingIssuesReferences PR #$pr tak terbaca"; fi
   # issue yang diperiksa = daftar resmi GitHub (URL, owner/repo#n, sidebar Development) ∪ semua #n pada baris berkata-kunci
   for n in $( { grep -Ei '(close[sd]?|fix(e[sd])?|resolve[sd]?):? +#[0-9]' <<<"$body" | grep -Eo '#[0-9]+' | tr -d '#'; echo "$closing"; } | sort -un); do
-    l="$(gh issue view "$n" --json labels -q '.labels[].name')" || fail "label issue #$n tak terbaca"
+    l="$(gh api "repos/$cr/issues/$n" --jq '.labels[]?.name')" || fail "label issue #$n tak terbaca"
     labels="$labels"$'\n'"$l"
   done
   if [ "${3:-}" = "--auto" ]; then
     [[ "$dst" =~ ^[A-Za-z0-9._/-]+$ ]] || fail "cabang tujuan '$dst' berkarakter tidak sah"
-    acr="$(ghx_repo)" && [ -n "$acr" ] || fail "repo tak dapat ditentukan"
+    acr="$cr"
     # PR yang menyentuh docs/WORKFLOW.md (termasuk rename) tidak di-merge otomatis: izin sementara hanya dimasukkan owner (#61)
     pg=1; nondoc=0
     while :; do
@@ -57,7 +66,7 @@ else
       echo "izin sementara: ${gl#- Grant: } (merge sebelum expires di atas; jalankan gerbang ulang tepat sebelum merge)"
     fi
   fi
-  comments="$(gh pr view "$pr" --json comments)" || fail "komentar PR #$pr tak terbaca"
+  comments="$(set -o pipefail; gh api "repos/$cr/issues/$pr/comments" --paginate --jq '.[] | {body: (.body // ""), authorAssociation: .author_association}' | jq -s '{comments: .}')" || fail "komentar PR #$pr tak terbaca (REST)"
   # hanya komentar OWNER/MEMBER/COLLABORATOR yang dihitung sebagai vonis atau waiver (#99); tanpa authorAssociation = tak tepercaya
   trusted_cmts='.comments[] | select(.authorAssociation | IN("OWNER","MEMBER","COLLABORATOR"))'
   sha_ok() { [ "${#1}" -ge 7 ] && case "$head" in "$1"*) return 0 ;; esac; return 1; }
@@ -96,7 +105,7 @@ else
     fail "PR bukan dokumentasi saja: butuh komentar 'Laporan qa: lulus' dari aicrew-qa dengan 'Commit: <sha head>' (dua baris, atau satu baris: 'Laporan qa: lulus Commit: <sha head>'; huruf besar/kecil bebas); vonis terakhir untuk head menang"
   fi
   # baseline: rahasia memblokir (kecuali waiver owner untuk head), sisanya hanya peringatan; diff tak terbaca = tolak
-  diff="$(gh pr diff "$pr")" || fail "diff PR #$pr tak terbaca"
+  diff="$(gh api -H 'Accept: application/vnd.github.v3.diff' "repos/$cr/pulls/$pr")" || fail "diff PR #$pr tak terbaca (REST)"
   bf="$(mktemp)"; trap 'rm -f "$bf"' EXIT; printf '%s\n' "$body" > "$bf"
   grep -qix needs-perf <<<"$labels" && perfl=1 || perfl=0
   scan="$(printf '%s\n' "$diff" | bash "$(dirname "$0")/baseline-scan.sh" --body "$bf" --perf-labeled "$perfl")"; rc=$?
