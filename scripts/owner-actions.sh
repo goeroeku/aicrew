@@ -14,6 +14,7 @@ repo="$(ghx_repo 2>/dev/null)" || repo=""
 note_of() { [ -n "$repo" ] || return 0; gh api "repos/$repo/issues/$1/comments?per_page=100" 2>/dev/null | jq -r '[.[]?|(.body // "")|select(startswith("owner-action:"))]|last // empty|split("\n")[0]|sub("^owner-action: *";"")|.[0:300]' 2>/dev/null; }
 lines="$({
   jq -r '.[]?|select((.labels // [])|map(.name)|index("needs-principal"))|"\(.number)\t- #\(.number) \(.title) — answer the question in the issue, then remove the label — `gh issue edit \(.number) --remove-label needs-principal` — an owner decision; an agent must not decide it"' <<<"$issues" 2>/dev/null
+  bash "$here/blocked-list.sh" 2>/dev/null | while IFS=$'\t' read -r bn br; do [ -n "$bn" ] && printf '%s\t- %s blocked: %s — resolve the cause, then remove the label — `gh issue edit %s --remove-label blocked`\n' "${bn#\#}" "$bn" "$br" "${bn#\#}"; done || true
   jq -r '.[]?|select(.isDraft==false and .isCrossRepository==false and (.headRefName|test("^issue-[0-9]+$")))|"\(.number)\t- PR #\(.number) (issue #\(.headRefName|sub("^issue-";""))) \(.title) — review and merge — `gh pr merge \(.number) --merge --match-head-commit \(.headRefOid)` — \(if ((.labels // [])|map(.name)|index("risk:L2")) then "risk:L2 is never merged automatically" elif ((.labels // [])|map(.name)|index("needs-security")) then "security review is pending" else "the merge mode needs the owner" end)"' <<<"$prs" 2>/dev/null
 })"
 n=0; out="# Owner actions ($(date '+%F %T'))"$'\n'
