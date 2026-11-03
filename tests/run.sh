@@ -2375,4 +2375,13 @@ AP3ENV="GH_REPO=o/r" ap3 "$AP3OPEN" noop $WO; rc=$?
 ok "autopilot ci-infra (#80): check-runs unreadable -> fail-closed, claude rounds run" "$([ "$(cat "$AP3FX/n" 2>/dev/null || echo 0)" -ge 1 ] && echo ran)" ran
 AP3PR=""
 
+# 3c-19. template izin: push langsung ke main/master ditolak, push cabang issue tetap diizinkan (#92)
+for tgt in "origin main" "origin master" "-u origin main" "-u origin master" "origin HEAD:main" "origin HEAD:master" "origin refs/heads/main" "origin refs/heads/master"; do
+  for v in "" "rtk "; do e="Bash(${v}git push $tgt:*)"; jq -e --arg d "$e" '.permissions.deny|index($d)!=null' "$root/templates/autopilot-permissions.json" >/dev/null; ok "template izin (#92): deny $e" $? 0; done
+done
+jq -e '.permissions.allow|index("Bash(git push:*)")!=null' "$root/templates/autopilot-permissions.json" >/dev/null; ok "template izin (#92): git push cabang issue tetap diizinkan" $? 0
+mkdir -p "$tmp/dpm/.claude" "$tmp/dpm/docs"; git init -q "$tmp/dpm"; printf -- '- Merge PR ke cabang integrasi: owner.\n' > "$tmp/dpm/docs/WORKFLOW.md"
+(cd "$tmp/dpm" && bash "$root/scripts/install-permissions.sh" "$tmp/dpm/s.json" >/dev/null 2>&1); jq -e '.permissions.deny|index("Bash(git push origin main:*)")!=null and index("Bash(rtk git push origin master:*)")!=null' "$tmp/dpm/s.json" >/dev/null; ok "install-permissions (#92): deny push main/master terpasang di settings" $? 0
+grep -qF 'git push origin main' "$root/README.md"; ok "README (#92): menyebut deny push langsung ke main dan batasnya" $? 0
+
 [ "$fails" = 0 ] && echo "SEMUA LULUS" || { echo "$fails GAGAL"; exit 1; }
