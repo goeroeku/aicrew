@@ -4,6 +4,41 @@ All notable changes to aiCrew are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Entries before 0.11.0 were reconstructed from tags, merged pull requests and commit history.
 
+## [1.4.0] - 2026-11-03
+
+### Added
+
+- `autopilot.log` now gets one `putaran N: ringkasan:` line per round with duration, exit code, PRs merged during the round, open PRs with head SHA and the `--max-total` counter (#91)
+- `.aicrew/autopilot.json` now has English keys (`phase`, `round`, `idle_seconds`, `heartbeat`) plus `current` and `last_completed`; the Indonesian keys and phase values are still written with equivalent values as deprecated aliases through 1.x (#94)
+- `pr-merge-check.sh --auto` now requires a QA verdict (`Laporan qa: lulus` with `Commit: <head>`) for every PR that is not documentation-only (#100)
+- `scripts/runner-check.sh` lists the tools a CI runner is missing (from test logs and workflow files) before the first job, plus self-hosted runner guidance in the devops role (#101)
+- New `scripts/ci-classify.sh` tells a CI infrastructure failure (billing, no runner) apart from a code failure so rounds are not spent re-running jobs. (#105)
+- One branch per issue: `resume.sh` finds work by issue number, and the new `worktree-for-issue.sh` refuses to start a second worktree beside unfinished work. (#106)
+- A second `autopilot.sh` in the same repo is refused (exit 6) instead of starting a second orchestrator. (#120)
+
+### Changed
+
+- `orchestrate` now aborts a conflicting merge with the target branch, keeps the PR worktree clean, and reports the conflicting files with a one-line classification (mechanical or design decision) instead of retrying (#90)
+- the autopilot permission template now also allows `git merge`, `make` and `go test` (installed by `install-permissions.sh`) (#93)
+- `resume.sh` action names are now English (`finish-merge`, `continue-pr`, `check-branch`, `requeue`, `check-release`); the old names stay in a new fourth column as deprecated aliases through 1.x (#95)
+- `preflight.sh` now warns (AWAS) when the merge mode is `agent-after-qa` and no `gh pr merge` permission rule exists; with mode `owner` it stays informational (#98)
+- verdict comments accept the commit on the same line, are case-insensitive, and the error message shows the accepted format; baseline-scan warnings name `file:line` (#100)
+- the "still stuck" fingerprint now also covers `docs/WORKFLOW.md` and the permission rules of the settings files, so editing them lets a restart run a round; exit 5 logs one line per backoff period (`AICREW_STUCK_BACKOFF`, default 900 s) and prints a `--retry-stuck` hint (#102)
+- The merge gate only accepts QA/security/perf verdicts and owner waivers from OWNER, MEMBER or COLLABORATOR comments. (#104)
+- Preflight now names a missing `git merge` / `git rebase` permission (merge mode agent-after-qa) and the permission template includes `git rebase`. (#118)
+- `integrated.sh` can now fix the issue labels itself, `board --sync` fills in a missing Done status, and all scripts are shipped executable. (#119)
+
+### Fixed
+
+- the merge mode in `docs/WORKFLOW.md` is now read by one shared helper for `preflight.sh` and `install-permissions.sh`; values wrapped in backticks or bold, keys mid-line and mixed case are accepted, and ambiguous or unknown values fall back to `owner` (#103)
+
+### Behavior changes
+
+- `resume.sh` output has a fourth tab-separated column and column 2 now carries the English action name (#95)
+- `pr-merge-check.sh --auto` refuses non-documentation PRs without a QA verdict for the head commit (#100)
+- after upgrading, the first start can run one extra round because the stored fingerprint format changed (#102)
+- verdict and waiver comments posted by accounts that are not owner/member/collaborator are ignored by the merge gate. (#104)
+
 ## [1.3.0] - 2026-11-02
 
 ### Added
