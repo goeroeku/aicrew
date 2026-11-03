@@ -67,7 +67,7 @@ else
     while :; do
       pj="$(gh api "repos/$acr/pulls/$pr/files?per_page=100&page=$pg")" || fail "daftar file PR #$pr tak terbaca"
       jq -e 'type=="array"' <<<"$pj" >/dev/null 2>&1 || fail "daftar file PR #$pr tak terurai"
-      files="$(printf '%s\n%s\n' "$files" "$pj" | jq -cs '.[0] + (.[1] | map({filename,previous_filename,status}))')" || fail "PR files could not be accumulated"
+      files="$(printf '%s\n%s\n' "$files" "$pj" | jq -cs '.[0] + (.[1] | map({filename,previous_filename,status,additions,deletions}))')" || fail "PR files could not be accumulated"
       jq -e 'any(.[]; (.filename|ascii_downcase)=="docs/workflow.md" or ((.previous_filename // "")|ascii_downcase)=="docs/workflow.md")' <<<"$pj" >/dev/null 2>&1 && fail "PR menyentuh docs/WORKFLOW.md; auto-merge ditolak (izin sementara hanya dari owner); minta owner merge"
       # dokumentasi saja = semua berkas (dan nama lamanya) di docs/ atau README/CHANGELOG/PRIVACY berekstensi md/txt/rst, atau LICENSE; selain itu butuh vonis QA (#86). Daftar kosong = tidak ada yang diubah.
       # Gagal tertutup: jq error (mis. nama berkas null) dianggap bukan dokumentasi.
@@ -131,7 +131,7 @@ else
         | .paths | split(",")[] | gsub("^\\s+|\\s+$"; "") | select(length > 0)
       ] as $approved
       | $files[]
-      | select(.status != "added")
+      | select(.status != "added" and ((.status == "modified" and (.additions|type) == "number" and .additions > 0 and (.deletions|type) == "number" and .deletions == 0 and ((.previous_filename // "") == "")) | not))
       | select([.filename, (.previous_filename // "")] | any(.[];
           test("(^|/)(tests?|__tests__|spec|testdata|__snapshots__|e2e)/|(^|/)test_[^/]*$|(^|/)tests\\.py$|(_test|\\.test|\\.spec|_spec)\\.[a-z0-9]+$|Test\\.java$"; "i")))
       | . as $file
