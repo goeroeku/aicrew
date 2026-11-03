@@ -21,6 +21,9 @@ mkdir "$tmp/bin"; cat > "$tmp/bin/gh" <<'EOF'
 # gh palsu untuk gerbang: bacaan REST (#113) mengeluarkan hasil SETELAH --jq, seperti gh asli
 echo "$*" >> "${CALLS:-/dev/null}"
 case "$*" in
+  *"/compare/"*) [ -n "${COMPARE_FAIL:-}" ] && exit 1; echo "${BEHIND:-0}" ;;
+  *"/check-runs"*) [ -n "${CHECKRUNS_FAIL:-}" ] && exit 1; if [ "${CHECKRUNS+x}" = x ]; then printf '%s\n' "$CHECKRUNS"; else echo '{"name":"tests","status":"completed","conclusion":"success","started_at":"2026-01-01T00:00:00Z","completed_at":"2026-01-01T00:05:00Z"}'; fi ;;
+  *"actions/workflows"*) [ -n "${WORKFLOWS_FAIL:-}" ] && exit 1; echo "${WORKFLOWS:-1}" ;;
   "api rate_limit"*) printf '%s %s\n' "${REST_REM:-4000}" "${REST_RESET:-1793490517}" ;;
   *"/pulls/"*"/files"*) [ -n "${FILES_FAIL:-}" ] && exit 1; echo "${FILES_JSON:-[]}" ;;
   *"contents/docs/WORKFLOW.md"*) [ -n "${WF_FAIL:-}" ] && exit 1; printf '%s\n' "${WFTEXT:-}" ;;
@@ -2383,5 +2386,33 @@ jq -e '.permissions.allow|index("Bash(git push:*)")!=null' "$root/templates/auto
 mkdir -p "$tmp/dpm/.claude" "$tmp/dpm/docs"; git init -q "$tmp/dpm"; printf -- '- Merge PR ke cabang integrasi: owner.\n' > "$tmp/dpm/docs/WORKFLOW.md"
 (cd "$tmp/dpm" && bash "$root/scripts/install-permissions.sh" "$tmp/dpm/s.json" >/dev/null 2>&1); jq -e '.permissions.deny|index("Bash(git push origin main:*)")!=null and index("Bash(rtk git push origin master:*)")!=null' "$tmp/dpm/s.json" >/dev/null; ok "install-permissions (#92): deny push main/master terpasang di settings" $? 0
 grep -qF 'git push origin main' "$root/README.md"; ok "README (#92): menyebut deny push langsung ke main dan batasnya" $? 0
+
+# 3c-20. gerbang --auto: hasil merge terhadap target terkini; tertinggal dari target dan CI hijau untuk head (#109)
+tg() { env BASE=integrasi BODY="Closes #1" HEAD=abc1234567 FILES_JSON='[{"filename":"src/a.go","status":"modified"}]' COMM='Laporan qa: lulus Commit: abc1234' "$@" PATH="$tmp/pmb:$PATH" bash "$root/scripts/pr-merge-check.sh" 9 integrasi --auto 2>&1; }
+OKRUN='{"name":"tests","status":"completed","conclusion":"success","started_at":"2026-01-01T00:00:00Z","completed_at":"2026-01-01T00:05:00Z"}'
+tg >/dev/null; ok "gerbang target (#109): sejajar dengan target dan CI hijau -> lulus" $? 0
+out="$(tg BEHIND=3)"; rc=$?; ok "gerbang target (#109): tertinggal 3 commit -> ditolak dengan jumlah dan petunjuk perbarui" "$rc|$(grep -c 'tertinggal 3 commit dari integrasi' <<<"$out")|$(grep -c 'perbarui cabang' <<<"$out")" '1|1|1'
+tg COMPARE_FAIL=1 >/dev/null; ok "gerbang target (#109): compare tak terbaca -> gagal tertutup" $? 1
+tg BEHIND=abc >/dev/null; ok "gerbang target (#109): behind_by bukan angka -> gagal tertutup" $? 1
+out="$(tg CHECKRUNS='{"name":"tests","status":"completed","conclusion":"failure","started_at":"2026-01-01T00:00:00Z"}')"; rc=$?; ok "gerbang target (#109): CI gagal untuk head -> ditolak" "$rc|$(grep -c 'CI gagal' <<<"$out")" '1|1'
+out="$(tg CHECKRUNS='{"name":"tests","status":"in_progress","conclusion":null,"started_at":"2026-01-01T00:00:00Z"}')"; rc=$?; ok "gerbang target (#109): CI belum selesai -> ditolak" "$rc|$(grep -c 'CI belum selesai' <<<"$out")" '1|1'
+out="$(tg CHECKRUNS='{"name":"tests","status":"completed","conclusion":"failure","started_at":"2026-01-01T00:00:00Z","output":{"summary":"The job was not started because recent account payments have failed or your spending limit needs to be increased."}}')"; rc=$?; ok "gerbang target (#109): kegagalan infrastruktur -> ditolak, bukan vonis kode, tanpa jalan lolos" "$rc|$(grep -c 'infrastruktur' <<<"$out")|$(grep -c 'CI gagal untuk head' <<<"$out")" '1|1|0'
+tg CHECKRUNS='{"name":"tests","status":"completed","conclusion":"skipped","started_at":"2026-01-01T00:00:00Z"}' >/dev/null; ok "gerbang target (#109): semua check dilewati (skipped) bukan hijau -> ditolak" $? 1
+tg CHECKRUNS='{"name":"tests","status":"completed","conclusion":"failure","started_at":"2026-01-01T00:00:00Z"}
+{"name":"tests","status":"completed","conclusion":"success","started_at":"2026-01-01T00:10:00Z"}' >/dev/null; ok "gerbang target (#109): re-run hijau menggantikan run gagal lama dengan nama sama -> lulus" $? 0
+tg CHECKRUNS='{"name":"tests","status":"completed","conclusion":"success","started_at":"2026-01-01T00:00:00Z"}
+{"name":"tests","status":"completed","conclusion":"failure","started_at":"2026-01-01T00:10:00Z"}' >/dev/null; ok "gerbang target (#109): run terbaru yang gagal menang atas hijau lama -> ditolak" $? 1
+out="$(tg CHECKRUNS='' WORKFLOWS=2)"; rc=$?; ok "gerbang target (#109): tanpa check-run tetapi repo punya workflow -> ditolak 'CI belum mulai'" "$rc|$(grep -c 'CI belum mulai' <<<"$out")" '1|1'
+tg CHECKRUNS='' WORKFLOWS=0 >/dev/null; ok "gerbang target (#109): tanpa check-run dan tanpa workflow (repo tanpa CI) -> lulus" $? 0
+tg CHECKRUNS='' WORKFLOWS_FAIL=1 >/dev/null; ok "gerbang target (#109): daftar workflow tak terbaca -> gagal tertutup" $? 1
+tg CHECKRUNS='' WORKFLOWS=abc >/dev/null; ok "gerbang target (#109): total workflow bukan angka -> gagal tertutup" $? 1
+tg CHECKRUNS_FAIL=1 >/dev/null; ok "gerbang target (#109): check-run tak terbaca -> gagal tertutup" $? 1
+tg BEHIND=2 FILES_JSON='[{"filename":"docs/a.md","status":"modified"}]' >/dev/null; ok "gerbang target (#109): PR dokumentasi saja dikecualikan (tertinggal)" $? 0
+tg CHECKRUNS_FAIL=1 COMPARE_FAIL=1 FILES_JSON='[{"filename":"README.md","status":"modified"}]' >/dev/null; ok "gerbang target (#109): PR dokumentasi saja dikecualikan (CI dan compare)" $? 0
+out="$(env BASE=integrasi BODY="Closes #1" HEAD=abc1234567 BEHIND=4 PATH="$tmp/pmb:$PATH" bash "$root/scripts/pr-merge-check.sh" 9 integrasi 2>&1)"; rc=$?; ok "gerbang target (#109): merge manual tertinggal -> tidak ditolak, hanya PERINGATAN" "$rc|$(grep -c '^PERINGATAN: PR tertinggal 4 commit dari integrasi' <<<"$out")" '0|1'
+env BASE=integrasi BODY="Closes #1" HEAD=abc1234567 COMPARE_FAIL=1 PATH="$tmp/pmb:$PATH" bash "$root/scripts/pr-merge-check.sh" 9 integrasi >/dev/null 2>&1; ok "gerbang target (#109): merge manual dengan compare gagal -> tidak memblokir" $? 0
+out="$(tg BEHIND=2 COMM='')"; ok "gerbang target (#109): pesan perbarui cabang muncul lebih dulu daripada tuntutan vonis QA" "$(grep -c 'tertinggal 2 commit' <<<"$out")|$(grep -c 'Laporan qa' <<<"$out")" '1|0'
+out="$(tg BEHIND=1 BASE=lain)"; ok "gerbang target (#109): basis salah tetap ditolak lebih dulu" "$(grep -c '^GAGAL: basis' <<<"$out")" 1
+grep -qF 'behind' "$root/README.md" && grep -qF 'skipped' "$root/README.md"; ok "README (#109): syarat tertinggal dan CI hijau, pengecualian dokumentasi" $? 0
 
 [ "$fails" = 0 ] && echo "SEMUA LULUS" || { echo "$fails GAGAL"; exit 1; }
