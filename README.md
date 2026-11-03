@@ -59,7 +59,7 @@ Release-candidate report (`release-report.sh`):
 
 ## 📦 Requirements
 - Claude Code, `git`, `jq`, and `gh` (logged in; GitHub backend). GitLab (`glab`) is only partly supported.
-- Optional: `codex` (the senior-coder writes code through Codex; otherwise Claude subagents are used), the `gh` `project` scope (kanban), `caffeinate` (macOS, keeps the Mac awake during autopilot).
+- Optional: `codex` (the senior-coder writes code through Codex; otherwise Claude subagents are used; `scripts/codex-probe.sh`, `codex-prompt.sh` and `codex-result.sh` probe, feed the issue and fall back to a Claude subagent on an empty diff), the `gh` `project` scope (kanban), `caffeinate` (macOS, keeps the Mac awake during autopilot).
 
 ## 🚀 Install and try
 No clone or fork needed (Claude Code downloads this repository itself as a marketplace):

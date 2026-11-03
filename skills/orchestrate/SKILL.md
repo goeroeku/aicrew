@@ -68,6 +68,11 @@ issue terbuka → laporkan penyumbatnya dan berhenti.
    prompt dari `${CLAUDE_PLUGIN_ROOT}/templates/codex-prompt.md`, diisi lalu dikirim lewat heredoc inline atau path
    literal, bukan variabel, supaya hook `jaga-codex` bisa membacanya), `aicrew-ui-ux`, `aicrew-devops`, dst.
    Bekali hanya: isi issue, bagian PRD terkait, daftar file terkait. Bukan riwayat percakapan.
+   Delegasi Codex: jalankan `bash ${CLAUDE_PLUGIN_ROOT}/scripts/codex-probe.sh` dulu (bukan `codex-ready` → langsung subagen Claude);
+   sematkan issue ke prompt dengan `bash ${CLAUDE_PLUGIN_ROOT}/scripts/codex-prompt.sh <issue>` (Codex tidak memanggil gh);
+   setelah Codex selesai, `bash ${CLAUDE_PLUGIN_ROOT}/scripts/codex-result.sh <worktree>`: exit 1 (diff kosong) → jatuh ke subagen Claude
+   di putaran yang sama dan catat `codex unavailable: <alasan>` di log putaran. Tes yang butuh Docker/port dijalankan controller;
+   laporan putaran menyebut target mana yang tidak bisa jalan di sandbox.
 5. Verifikasi sendiri, jangan percaya laporan agen: baca diff, jalankan suite tes penuh di worktree
    (satu perintah, keluaran dipadatkan). Pekerjaan berat konteks didelegasikan ke `aicrew-qa` (haiku): memeriksa
    tiap kriteria selesai satu per satu, membaca log panjang, dan memotret/membaca UI; minta laporan maks 12 baris.
