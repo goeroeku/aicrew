@@ -63,6 +63,10 @@
       "Bash(rtk echo:*)"
     ],
     "deny": [
+      "Bash(gh issue edit * --remove-label owner-hold*)",
+      "Bash(gh issue edit * --remove-label=owner-hold*)",
+      "Bash(rtk gh issue edit * --remove-label owner-hold*)",
+      "Bash(rtk gh issue edit * --remove-label=owner-hold*)",
       "Bash(git push --force:*)",
       "Bash(git push -f:*)",
       "Bash(git reset --hard:*)",

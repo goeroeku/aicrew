@@ -2543,4 +2543,188 @@ ok "blocked-note (#107): komentar untuk perintah lain tidak menghalangi" "$(grep
 [ -x "$root/scripts/blocked-note.sh" ]; ok "blocked-note (#107): berkas dapat dieksekusi" $? 0
 grep -qF 'blocked-by-permission' "$root/skills/orchestrate/SKILL.md" && grep -qF 'blocked-by-permission' "$root/README.md"; ok "blocked-note (#107): terdokumentasi di SKILL dan README" $? 0
 
+# 3c-25. Owner hold and scoped approval (#114).
+# Add optional REST responses without changing the existing fake's defaults.
+cp "$tmp/pmb/gh" "$tmp/pmb/gh-base"
+cat > "$tmp/pmb/gh" <<'GHEOF'
+#!/usr/bin/env bash
+case "$*" in
+  *"/pulls/"*"/files"*)
+    if [ -n "${FILES_PAGE2:-}" ]; then
+      [ -n "${FILES_FAIL:-}" ] && exit 1
+      case "$*" in
+        *"page=1") jq -nc '[range(100)|{filename:("src/f"+tostring+".go"),status:"modified"}]' ;;
+        *"page=2") printf '%s\n' "$FILES_PAGE2" ;;
+        *) echo '[]' ;;
+      esac
+      exit 0
+    fi ;;
+  "api repos/o/r/pulls/9")
+    if [ -n "${HEAD_REF:-}" ]; then
+      "$(dirname "$0")/gh-base" "$@" | jq --arg ref "$HEAD_REF" '.head.ref=$ref'
+      exit $?
+    fi ;;
+  "api repos/o/r/issues/9/comments"*)
+    if [ -n "${APPROVAL_JSON:-}" ]; then
+      [ -n "${COMMFAIL:-}" ] && exit 1
+      "$(dirname "$0")/gh-base" "$@" && printf '%s\n' "$APPROVAL_JSON"
+      exit $?
+    fi ;;
+esac
+exec "$(dirname "$0")/gh-base" "$@"
+GHEOF
+chmod +x "$tmp/pmb/gh"
+OH_FILE='[{"filename":"tests/existing.sh","status":"modified"}]'
+OH_APPROVAL='Owner approval (scope: test-change tests/existing.sh): Approved (Commit: deadbee)'
+oha() { jq -nc --arg b "$1" --arg a "${2:-OWNER}" --arg u "${3:-2026-01-02T00:00:00Z}" '{body:$b,authorAssociation:$a,created_at:"2026-01-02T00:00:00Z",updated_at:$u,login:"aic",url:"approval"}'; }
+ohg() { dg FILES_JSON="$OH_FILE" "$@"; }
+out="$(ohg)"
+rc=$?
+ok "owner approval: modified test without approval fails and names path and exact form" "$rc|$(grep -c 'tests/existing.sh' <<<"$out")|$(grep -cF 'Owner approval (scope: test-change <path>[, <path>...]): <text> (Commit: <sha>)' <<<"$out")" '1|1|1'
+ok "owner approval: refusal names approval cause" "$(grep -c 'Existing test changes require approval' <<<"$out")" 1
+ohg APPROVAL_JSON="$(oha "$OH_APPROVAL")" >/dev/null
+ok "owner approval: trusted unedited PR approval passes without Decision applied and SHA is informational" $? 0
+ohg FILES_JSON='[{"filename":"tests/new.sh","status":"added"}]' >/dev/null
+ok "owner approval: added tests need no approval" $? 0
+ohg FILES_JSON='[{"filename":"tests/new.sh","previous_filename":"src/old.sh","status":"renamed"}]' >/dev/null
+ok "owner approval: rename into test path counts" $? 1
+ohg FILES_JSON='[{"filename":"src/new.sh","previous_filename":"tests/old.sh","status":"renamed"}]' >/dev/null
+ok "owner approval: rename out of test path counts" $? 1
+out="$(ohg APPROVAL_JSON="$(oha 'Introduction
+OWNER APPROVAL (SCOPE: TEST-CHANGE tests/): Approved (COMMIT: deadbee)')")"; rc=$?
+ok "owner approval: directory prefix, any line and case insensitive form is parsed, but a multi-line comment still needs Decision applied" "$rc|$(grep -c 'Existing test changes require approval' <<<"$out")|$(grep -c 'Decision applied:' <<<"$out")" '1|0|1'
+ohg APPROVAL_JSON="$(oha "$OH_APPROVAL" OWNER 2026-01-03T00:00:00Z)" >/dev/null
+ok "owner approval: edited approval ignored" $? 1
+ohg ICOMM="$OH_APPROVAL" >/dev/null
+ok "owner approval: linked issue approval ignored" $? 1
+ohg APPROVAL_JSON="$(oha "$OH_APPROVAL" NONE)" >/dev/null
+ok "owner approval: untrusted author ignored" $? 1
+ohg APPROVAL_JSON="$(oha 'Owner approval (scope: test-change tests/other.sh): Approved (Commit: abc1234)')" >/dev/null
+ok "owner approval: other file does not cover change" $? 1
+for scope in 'test-change ' 'scope-extension tests/' 'waiver test-change tests/' 'test-change test'; do
+  ohg APPROVAL_JSON="$(oha "Owner approval (scope: $scope): Approved (Commit: abc1234)")" >/dev/null
+  ok "owner approval: non-covering scope '$scope' ignored" $? 1
+done
+for prefix in 'Laporan qa:' 'owner-action:' 'Decision applied:' 'blocked-by-permission:'; do
+  ohg APPROVAL_JSON="$(oha "$prefix machine
+$OH_APPROVAL")" >/dev/null
+  ok "owner approval: machine prefix '$prefix' ignored" $? 1
+done
+for path in TEST/unit.go __tests__/a.js spec/a.rb testdata/a.json __snapshots__/a.snap e2e/a.js test_a.py tests.py a_test.go a.test.js a.spec.ts a_spec.rb SomeTest.java; do
+  ohg FILES_JSON="$(jq -nc --arg p "$path" '[{filename:$p,status:"removed"}]')" >/dev/null
+  ok "owner approval: existing test pattern $path" $? 1
+done
+ohg FILES_JSON='[{"filename":"tests/existing.sh","status":"modified"},{"filename":"spec/b.rb","status":"modified"}]' APPROVAL_JSON="$(oha "$OH_APPROVAL")" >/dev/null
+ok "owner approval: every changed test needs coverage" $? 1
+ohg FILES_JSON='[{"filename":"tests/existing.sh","status":"modified"},{"filename":"spec/b.rb","status":"modified"}]' APPROVAL_JSON="$(oha 'Owner approval (scope: test-change tests/existing.sh, spec/b.rb): Approved (Commit: abc1234)')" >/dev/null
+ok "owner approval: comma list covers both files" $? 0
+ohg FILES_PAGE2="$OH_FILE" >/dev/null
+ok "owner approval: second page test requires approval" $? 1
+ohg FILES_PAGE2="$OH_FILE" APPROVAL_JSON="$(oha "$OH_APPROVAL")" >/dev/null
+ok "owner approval: second page approval passes" $? 0
+for knob in FILES_FAIL COMMFAIL ICOMM_FAIL; do
+  ohg "$knob=1" APPROVAL_JSON="$(oha "$OH_APPROVAL")" >/dev/null
+  ok "owner approval: REST $knob fails closed" $? 1
+done
+for knob in PRL ISSL; do
+  out="$(dg "$knob=owner-hold")"; rc=$?
+  ok "owner hold: $knob blocks auto merge" "$rc" 1
+  ok "owner hold: $knob refusal names hold cause" "$(grep -c owner-hold <<<"$out")" 1
+  env BASE=integrasi BODY='Closes #1' "$knob=owner-hold" PATH="$tmp/pmb:$PATH" bash "$root/scripts/pr-merge-check.sh" 9 integrasi >/dev/null 2>&1
+  ok "owner hold: $knob permits manual merge" $? 0
+done
+dg BODY='' HEAD_REF=issue-7 ISSL_7=owner-hold >/dev/null
+ok "owner hold: issue-N branch checked without linked issue" $? 1
+dg BODY='' HEAD_REF=issue-7 ISSFAIL=1 >/dev/null
+ok "owner hold: branch issue REST failure fails closed" $? 1
+ap3 "[$(bj 1 owner-hold '')]" noop
+ok "owner hold: all held issues exit 3 without a round" "$?|$(cat "$AP3FX/n" 2>/dev/null || echo 0)" '3|0'
+ok "owner hold: separate owner release command in summary" "$(grep -cF 'gh issue edit 1 --remove-label owner-hold' "$AP3/w/.aicrew/owner-actions.md")" 1
+ap3 "[$(bj 1 owner-hold ''),$(bj 2 needs-principal '')]" noop
+ok "owner hold: mixed held and needs-principal exit 3" $? 3
+ap3 "[$(bj 1 owner-hold ''),$(bj 2 role:qa "$(bl '- #1')")]" noop --wait 1 --wait-max 2
+ok "owner hold: unsatisfied blocker waits for owner" $? 3
+# Trace note calls directly, including repeat runs with the same state.
+printf 'PS4="+ "\nset -x\n' > "$tmp/owner-trace.sh"
+AP3ENV="BASH_ENV=$tmp/owner-trace.sh" ap3 "[$(bj 1 needs-principal ''),$(bj 2 needs-principal ''),$(bj 3 needs-principal '')]" noop
+ok "owner summary: three questions create one file and one note call" "$?|$(find "$AP3/w/.aicrew" -name owner-actions.md | wc -l | tr -d ' ')|$(grep -cE '^\+ note ' "$AP3/out")" '3|1|1'
+AP3KEEP=1 AP3ENV="BASH_ENV=$tmp/owner-trace.sh" ap3 "[$(bj 1 needs-principal ''),$(bj 2 needs-principal ''),$(bj 3 needs-principal '')]" noop
+ok "owner summary: same state does not call note again" "$?|$(grep -cE '^\+ note ' "$AP3/out")" '3|0'
+for cmd in 'gh' 'rtk gh'; do
+  for flag in '--remove-label owner-hold' '--remove-label=owner-hold'; do
+    jq -e --arg d "Bash($cmd issue edit * $flag*)" '.permissions.deny|index($d)!=null' "$root/templates/autopilot-permissions.json" >/dev/null
+    ok "owner hold: permission denies $cmd $flag" $? 0
+  done
+done
+# Only command positions count; the owner summary intentionally prints the release command.
+executed="$(grep -En '(^|[;&|]|then|do)[[:space:]]*(rtk[[:space:]]+)?gh[[:space:]]+issue[[:space:]]+edit[[:space:]].*--remove-label[= ]owner-hold' "$root"/scripts/*.sh || true)"
+ok "owner hold: no script executes label removal" "$executed" ''
+for doc in README.md skills/orchestrate/SKILL.md; do
+  for term in owner-hold 'Owner approval (scope:' scope-extension waiver owner-action: 'one note per state' 'no notifications'; do
+    grep -qiF "$term" "$root/$doc"
+    ok "owner documentation: $doc includes $term" $? 0
+  done
+done
+for term in prefix 'flag order' 'bash -c' 'comma'; do
+  grep -qiF "$term" "$root/README.md"
+  ok "owner permissions: README explains $term limit" $? 0
+done
+
+# 3c-26. Review regressions for owner hold and scoped approval (#114).
+review_start=$fails
+out="$(ohg)"; rc=$?
+ok "review: test refusal names cause" "$rc|$(grep -c 'Existing test changes require approval' <<<"$out")" '1|1'
+out="$(dg PRL=owner-hold)"; rc=$?
+ok "review: hold refusal names cause" "$rc|$(grep -c owner-hold <<<"$out")" '1|1'
+out="$(ohg FILES_JSON='[{"filename":null,"status":"modified"}]')"; rc=$?
+ok "review: invalid filename fails closed with evaluation cause" "$rc|$(grep -c 'could not be evaluated' <<<"$out")" '1|1'
+# Generate large patches inside the fake, never in the test process environment.
+cp "$tmp/pmb/gh" "$tmp/pmb/gh-review-base"
+cat > "$tmp/pmb/gh" <<'GHEOF'
+#!/usr/bin/env bash
+case "$*" in
+  *"/pulls/"*"/files"*)
+    if [ -n "${LARGE_PATCH_PAGE:-}" ]; then
+      jq -nc '[range(6)|{filename:("tests/f"+tostring+".sh"),status:"modified",patch:("x" * 204800)}]'
+      exit $?
+    fi ;;
+esac
+exec "$(dirname "$0")/gh-review-base" "$@"
+GHEOF
+chmod +x "$tmp/pmb/gh"
+out="$(ohg LARGE_PATCH_PAGE=1)"; rc=$?
+ok "review: large patches refuse uncovered tests with cause" "$rc|$(grep -c 'Existing test changes require approval' <<<"$out")" '1|1'
+ohg LARGE_PATCH_PAGE=1 APPROVAL_JSON="$(oha 'Owner approval (scope: test-change tests/): Approved (Commit: deadbee)')" >/dev/null
+ok "review: large patches allow covered tests" $? 0
+ohg FILES_JSON='[{"filename":"app/(auth)/page.test.tsx","status":"modified"}]' APPROVAL_JSON="$(oha 'Owner approval (scope: test-change app/(auth)/page.test.tsx): Approved (Commit: deadbee)')" >/dev/null
+ok "review: parentheses in approved path" $? 0
+for path in tests/old.sh src/new.sh tests/ src/; do
+  ohg FILES_JSON='[{"filename":"src/new.sh","previous_filename":"tests/old.sh","status":"renamed"}]' APPROVAL_JSON="$(oha "Owner approval (scope: test-change $path): Approved (Commit: deadbee)")" >/dev/null
+  ok "review: rename covered by $path" $? 0
+done
+out="$(ohg FILES_JSON='[{"filename":"src/new.sh","previous_filename":"tests/old.sh","status":"renamed"}]')"; rc=$?
+ok "review: uncovered rename names both paths" "$rc|$(grep -c 'src/new.sh' <<<"$out")|$(grep -c 'tests/old.sh' <<<"$out")" '1|1|1'
+out="$(ohg APPROVAL_JSON="$(oha "$OH_APPROVAL
+Use the safer implementation")")"; rc=$?
+ok "review: multiline approval still requires decision acknowledgement" "$rc|$(grep -c 'Decision applied:' <<<"$out")" '1|1'
+ohg APPROVAL_JSON="$(oha 'Owner approval (scope: test-change tests/): Approved')" >/dev/null
+ok "review: approval without Commit needs no acknowledgement" $? 0
+ohg APPROVAL_JSON="$(oha "$OH_APPROVAL")" >/dev/null
+ok "review: single-line approval needs no acknowledgement" $? 0
+ap3 "[$(bj 1 Owner-Hold '')]" noop
+ok "review: mixed-case hold waits without a round" "$?|$(cat "$AP3FX/n" 2>/dev/null || echo 0)" '3|0'
+ok "review: mixed-case hold appears in owner actions" "$(grep -cF 'gh issue edit 1 --remove-label owner-hold' "$AP3/w/.aicrew/owner-actions.md")" 1
+ap3 "[$(bj 1 Owner-Hold ''),$(bj 2 role:qa "$(bl '- #1')")]" noop --wait 1 --wait-max 2
+ok "review: mixed-case hold blocks dependent work while waiting" $? 3
+mkdir -p "$tmp/rrh"; cat > "$tmp/rrh/gh" <<'GHEOF'
+#!/bin/sh
+case "$*" in "issue list"*) echo '[{"number":8,"title":"Held","state":"OPEN","labels":[{"name":"Owner-Hold"},{"name":"di-integrasi"}],"comments":[]}]';; "pr list"*) echo '[{"number":5,"state":"MERGED","baseRefName":"integ","comments":[{"body":"**Bukti selesai** ok"}]}]';; *) echo '{}';; esac
+GHEOF
+chmod +x "$tmp/rrh/gh"; rm -f "$tmp/rrh.md"
+(cd "$tmp/rr" && PATH="$tmp/rrh:$PATH" bash "$root/scripts/release-report.sh" --out "$tmp/rrh.md" --test-cmd true >/dev/null 2>&1); rc=$?
+ok "review: release refuses owner hold and names waiting issues" "$rc|$(grep -cF 'owner-hold issues waiting: #8' "$tmp/rrh.md")" '1|1'
+cd "$root" || exit 1
+echo "Review regression failures: $((fails-review_start))"
+
+
 [ "$fails" = 0 ] && echo "SEMUA LULUS" || { echo "$fails GAGAL"; exit 1; }

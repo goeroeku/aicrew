@@ -41,6 +41,12 @@ Issue `in-progress` yang tidak ada di keluaran resume adalah milik worktree yang
 - Sebelum menyimpulkan "tidak ada pekerjaan", jalankan ulang `gh issue list` untuk issue Ready: label dan keputusan owner bisa berubah selama sesi.
 - Sesi yang menganggur melewati `AICREW_IDLE_LIMIT` (bawaan 30 menit tanpa perubahan transkrip dan tanpa proses turunan sah) diinterupsi `autopilot.sh` (SIGINT, lalu SIGTERM bila bertahan). Wrapper `AICREW_CLAUDE` wajib `exec claude ...`, supaya sinyal sampai ke sesi.
 
+**Owner holds and approvals.** Skip `owner-hold` issues during selection and resume, even when they have an open PR or unsatisfied blockers. Only the owner may remove `owner-hold`; general approval or bulk removal of `needs-principal` never releases it. Autopilot exits 3 when all remaining issues await the owner. `owner-actions.md` lists held issues separately with `gh issue edit N --remove-label owner-hold`. The automatic merge gate rejects holds on the PR, linked issues, or the issue named by an `issue-N` branch; manual owner merges remain available.
+
+For changes to existing tests, request `Owner approval (scope: test-change <path>[, <path>...]): <text> (Commit: <sha>)`. Each changed test needs an exact current path or a directory prefix ending in `/`; an empty list approves nothing. The gate reads any line, case-insensitively, only in unedited comments on the PR itself from OWNER/MEMBER/COLLABORATOR, excluding machine-prefixed comments. The SHA is informational. Added test files need no approval. `scope-extension` and `waiver` approvals are read by the orchestrator only; they never bypass the test-change gate. Agents must never write owner approvals themselves or reuse approval for a different scope.
+
+Agents open no notifications of their own: add the waiting label and one `owner-action: <action> | <command> | <reason>` comment only. Autopilot collects the questions in one `owner-actions.md` and posts one note per state, rather than one notification per issue.
+
 ## Pemilihan issue siap
 Siap = terbuka, belum assignee/in-progress, semua `blocked-by` sudah ter-merge ke cabang integrasi (atau `main` bila tidak ada cabang integrasi), tidak berlabel
 `needs-principal`, dan tidak menyentuh file yang sama dengan issue yang sedang berjalan.
@@ -156,8 +162,7 @@ ambil alih dengan model Claude sesuai bobot tugas dan sebutkan di laporan.
    kecuali `WORKFLOW.md` mengizinkannya (mode auto ke `main`, bila ada). Kabari owner dengan tautan PR dan butir "Keputusan otomatis" yang perlu ditinjau.
 
 ## Notifikasi
-Hook `Notification` plugin mengirim ke Telegram bila `AICREW_TG_TOKEN` dan `AICREW_TG_CHAT` diset. Kamu cukup
-berhenti dengan pesan jelas ("issue #N butuh keputusan: …") agar hook terpicu; jangan menyimpan token di berkas.
+For waiting items, agents create no notifications: use the label and `owner-action:` comment only. Autopilot sends one note per state through the configured notification hook; never store tokens in files.
 
 ## Laporan akhir sesi (maks 12 baris)
 Selesai / In Review / ditandai `needs-principal` / dilewati, jumlah iterasi terpakai, yang tidak diverifikasi,

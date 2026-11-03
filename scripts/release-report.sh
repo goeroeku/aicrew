@@ -21,6 +21,7 @@ merged="$(jq --arg b "$integ" '[.[]|select(.state=="MERGED" and .baseRefName==$b
 has() { jq --argjson ls "$1" 'map(select((.labels|map(.name)) as $n|any($ls[]; . as $x|$n|index($x))))' <<<"$2"; }
 blocking="$(jq --argjson ls "$L_INT" '[.[]|select(.state=="OPEN" and (((.labels|map(.name)) as $n|(any($ls[]; . as $x|$n|index($x)) or ($n|index("epic"))))|not))]' <<<"$issues")"
 needs="$(jq '[.[]|select(.state=="OPEN" and ((.labels|map(.name)|index("epic"))|not))]' <<<"$issues" | jq 'map(select(.labels|map(.name)|index("needs-principal")))')"
+held="$(jq '[.[]|select(.state=="OPEN" and (.labels|map(.name|ascii_downcase)|index("owner-hold")))]' <<<"$issues")"
 auto="$(has "$L_AUTO" "$issues")"
 noevid="$(jq '[.[]|select((.comments|map(.body)|map(contains("Bukti selesai"))|any)|not)]' <<<"$merged")"
 # jejak audit: PR ter-merge berlabel needs-security/needs-perf (label PR + issue yang ditutup badan PR) dan bukti laporannya
@@ -58,6 +59,7 @@ reasons=()
 [ "$(jq length <<<"$merged")" = 0 ] && reasons+=("tidak ada PR ter-merge ke $integ")
 [ "$(jq length <<<"$blocking")" != 0 ] && reasons+=("$(jq length <<<"$blocking") issue terbuka belum di-integrasi: $(jq -r 'map("#\(.number)")|join(" ")' <<<"$blocking")")
 [ "$(jq length <<<"$needs")" != 0 ] && reasons+=("needs-principal menunggu keputusan: $(jq -r 'map("#\(.number)")|join(" ")' <<<"$needs")")
+[ "$(jq length <<<"$held")" != 0 ] && reasons+=("owner-hold issues waiting: $(jq -r 'map("#\(.number)")|join(" ")' <<<"$held")")
 [ "$(jq length <<<"$noevid")" != 0 ] && reasons+=("PR tanpa komentar 'Bukti selesai': $(jq -r 'map("#\(.number)")|join(" ")' <<<"$noevid")")
 [ "$(jq length <<<"$missing")" != 0 ] && reasons+=("PR berlabel needs-security/needs-perf tanpa laporan lulus (perf: atau waiver owner): $(jq -r 'map("#\(.n)")|join(" ")' <<<"$missing")")
 [ "$suite_ok" = 1 ] || reasons+=("suite penuh tidak lulus/tidak dijalankan")

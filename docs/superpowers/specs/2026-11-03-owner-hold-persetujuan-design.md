@@ -29,20 +29,15 @@ Keputusan owner berupa teks bebas, jadi orkestrator dan gerbang tidak bisa berti
 Bentuk (satu baris, awal komentar): `Owner approval (scope: <kind> <args>): <teks> (Commit: <sha>)`.
 - `test-change <berkas>[, <berkas>...]` — dibaca gerbang. `<berkas>` jalur persis, atau awalan direktori berakhiran `/`.
 - `scope-extension`, `waiver <kind>` — hanya dibaca orkestrator; gerbang mengabaikan.
-- Hanya komentar dari OWNER/MEMBER/COLLABORATOR pada PR atau issue tertaut yang dihitung (sama dengan vonis, #99). Komentar berawalan mesin (`Laporan ...`, `owner-action:`, `Decision applied:`, `blocked-by-permission:`) tidak dihitung.
+- Hanya komentar dari OWNER/MEMBER/COLLABORATOR pada PR itu sendiri (bukan issue tertaut) dan belum diedit yang dihitung (sama dengan vonis, #99). Komentar berawalan mesin (`Laporan ...`, `owner-action:`, `Decision applied:`, `blocked-by-permission:`) tidak dihitung.
 
 ### 3. Pemeriksaan gerbang atas berkas tes
 Dalam `--auto` PR non-docs: ambil berkas PR dari REST (sudah ada). Satu berkas dihitung "tes yang ada diubah" bila statusnya `modified`, `removed`, atau `renamed` (termasuk `previous_filename`) dan jalurnya cocok pola tes: `(^|/)(tests?|__tests__|spec)/`, `(^|/)test_[^/]*$`, atau `(_test|\.test|\.spec)\.[A-Za-z0-9]+$`. Berkas berstatus `added` tidak butuh persetujuan.
 Setiap berkas itu harus tercakup satu persetujuan `test-change`. Tidak tercakup -> gerbang gagal, mencetak daftar berkas dan bentuk komentar yang dibutuhkan. Gagal baca komentar/berkas -> gagal tertutup.
-Persetujuan berlaku untuk berkas yang disebut, tidak terikat head tertentu (lihat keputusan 1).
+Persetujuan berlaku untuk berkas yang disebut, tidak terikat head tertentu; field `(Commit: <sha>)` opsional dan informatif.
 
 ### 4. Satu ringkasan owner per putaran
 `owner-actions.sh` sudah mengumpulkan semua item menunggu owner ke `.aicrew/owner-actions.md`, dan autopilot memberi satu notifikasi per keadaan. Pekerjaan: SKILL orchestrate menegaskan agen tidak membuka notifikasi sendiri-sendiri (cukup label + komentar `owner-action:`), dan tes membuktikan tiga issue `needs-principal` menghasilkan satu berkas/satu catatan.
-
-## Keputusan (pilihan saya, belum disetujui owner)
-1. **Persetujuan tidak terikat commit.** Field `(Commit: <sha>)` informatif. Mengikat ke head memaksa persetujuan ulang di tiap push dan tes sering diiterasi. Risiko: isi berkas berubah setelah disetujui; dibatasi karena hanya berkas yang disebut.
-2. **Pola tes tetap** di skrip (bukan konfigurasi). Proyek dengan tata letak lain belum didukung; ditambah bila ada kebutuhan.
-3. **Gerbang menolak PR ber-`owner-hold` hanya lewat issue tertaut** (`closingIssuesReferences`/fallback #113), bukan lewat nama cabang.
 
 ## Keputusan owner (jawaban atas builder-check; menggantikan keputusan 1-3 di atas)
 - **Cabang:** gerbang `--auto` juga menolak PR yang `headRefName` = `issue-N` bila issue N berlabel `owner-hold`, tanpa melihat kata kunci penutup.
@@ -65,3 +60,7 @@ Persetujuan berlaku untuk berkas yang disebut, tidak terikat head tertentu (liha
 - [ ] persetujuan dari non-OWNER/MEMBER/COLLABORATOR atau berawalan mesin tidak dihitung
 - [ ] gerbang menolak PR yang menutup issue `owner-hold`
 - [ ] tiga issue `needs-principal` -> satu `owner-actions.md` dan satu catatan
+- [ ] gerbang menolak PR bercabang `issue-N` bila issue N ber-`owner-hold`, tanpa kata kunci penutup
+- [ ] persetujuan yang diedit, atau di issue tertaut, tidak dihitung
+- [ ] rename dari jalur tes tercakup persetujuan atas nama lama atau baru
+- [ ] `release-report.sh` menganggap issue `owner-hold` terbuka sebagai menunggu owner

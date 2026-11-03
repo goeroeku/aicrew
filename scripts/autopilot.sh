@@ -63,7 +63,7 @@ round_summary() { local pr m o t l; t="$(cat "$d/total" 2>/dev/null || echo 0)";
 
 # semua issue terbuka hanya menunggu manusia: needs-principal, atau punya PR terbuka (cabang issue-N, konvensi yang sama dengan resume.sh)
 has_open_pr() { [ "$(gh pr list --head "issue-$1" --state open --json number,state -q '[.[]|select(.state=="OPEN")]|length' 2>/dev/null)" -ge 1 ] 2>/dev/null; }
-is_principal() { jq -e --argjson n "$2" '.[]|select(.number==$n)|.labels|map(.name)|(index("needs-principal") or index("blocked"))' <<<"$1" >/dev/null 2>&1; }   # blocked (#108) waits on a human like needs-principal
+is_principal() { jq -e --argjson n "$2" '.[]|select(.number==$n)|.labels|map(.name|ascii_downcase)|(index("needs-principal") or index("blocked") or index("owner-hold"))' <<<"$1" >/dev/null 2>&1; }   # blocked and owner-hold wait on a human like needs-principal
 . "$here/ghx.sh"; . "$here/lib/ci-infra.sh"
 # open issue PR whose CI cannot start (infrastructure, #80): a round cannot fix it, so treat as waiting for the owner. Any error = not blocked (fail-closed).
 ci_infra_blocked() { local repo prs pn sha
@@ -179,10 +179,10 @@ for ((i=1; i<=max_rounds; i++)); do
   n_open="$(jq length <<<"$open")"
   cur_json="$(jq -c '[.[]|select(.labels|map(.name)|index("in-progress"))|{issue:.number,role:([.labels[].name|select(type=="string" and startswith("role:"))]|sort|.[0])}]' <<<"$open" 2>/dev/null)" || cur_json='[]'; [ -n "$cur_json" ] || cur_json='[]'
   board_sync
-  n_wait="$(jq '[.[]|select(.labels|map(.name)|(index("needs-principal") or index("blocked")))]|length' <<<"$open")"
+  n_wait="$(jq '[.[]|select(.labels|map(.name|ascii_downcase)|(index("needs-principal") or index("blocked") or index("owner-hold")))]|length' <<<"$open")"
   [ "$n_open" = 0 ] && { cur_json='[]'; set_phase done "$((i-1))"; note "autopilot: semua issue selesai (putaran $((i-1)))"; exit 0; }
   [ "$n_open" = "$n_wait" ] && {
-    m="autopilot: $n_open issue tersisa semuanya needs-principal; butuh keputusan owner"; set_phase waiting-owner
+    m="autopilot: all $n_open remaining issues await the owner (needs-principal, blocked or owner-hold)"; set_phase waiting-owner
     bl_list="$(bash "$here/blocked-list.sh" 2>/dev/null | tr '\t\n' ': ' || true)"; [ -z "$bl_list" ] || m="$m; blocked: $bl_list"
     if [ "$(cat "$d/principal-note" 2>/dev/null)" = "$m" ]; then log "$m"; else note "$m$(owner_actions)"; printf '%s' "$m" > "$d/principal-note"; fi  # satu notifikasi per keadaan, tidak tiap tick autostart
     exit 3; }
@@ -192,7 +192,7 @@ for ((i=1; i<=max_rounds; i++)); do
   ci_wait=0; [ "$same" -ge 1 ] || { ci_infra_blocked && ci_wait=1; }
   if { [ "$same" -ge 1 ] || [ "$ci_wait" = 1 ]; } && waiting_on_owner "$open"; then
     wf="$d/waiting-since"; set_phase waiting-owner
-    [ -f "$wf" ] || { date +%s > "$wf"; note "autopilot: menunggu owner ($n_open issue: needs-principal atau PR terbuka menunggu merge); cek tiap $((wait_s/60)) menit, batas $((wait_max/86400)) hari$(owner_actions)"; }
+    [ -f "$wf" ] || { date +%s > "$wf"; note "autopilot: waiting for owner ($n_open issues: needs-principal, blocked, owner-hold or an open PR awaiting merge); check every $((wait_s/60)) minutes, limit $((wait_max/86400)) days$(owner_actions)"; }
     since="$(cat "$wf")"
     while :; do
       if [ $(( $(date +%s) - since )) -ge "$wait_max" ]; then
@@ -206,7 +206,7 @@ for ((i=1; i<=max_rounds; i++)); do
   fi
   rm -f "$d/principal-note"
   bash "$here/budget.sh" newrun
-  out="$d/round-$i.log"; log "putaran $i: $n_open issue terbuka ($n_wait needs-principal)"; set_phase running "$i"
+  out="$d/round-$i.log"; log "putaran $i: $n_open issue terbuka ($n_wait waiting for owner)"; set_phase running "$i"
   [ "$cur_json" = '[]' ] || printf '%s putaran %s: sedang dikerjakan: %s\n' "$(date '+%F %T')" "$i" "$(jq -r 'map("#\(.issue)(\(.role // "-"))")|join(" ")' <<<"$cur_json")" | tee -a "$d/autopilot.log"
   rm -f "$d/idle-interrupt"; rstart="$(date +%s)"
   if [ "$idle_limit" -gt 0 ] 2>/dev/null || [ "$round_timeout" -gt 0 ] 2>/dev/null; then watch_round "$rstart" "$$" & wpid=$!; fi

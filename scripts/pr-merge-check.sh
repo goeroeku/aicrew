@@ -50,13 +50,24 @@ else
     labels="$labels"$'\n'"$l"
   done
   if [ "${3:-}" = "--auto" ]; then
+    # A canonical issue branch is held even when the PR has no closing reference.
+    head_ref="$(jq -r '.head.ref // ""' <<<"$prj")" || fail "PR branch could not be read"
+    if [[ "$head_ref" =~ ^issue-([0-9]+)$ ]]; then
+      branch_issue="${BASH_REMATCH[1]}"
+      branch_labels="$(gh api "repos/$cr/issues/$branch_issue" --jq '.labels[]?.name')" || fail "owner-hold: issue #$branch_issue labels could not be read (REST)"
+      grep -qix owner-hold <<<"$branch_labels" && fail "owner-hold: issue #$branch_issue is held by the owner"
+    fi
+    grep -qix owner-hold <<<"$labels" && fail "owner-hold: automatic merge requires the owner to release the hold"
     [[ "$dst" =~ ^[A-Za-z0-9._/-]+$ ]] || fail "cabang tujuan '$dst' berkarakter tidak sah"
     acr="$cr"
     # PR yang menyentuh docs/WORKFLOW.md (termasuk rename) tidak di-merge otomatis: izin sementara hanya dimasukkan owner (#61)
-    pg=1; nondoc=0
+    pg=1
+    nondoc=0
+    files='[]'
     while :; do
       pj="$(gh api "repos/$acr/pulls/$pr/files?per_page=100&page=$pg")" || fail "daftar file PR #$pr tak terbaca"
       jq -e 'type=="array"' <<<"$pj" >/dev/null 2>&1 || fail "daftar file PR #$pr tak terurai"
+      files="$(printf '%s\n%s\n' "$files" "$pj" | jq -cs '.[0] + (.[1] | map({filename,previous_filename,status}))')" || fail "PR files could not be accumulated"
       jq -e 'any(.[]; (.filename|ascii_downcase)=="docs/workflow.md" or ((.previous_filename // "")|ascii_downcase)=="docs/workflow.md")' <<<"$pj" >/dev/null 2>&1 && fail "PR menyentuh docs/WORKFLOW.md; auto-merge ditolak (izin sementara hanya dari owner); minta owner merge"
       # dokumentasi saja = semua berkas (dan nama lamanya) di docs/ atau README/CHANGELOG/PRIVACY berekstensi md/txt/rst, atau LICENSE; selain itu butuh vonis QA (#86). Daftar kosong = tidak ada yang diubah.
       # Gagal tertutup: jq error (mis. nama berkas null) dianggap bukan dokumentasi.
@@ -107,6 +118,30 @@ else
     [[ "$bh" =~ ^[0-9]+$ ]] && [ "$bh" -gt 0 ] && echo "PERINGATAN: PR tertinggal $bh commit dari $dst; CI pada head ini tidak menguji hasil merge ke $dst terkini"
   fi
   comments="$(set -o pipefail; gh api "repos/$cr/issues/$pr/comments" --paginate --jq '.[] | {body: (.body // ""), authorAssociation: .author_association, created_at: .created_at, updated_at: (.updated_at // .created_at), login: (.user.login // ""), url: (.html_url // "")}' | jq -s '{comments: .}')" || fail "komentar PR #$pr tak terbaca (REST)"
+  # Approvals cover paths on this PR only; commit text is informational.
+  if [ "${3:-}" = "--auto" ] && [ "${nondoc:-0}" = 1 ]; then
+    uncovered="$(printf '%s\n%s\n' "$comments" "$files" | jq -rs '
+      .[0] as $comments | .[1] as $files | $comments |
+      [ .comments[]
+        | select(.authorAssociation | IN("OWNER","MEMBER","COLLABORATOR"))
+        | select(.created_at != null and .updated_at == .created_at)
+        | select(.body | test("^\\s*(laporan[ :]|owner-action:|decision applied:|blocked-by-permission:)"; "i") | not)
+        | .body | split("\n")[]
+        | capture("^owner approval \\(scope: test-change\\s+(?<paths>.*?)\\): .+?(?: \\(commit: [^\\r\\n]*\\))?\\s*$"; "i")
+        | .paths | split(",")[] | gsub("^\\s+|\\s+$"; "") | select(length > 0)
+      ] as $approved
+      | $files[]
+      | select(.status != "added")
+      | select([.filename, (.previous_filename // "")] | any(.[];
+          test("(^|/)(tests?|__tests__|spec|testdata|__snapshots__|e2e)/|(^|/)test_[^/]*$|(^|/)tests\\.py$|(_test|\\.test|\\.spec|_spec)\\.[a-z0-9]+$|Test\\.java$"; "i")))
+      | . as $file
+      | select($approved | any(.[]; . as $approval
+          | [$file.filename, ($file.previous_filename // empty)]
+          | any(.[]; . == $approval or (($approval | endswith("/")) and startswith($approval)))) | not)
+      | .filename + (if .previous_filename then " (previous: " + .previous_filename + ")" else "" end)')" || fail "Owner test-change approvals could not be evaluated"
+    [ -z "$uncovered" ] || fail "Existing test changes require approval: $uncovered
+Owner approval (scope: test-change <path>[, <path>...]): <text> (Commit: <sha>)"
+  fi
   # hanya komentar OWNER/MEMBER/COLLABORATOR yang dihitung sebagai vonis atau waiver (#99); tanpa authorAssociation = tak tepercaya
   trusted_cmts='.comments[] | select(.authorAssociation | IN("OWNER","MEMBER","COLLABORATOR"))'
   sha_ok() { [ "${#1}" -ge 7 ] && case "$head" in "$1"*) return 0 ;; esac; return 1; }
@@ -162,6 +197,7 @@ else
       def isack: (.login == $pra) and (.body | test("^\\s*decision applied:"; "i"));
       # komentar mesin: catatan owner-action tiga bagian (tindakan | perintah | alasan) dan waiver berbentuk sah
       def machine: isverdict or isack
+        or (.body | test("\\Aowner approval \\(scope: [^\\r\\n]*?\\): [^\\r\\n]+(?: \\(commit: [^\\r\\n]*\\))?\\z"; "i"))
         or (.body | test("^\\s*owner-action: [^|]+\\|[^|]+\\|[^|]+$"; "i"))
         or (.body | test("^\\s*pengecualian disetujui owner \\((perf|rahasia|cve)\\): .+ \\(commit: *[0-9a-f]+\\)"; "i"));
       def ts: ([.created_at, (.updated_at // .created_at)] | max);
