@@ -44,11 +44,21 @@ else
   elif [ "$crc" != 0 ]; then fail "closingIssuesReferences PR #$pr tak terbaca"; fi
   # issue yang diperiksa = daftar resmi GitHub (URL, owner/repo#n, sidebar Development) ∪ semua #n pada baris berkata-kunci
   linked=""
+  owner_only=""
   for n in $( { grep -Ei '(close[sd]?|fix(e[sd])?|resolve[sd]?):? +#[0-9]' <<<"$body" | grep -Eo '#[0-9]+' | tr -d '#'; echo "$closing"; } | sort -un); do
     linked="$linked $n"
     l="$(gh api "repos/$cr/issues/$n" --jq '.labels[]?.name')" || fail "label issue #$n tak terbaca"
     labels="$labels"$'\n'"$l"
+    ib="$(gh api "repos/$cr/issues/$n" --jq '.body // ""')" || fail "body of issue #$n could not be read"
+    grep -Eiq '^[[:space:]>]*([-*+]|[0-9]+[.)])[[:space:]]+\[ \].*owner[[:space:]_-]+only' <<<"$ib" && owner_only="$owner_only $n"
   done
+  if [ -n "$owner_only" ]; then
+    if [ "${3:-}" = "--auto" ]; then
+      fail "PR closes issue(s)$owner_only whose criteria are marked owner only; write Refs #N instead of Closes #N, or let the owner merge"
+    else
+      echo "PERINGATAN: PR closes issue(s)$owner_only whose criteria are marked owner only; the owner follow-up is lost when the issue closes"
+    fi
+  fi
   if [ "${3:-}" = "--auto" ]; then
     # A canonical issue branch is held even when the PR has no closing reference.
     head_ref="$(jq -r '.head.ref // ""' <<<"$prj")" || fail "PR branch could not be read"
