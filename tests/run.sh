@@ -2726,5 +2726,14 @@ ok "review: release refuses owner hold and names waiting issues" "$rc|$(grep -cF
 cd "$root" || exit 1
 echo "Review regression failures: $((fails-review_start))"
 
+# 3c-27. blocked-list.sh reads blocked-by-permission: comments (#107)
+echo '[{"number":1,"labels":[{"name":"blocked"}],"comments":[{"body":"blocked-by-permission: git merge"}]}]' > "$BM/issues.json"
+ok "blocked-list (#107): only comment blocked-by-permission: git merge -> keeps prefix as reason" "$(bmk blocked-list.sh | tr '\t\n' '~|')" '#1~blocked-by-permission: git merge|'
+echo '[{"number":2,"labels":[{"name":"blocked"}],"comments":[{"body":"blocked: needs a design call"},{"body":"blocked-by-permission: docker info"}]}]' > "$BM/issues.json"
+ok "blocked-list (#107): blocked: followed by blocked-by-permission: -> later wins" "$(bmk blocked-list.sh | tr '\t\n' '~|')" '#2~blocked-by-permission: docker info|'
+echo '[{"number":3,"labels":[{"name":"blocked"}],"comments":[{"body":"blocked-by-permission: git merge"},{"body":"blocked: waiting for owner"}]}]' > "$BM/issues.json"
+ok "blocked-list (#107): blocked-by-permission: followed by blocked: -> later wins" "$(bmk blocked-list.sh | tr '\t\n' '~|')" '#3~waiting for owner|'
+echo '[{"number":4,"labels":[{"name":"blocked"}],"comments":[{"body":"note: blocked-by-permission: git merge"},{"body":"also blocked: not at start"}]}]' > "$BM/issues.json"
+ok "blocked-list (#107): comment not starting with prefix is ignored" "$(bmk blocked-list.sh | tr '\t\n' '~|')" '#4~-|'
 
 [ "$fails" = 0 ] && echo "SEMUA LULUS" || { echo "$fails GAGAL"; exit 1; }
