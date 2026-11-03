@@ -201,6 +201,7 @@ Cards only move forward (Backlog/Ready → In progress → In review); only Back
 ## 🧩 Orca and labels
 - **Orca**: `AICREW_NOTIFY=orca` (or `both`, or the plugin option `notify`) marks the workspace unread through `orca worktree set --worktree path:<dir> --unread --comment ...`. Orca launches agents with `--dangerously-skip-permissions` by default (deny rules are not enforced); `preflight.sh` warns about it. Set `Worktree base:` (an absolute path) in `docs/WORKFLOW.md` so `install-permissions.sh` grants the right read permissions.
 - **Risk**: breakdown labels `risk:L0|L1|L2`; auto-merge (`pr-merge-check.sh --auto`) refuses L2.
+- **Blocked by permission**: when a command is denied on a PR, `scripts/blocked-note.sh <pr> "<command>"` posts one `blocked-by-permission: <command>` comment (never repeated for the same command) and prints the `Bash(<command>:*)` rule to add.
 - **Permissions**: `gh pr merge` is only installed for the `agent-after-qa` mode; `gh repo delete`, `gh ssh-key`, `gh gist` and `gh auth` (except `status`) are denied.
 - **Label names**: `integrated` and `auto-decision` can be renamed through `Integrated label:` / `Auto-decision label:` in `WORKFLOW.md` or `AICREW_LABEL_INTEGRATED` / `AICREW_LABEL_AUTO` (see `scripts/label.sh`).
 - `kickoff` adds `.aicrew/` and `.claude/settings.local.json` to `.gitignore` (`scripts/ensure-gitignore.sh`).
