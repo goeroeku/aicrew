@@ -43,7 +43,9 @@ else
     echo "PERINGATAN: GraphQL habis; issue yang ditutup PR dibaca dari semua #N di badan PR (tanpa tautan sidebar)"
   elif [ "$crc" != 0 ]; then fail "closingIssuesReferences PR #$pr tak terbaca"; fi
   # issue yang diperiksa = daftar resmi GitHub (URL, owner/repo#n, sidebar Development) ∪ semua #n pada baris berkata-kunci
+  linked=""
   for n in $( { grep -Ei '(close[sd]?|fix(e[sd])?|resolve[sd]?):? +#[0-9]' <<<"$body" | grep -Eo '#[0-9]+' | tr -d '#'; echo "$closing"; } | sort -un); do
+    linked="$linked $n"
     l="$(gh api "repos/$cr/issues/$n" --jq '.labels[]?.name')" || fail "label issue #$n tak terbaca"
     labels="$labels"$'\n'"$l"
   done
@@ -104,7 +106,7 @@ else
     bh="$(gh api "repos/$cr/compare/$dst...$head" --jq '.behind_by' 2>/dev/null || true)"
     [[ "$bh" =~ ^[0-9]+$ ]] && [ "$bh" -gt 0 ] && echo "PERINGATAN: PR tertinggal $bh commit dari $dst; CI pada head ini tidak menguji hasil merge ke $dst terkini"
   fi
-  comments="$(set -o pipefail; gh api "repos/$cr/issues/$pr/comments" --paginate --jq '.[] | {body: (.body // ""), authorAssociation: .author_association}' | jq -s '{comments: .}')" || fail "komentar PR #$pr tak terbaca (REST)"
+  comments="$(set -o pipefail; gh api "repos/$cr/issues/$pr/comments" --paginate --jq '.[] | {body: (.body // ""), authorAssociation: .author_association, created_at: .created_at, login: (.user.login // ""), url: (.html_url // "")}' | jq -s '{comments: .}')" || fail "komentar PR #$pr tak terbaca (REST)"
   # hanya komentar OWNER/MEMBER/COLLABORATOR yang dihitung sebagai vonis atau waiver (#99); tanpa authorAssociation = tak tepercaya
   trusted_cmts='.comments[] | select(.authorAssociation | IN("OWNER","MEMBER","COLLABORATOR"))'
   sha_ok() { [ "${#1}" -ge 7 ] && case "$head" in "$1"*) return 0 ;; esac; return 1; }
@@ -141,6 +143,29 @@ else
   # vonis QA untuk head dituntut oleh --auto pada PR yang bukan dokumentasi saja (#86); merge manual oleh owner tidak berubah
   if [ "${3:-}" = "--auto" ] && [ "${nondoc:-0}" = 1 ] && ! verdict_ok "Laporan qa:" 0; then
     fail "PR bukan dokumentasi saja: butuh komentar 'Laporan qa: lulus' dari aicrew-qa dengan 'Commit: <sha head>' (dua baris, atau satu baris: 'Laporan qa: lulus Commit: <sha head>'; huruf besar/kecil bebas); vonis terakhir untuk head menang"
+  fi
+  # keputusan owner setelah vonis terakhir untuk head (#110), hanya --auto: komentar tepercaya (OWNER/MEMBER/COLLABORATOR) pada PR atau issue terkait yang lebih baru
+  # daripada vonis terakhir untuk head (tanpa vonis: waktu PR dibuat) memblokir sampai penulis PR menulis 'Decision applied: ...' yang lebih baru. Vonis, waiver, ack, dan catatan owner-action mesin tidak dihitung;
+  # catatan berhenti orchestrator (terblokir:, blocked-by-permission:) dihitung. Merge manual oleh owner tidak diblokir.
+  if [ "${3:-}" = "--auto" ]; then
+    allc="$(jq -c '.comments' <<<"$comments")"
+    for n in $linked; do
+      ic="$(set -o pipefail; gh api "repos/$cr/issues/$n/comments" --paginate --jq '.[] | {body: (.body // ""), authorAssociation: .author_association, created_at: .created_at, login: (.user.login // ""), url: (.html_url // "")}' | jq -s '.')" || fail "komentar issue #$n tak terbaca (REST); keputusan owner tak dapat diperiksa"
+      allc="$(jq -c --argjson i "$ic" '. + $i' <<<"$allc")" || fail "komentar issue #$n tak terurai"
+    done
+    pra="$(jq -r '.user.login // ""' <<<"$prj")"; pat="$(jq -r '.created_at // ""' <<<"$prj")"
+    pend="$(jq -r --arg head "$head" --arg pra "$pra" --arg pat "$pat" '
+      def trusted: (.authorAssociation // "") | IN("OWNER","MEMBER","COLLABORATOR");
+      def verdict: (.body | test("^laporan (qa|security|perf): (lulus|gagal)"; "i"))
+        and (((.body | capture("(?i)commit: *(?<c>[0-9a-f]+)").c) // "" | ascii_downcase) as $c | ($c | length) >= 7 and ($head | startswith($c)));
+      def machine: (.body | test("^\\s*(laporan (qa|security|perf):|decision applied:|owner-action:|pengecualian disetujui owner)"; "i"));
+      . as $all
+      | ([ .[] | select(trusted and verdict) | .created_at ] | max // $pat) as $base
+      | [ .[] | select(trusted and (machine | not) and ((.created_at // "") > $base)) ] as $cands
+      | [ .[] | select(.login == $pra and (.body | test("^\\s*decision applied:"; "i"))) ] as $acks
+      | $cands | map(select(.created_at as $t | ($acks | any(.created_at > $t)) | not))
+      | if length == 0 then empty else (.[0] | "\(.created_at) \(.url): \(.body | gsub("[\r\n]+"; " ") | .[0:300])") end' <<<"$allc")" || fail "keputusan owner tak dapat dievaluasi"
+    [ -z "$pend" ] || fail "keputusan owner setelah vonis terakhir untuk head belum diakui: $pend; terapkan, lalu penulis PR menulis komentar 'Decision applied: <ringkasan>' (dan vonis baru bila head berubah)"
   fi
   # baseline: rahasia memblokir (kecuali waiver owner untuk head), sisanya hanya peringatan; diff tak terbaca = tolak
   diff="$(gh api -H 'Accept: application/vnd.github.v3.diff' "repos/$cr/pulls/$pr")" || fail "diff PR #$pr tak terbaca (REST)"
