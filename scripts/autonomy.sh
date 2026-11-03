@@ -38,15 +38,16 @@ allow_json="$(printf '%s\n' "${AUTONOMY_ALLOW[@]}" | jq -R . | jq -sc .)"
 LINE_RX='^- Grant: scope=merge; risk=L2; branch=[A-Za-z0-9][A-Za-z0-9._/-]*; expires=[0-9TZ:+-]+; note=autonomy\.sh$'
 
 # helper tulis aman: tidak mengikuti symlink, nama sementara acak, atomik
+keepmode() { [ ! -e "$1" ] || chmod "$(stat -f %Lp "$1" 2>/dev/null || stat -c %a "$1")" "$2" 2>/dev/null; return 0; }   # mktemp membuat 0600: pertahankan mode berkas asal
 okfile() { [ ! -L "$1" ] && { [ ! -e "$1" ] || [ -f "$1" ]; }; }
-jedit() { local f="$1" t; shift; okfile "$f" || return 2; t="$(mktemp "$f.XXXXXX")" || return 2; if jq "$@" "$f" > "$t"; then mv "$t" "$f"; else rm -f "$t"; return 2; fi; }
+jedit() { local f="$1" t; shift; okfile "$f" || return 2; t="$(mktemp "$f.XXXXXX")" || return 2; if jq "$@" "$f" > "$t"; then keepmode "$f" "$t"; mv "$t" "$f"; else rm -f "$t"; return 2; fi; }
 settings_name() { case "${1##*/}" in settings.json|settings.local.json) return 0 ;; esac; return 1; }
 
 acquire_lock() {
   mkdir -p "$sdir" 2>/dev/null || die 2 "gagal membuat $sdir"
   if ! mkdir "$lock" 2>/dev/null; then
-    local lp; lp="$(cat "$lock/pid" 2>/dev/null)"
-    if [[ "$lp" =~ ^[0-9]+$ ]] && ! kill -0 "$lp" 2>/dev/null; then rm -rf "$lock"; mkdir "$lock" 2>/dev/null || die 1 "sedang terkunci"   # kunci basi (proses mati)
+    local lp; lp="$(cat "$lock/pid" 2>/dev/null)"; [ -n "$lp" ] || { sleep 1; lp="$(cat "$lock/pid" 2>/dev/null)"; [ -n "$lp" ] || lp=0; }   # pid belum/tak pernah ditulis: tunggu sebentar, lalu anggap basi
+    if [[ "$lp" =~ ^[0-9]+$ ]] && { [ "$lp" = 0 ] || ! kill -0 "$lp" 2>/dev/null; }; then rm -rf "$lock"; mkdir "$lock" 2>/dev/null || die 1 "sedang terkunci"   # kunci basi (proses mati)
     else die 1 "sedang terkunci ($lock)"; fi
   fi
   echo $$ > "$lock/pid"; trap 'rm -rf "$lock"' EXIT
@@ -59,9 +60,9 @@ wf_add() { # <baris>; mencetak "created" bila bagian dibuat
   local t; okfile "$wf" || return 2; mkdir -p "$(dirname "$wf")"; [ -e "$wf" ] || : > "$wf"
   t="$(mktemp "$wf.XXXXXX")" || return 2
   if grep -qx '## Temporary grants' "$wf"; then
-    GL="$1" awk '{ print } !d && $0 == "## Temporary grants" { print ENVIRON["GL"]; d = 1 }' "$wf" > "$t" && mv "$t" "$wf" && echo present
+    GL="$1" awk '{ print } !d && $0 == "## Temporary grants" { print ENVIRON["GL"]; d = 1 }' "$wf" > "$t" && keepmode "$wf" "$t" && mv "$t" "$wf" && echo present
   else
-    { cat "$wf"; [ -z "$(tail -c1 "$wf")" ] || echo; echo "## Temporary grants"; printf '%s\n' "$1"; } > "$t" && mv "$t" "$wf" && echo created
+    { cat "$wf"; [ -z "$(tail -c1 "$wf")" ] || echo; echo "## Temporary grants"; printf '%s\n' "$1"; } > "$t" && keepmode "$wf" "$t" && mv "$t" "$wf" && echo created
   fi || { rm -f "$t"; return 2; }
 }
 wf_del() { # <baris> <created_section>
@@ -71,7 +72,7 @@ wf_del() { # <baris> <created_section>
     { l[++n] = $0 }
     END { for (i = 1; i <= n; i++) if (l[i] == ENVIRON["GL"]) { l[i] = "\001"; break }
       m = n; if (ENVIRON["CS"] == "true") { for (i = 1; i <= n; i++) if (l[i] == "## Temporary grants") { ok = 1; for (j = i + 1; j <= n; j++) if (l[j] != "\001" && l[j] !~ /^[ \t]*$/) ok = 0; if (ok) m = i - 1; break } }
-      for (i = 1; i <= m; i++) if (l[i] != "\001") print l[i] }' "$wf" > "$t" && mv "$t" "$wf" || { rm -f "$t"; return 2; }
+      for (i = 1; i <= m; i++) if (l[i] != "\001") print l[i] }' "$wf" > "$t" && keepmode "$wf" "$t" && mv "$t" "$wf" || { rm -f "$t"; return 2; }
 }
 
 do_off() {
@@ -81,11 +82,11 @@ do_off() {
   while IFS= read -r fo; do
     p="$(jq -r '.path // empty' <<<"$fo")"; cr="$(jq -r '.created // false' <<<"$fo")"
     settings_name "$p" && [ -f "$p" ] && [ ! -L "$p" ] || continue
-    jq -e 'type == "object"' "$p" >/dev/null 2>&1 || { echo "autonomy: JSON rusak di $p, dilewati" >&2; rc=2; continue; }
+    jq -e 'type == "object"' "$p" >/dev/null 2>&1 || { echo "autonomy: PERINGATAN JSON rusak di $p; periksa dan cabut entri $(printf '%s ' "${AUTONOMY_ALLOW[@]}") secara manual" >&2; continue; }
     rem="$(jq -c --argjson a "$allow_json" '[(.added_allow // [])[] | select(. as $x | $a | index($x))]' <<<"$fo")"
     jedit "$p" --argjson rem "$rem" 'if (.permissions.allow | type) == "array" then .permissions.allow -= $rem else . end' || { echo "autonomy: gagal menulis $p" >&2; rc=2; continue; }
     if [ "$cr" = true ] && jq -e '((.permissions.allow // []) | length == 0) and ((.permissions.deny // []) | length == 0) and ((.permissions // {}) | del(.allow, .deny) | length == 0) and (del(.permissions) | length == 0)' "$p" >/dev/null 2>&1; then rm -f "$p"; fi
-    [ -L "$p.bak-autonomy" ] || rm -f "$p.bak-autonomy"
+    [ -L "$p.bak-autonomy" ] || { [ "$(jq -r 'if .bak == false then "false" else "true" end' <<<"$fo")" = true ] && rm -f "$p.bak-autonomy"; }
   done < <(jq -c '.files[]?' "$sf")
   wf_del "$(jq -r '.workflow.line // empty' "$sf")" "$(jq -r '.workflow.created_section // false' "$sf")" || rc=2
   [ "$rc" = 0 ] && rm -f "$sf"
@@ -116,13 +117,16 @@ case "$cmd" in
     do_off || exit $?     # on = cabut yang lama lalu pasang baru: idempoten, tanpa penggabungan status
     gline="- Grant: scope=merge; risk=L2; branch=$branch; expires=$until_arg; note=autonomy.sh"
     [[ "$gline" =~ $LINE_RX ]] || die 1 "tenggat tidak dapat ditulis sebagai baris Grant: $until_arg"
-    files_json="[]"
+    files_json="[]"; done_t=()
+    undo_targets() { local e f c b; for e in ${done_t[@]+"${done_t[@]}"}; do IFS='|' read -r f c b <<<"$e"; [ "$b" = true ] && rm -f "$f.bak-autonomy"; [ "$c" = true ] && rm -f "$f"; done; die "$1" "$2"; }   # gagal sebelum status ada: batalkan yang sudah dibuat
     for f in "${targets[@]}"; do
-      mkdir -p "$(dirname "$f")" 2>/dev/null || die 2 "gagal membuat direktori untuk $f"
-      cr=false; [ -e "$f" ] || { cr=true; echo '{}' > "$f" || die 2 "gagal menulis $f"; }
-      [ -L "$f.bak-autonomy" ] || cp "$f" "$f.bak-autonomy" || die 2 "gagal menulis cadangan $f.bak-autonomy"
+      mkdir -p "$(dirname "$f")" 2>/dev/null || undo_targets 2 "gagal membuat direktori untuk $f"
+      cr=false; bk=true; [ -e "$f.bak-autonomy" ] && bk=false
+      [ -e "$f" ] || { cr=true; echo '{}' > "$f" || undo_targets 2 "gagal menulis $f"; }
+      [ "$bk" = false ] || cp "$f" "$f.bak-autonomy" || undo_targets 2 "gagal menulis cadangan $f.bak-autonomy"
+      done_t+=("$f|$cr|$bk")
       add="$(jq -nc --argjson a "$allow_json" --argjson cur "$(jq -c '.permissions.allow // []' "$f")" '[$a[] | select(. as $x | ($cur | index($x)) | not)]')"
-      files_json="$(jq -c --arg p "$f" --argjson c "$cr" --argjson a "$add" '. + [{path:$p, created:$c, added_allow:$a}]' <<<"$files_json")"
+      files_json="$(jq -c --arg p "$f" --argjson c "$cr" --argjson bk "$bk" --argjson a "$add" '. + [{path:$p, created:$c, bak:$bk, added_allow:$a}]' <<<"$files_json")"
     done
     state="$(jq -n --arg u "$until_arg" --argjson ue "$until_epoch" --arg br "$branch" --argjson fl "$files_json" --arg gl "$gline" '{until:$u, until_epoch:$ue, branch:$br, files:$fl, workflow:{line:$gl, created_section:false}, helper_pid:null}')"
     tmp="$(mktemp "$sf.XXXXXX")" || die 2 "gagal menulis $sf"; printf '%s\n' "$state" > "$tmp" && mv "$tmp" "$sf"   # status ditulis DULU: kegagalan di bawah bisa dicabut
@@ -161,6 +165,6 @@ case "$cmd" in
     while :; do
       sleep "$poll"; [ -f "$sf" ] || exit 0
       exp="$(jq -r '.until_epoch // empty' "$sf" 2>/dev/null)"; [[ "$exp" =~ ^[0-9]+$ ]] || exit 0
-      [ "$(date +%s)" -ge "$exp" ] && exec bash "$here/autonomy.sh" off
+      if [ "$(date +%s)" -ge "$exp" ]; then bash "$here/autonomy.sh" off >/dev/null 2>&1; fi   # kunci terpegang/gagal: ulangi di putaran berikut, jangan menyerah
     done ;;
 esac
