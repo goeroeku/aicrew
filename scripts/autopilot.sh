@@ -64,6 +64,12 @@ round_summary() { local pr m o t l; t="$(cat "$d/total" 2>/dev/null || echo 0)";
 # semua issue terbuka hanya menunggu manusia: needs-principal, atau punya PR terbuka (cabang issue-N, konvensi yang sama dengan resume.sh)
 has_open_pr() { [ "$(gh pr list --head "issue-$1" --state open --json number,state -q '[.[]|select(.state=="OPEN")]|length' 2>/dev/null)" -ge 1 ] 2>/dev/null; }
 is_principal() { jq -e --argjson n "$2" '.[]|select(.number==$n)|.labels|map(.name)|index("needs-principal")' <<<"$1" >/dev/null 2>&1; }
+. "$here/ghx.sh"; . "$here/lib/ci-infra.sh"
+# open issue PR whose CI cannot start (infrastructure, #80): a round cannot fix it, so treat as waiting for the owner. Any error = not blocked (fail-closed).
+ci_infra_blocked() { local repo prs pn sha
+  repo="$(ghx_repo 2>/dev/null)" && [ -n "$repo" ] && prs="$(gh pr list --state open --limit 100 --json number,headRefName,headRefOid,isDraft,isCrossRepository 2>/dev/null)" || return 1
+  while IFS=$'\t' read -r pn sha; do [ -n "$pn" ] && ci_infra_line "$repo" "$sha" >/dev/null && return 0; done < <(jq -r '.[]?|select(.isDraft==false and .isCrossRepository==false and (.headRefName|test("^issue-[0-9]+$")))|"\(.number)\t\(.headRefOid)"' <<<"$prs" 2>/dev/null)
+  return 1; }
 . "$here/lib/blockers.sh"; . "$here/lib/board-ref.sh"   # unsat_blockers, board_ref
 # ringkasan tindakan owner (#57): .aicrew/owner-actions.md ditulis saat mulai menunggu owner; mencetak "; tindakan owner: <path> (<N> item)" untuk ditempel ke catatan/notifikasi. Tak pernah gagal.
 owner_actions() { local r; r="$(bash "$here/owner-actions.sh" "$d" 2>/dev/null)" && [ -n "$r" ] && printf '; tindakan owner: %s' "$r"; return 0; }
@@ -140,7 +146,7 @@ watch_round() { # <awal-epoch> <induk-pid>
 }
 wpid=""
 stop_watch() { [ -z "$wpid" ] || { pkill -P "$wpid" 2>/dev/null; kill "$wpid" 2>/dev/null; { wait "$wpid"; } 2>/dev/null; wpid=""; }; return 0; }
-trap 'stop_watch; rm -f "$d/idle-interrupt"; release_lock' EXIT
+trap 'stop_watch; rm -f "$d/idle-interrupt"; if [ "${_ghx_own:-0}" = 1 ]; then rm -f "$GHX_STATE"; fi; release_lock' EXIT
 # INT dari pemantau (penanda ada) = putaran idle diakhiri, autopilot lanjut; selain itu Ctrl-C pemilik: matikan pemantau dan sesi, keluar 130
 trap 'if [ -f "$d/idle-interrupt" ]; then :; else stop_watch; pkill -INT -P $$ 2>/dev/null; exit 130; fi' INT
 rm -f "$d/idle-interrupt"   # penanda basi dari proses yang mati tidak boleh menelan Ctrl-C
@@ -182,7 +188,8 @@ for ((i=1; i<=max_rounds; i++)); do
   if [ -n "$max_total" ]; then msg="$(bash "$here/budget.sh" check 999999 999 "" "$max_total")"; [ $? = 4 ] && { note "autopilot: $msg; total kumulatif antar-jalan, nolkan dengan --reset-total atau hapus .aicrew/total"; exit 4; }; fi
 
   # menunggu owner: sudah ada putaran tanpa perubahan dan semua issue tersisa hanya menunggu manusia -> pantau murah lewat gh (tanpa claude)
-  if [ "$same" -ge 1 ] && waiting_on_owner "$open"; then
+  ci_wait=0; [ "$same" -ge 1 ] || { ci_infra_blocked && ci_wait=1; }
+  if { [ "$same" -ge 1 ] || [ "$ci_wait" = 1 ]; } && waiting_on_owner "$open"; then
     wf="$d/waiting-since"; set_phase waiting-owner
     [ -f "$wf" ] || { date +%s > "$wf"; note "autopilot: menunggu owner ($n_open issue: needs-principal atau PR terbuka menunggu merge); cek tiap $((wait_s/60)) menit, batas $((wait_max/86400)) hari$(owner_actions)"; }
     since="$(cat "$wf")"
@@ -192,6 +199,7 @@ for ((i=1; i<=max_rounds; i++)); do
         exit 3
       fi
       sleep "$wait_s"; now="$(fingerprint)" || now=""; [ -n "$now" ] && [ "$now" != "$last" ] && break
+      [ "$ci_wait" = 1 ] && [ -n "$now" ] && ! ci_infra_blocked && break   # owner fixed the CI account/runner: resume
     done
     rm -f "$wf" "$wf.timeout"; last="$now"; same=0; log "autopilot: ada perubahan saat menunggu (mis. merge oleh owner); lanjut putaran"; continue
   fi
