@@ -106,7 +106,7 @@ else
     bh="$(gh api "repos/$cr/compare/$dst...$head" --jq '.behind_by' 2>/dev/null || true)"
     [[ "$bh" =~ ^[0-9]+$ ]] && [ "$bh" -gt 0 ] && echo "PERINGATAN: PR tertinggal $bh commit dari $dst; CI pada head ini tidak menguji hasil merge ke $dst terkini"
   fi
-  comments="$(set -o pipefail; gh api "repos/$cr/issues/$pr/comments" --paginate --jq '.[] | {body: (.body // ""), authorAssociation: .author_association, created_at: .created_at, login: (.user.login // ""), url: (.html_url // "")}' | jq -s '{comments: .}')" || fail "komentar PR #$pr tak terbaca (REST)"
+  comments="$(set -o pipefail; gh api "repos/$cr/issues/$pr/comments" --paginate --jq '.[] | {body: (.body // ""), authorAssociation: .author_association, created_at: .created_at, updated_at: (.updated_at // .created_at), login: (.user.login // ""), url: (.html_url // "")}' | jq -s '{comments: .}')" || fail "komentar PR #$pr tak terbaca (REST)"
   # hanya komentar OWNER/MEMBER/COLLABORATOR yang dihitung sebagai vonis atau waiver (#99); tanpa authorAssociation = tak tepercaya
   trusted_cmts='.comments[] | select(.authorAssociation | IN("OWNER","MEMBER","COLLABORATOR"))'
   sha_ok() { [ "${#1}" -ge 7 ] && case "$head" in "$1"*) return 0 ;; esac; return 1; }
@@ -150,21 +150,27 @@ else
   if [ "${3:-}" = "--auto" ]; then
     allc="$(jq -c '.comments' <<<"$comments")"
     for n in $linked; do
-      ic="$(set -o pipefail; gh api "repos/$cr/issues/$n/comments" --paginate --jq '.[] | {body: (.body // ""), authorAssociation: .author_association, created_at: .created_at, login: (.user.login // ""), url: (.html_url // "")}' | jq -s '.')" || fail "komentar issue #$n tak terbaca (REST); keputusan owner tak dapat diperiksa"
+      ic="$(set -o pipefail; gh api "repos/$cr/issues/$n/comments" --paginate --jq '.[] | {body: (.body // ""), authorAssociation: .author_association, created_at: .created_at, updated_at: (.updated_at // .created_at), login: (.user.login // ""), url: (.html_url // "")}' | jq -s '.')" || fail "komentar issue #$n tak terbaca (REST); keputusan owner tak dapat diperiksa"
       allc="$(jq -c --argjson i "$ic" '. + $i' <<<"$allc")" || fail "komentar issue #$n tak terurai"
     done
     pra="$(jq -r '.user.login // ""' <<<"$prj")"; pat="$(jq -r '.created_at // ""' <<<"$prj")"
     pend="$(jq -r --arg head "$head" --arg pra "$pra" --arg pat "$pat" '
       def trusted: (.authorAssociation // "") | IN("OWNER","MEMBER","COLLABORATOR");
-      def verdict: (.body | test("^laporan (qa|security|perf): (lulus|gagal)"; "i"))
-        and (((.body | capture("(?i)commit: *(?<c>[0-9a-f]+)").c) // "" | ascii_downcase) as $c | ($c | length) >= 7 and ($head | startswith($c)));
-      def machine: (.body | test("^\\s*(laporan (qa|security|perf):|decision applied:|owner-action:|pengecualian disetujui owner)"; "i"));
+      # vonis sah = awalan laporan DAN Commit hex >= 7 (untuk commit mana pun); komentar yang hanya berawalan serupa tidak dikecualikan
+      def isverdict: (.body | test("^laporan (qa|security|perf): (lulus|gagal)"; "i")) and ((.body | test("commit: *[0-9a-f]{7,}"; "i")));
+      def forhead: ((.body | capture("(?i)commit: *(?<c>[0-9a-f]+)").c) // "" | ascii_downcase) as $c | ($c | length) >= 7 and ($head | startswith($c));
+      def isack: (.login == $pra) and (.body | test("^\\s*decision applied:"; "i"));
+      # komentar mesin: catatan owner-action tiga bagian (tindakan | perintah | alasan) dan waiver berbentuk sah
+      def machine: isverdict or isack
+        or (.body | test("^\\s*owner-action: [^|]+\\|[^|]+\\|[^|]+$"; "i"))
+        or (.body | test("^\\s*pengecualian disetujui owner \\((perf|rahasia|cve)\\): .+ \\(commit: *[0-9a-f]+\\)"; "i"));
+      def ts: ([.created_at, (.updated_at // .created_at)] | max);
       . as $all
-      | ([ .[] | select(trusted and verdict) | .created_at ] | max // $pat) as $base
-      | [ .[] | select(trusted and (machine | not) and ((.created_at // "") > $base)) ] as $cands
-      | [ .[] | select(.login == $pra and (.body | test("^\\s*decision applied:"; "i"))) ] as $acks
-      | $cands | map(select(.created_at as $t | ($acks | any(.created_at > $t)) | not))
-      | if length == 0 then empty else (.[0] | "\(.created_at) \(.url): \(.body | gsub("[\r\n]+"; " ") | .[0:300])") end' <<<"$allc")" || fail "keputusan owner tak dapat dievaluasi"
+      | ([ .[] | select(trusted and isverdict and forhead) | .created_at ] | max // $pat) as $base
+      | [ .[] | select(isack) ] as $acks
+      | [ .[] | select(trusted and (machine | not) and (ts > $base)) ] as $cands
+      | $cands | map(select(ts as $t | ($acks | any(.created_at > $t)) | not))
+      | if length == 0 then empty else (.[0] | "\\(ts) \\(.url): \\(.body | gsub("[\\r\\n]+"; " ") | .[0:300])") end' <<<"$allc")" || fail "keputusan owner tak dapat dievaluasi"
     [ -z "$pend" ] || fail "keputusan owner setelah vonis terakhir untuk head belum diakui: $pend; terapkan, lalu penulis PR menulis komentar 'Decision applied: <ringkasan>' (dan vonis baru bila head berubah)"
   fi
   # baseline: rahasia memblokir (kecuali waiver owner untuk head), sisanya hanya peringatan; diff tak terbaca = tolak
