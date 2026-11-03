@@ -170,7 +170,7 @@ else
       | [ .[] | select(isack) ] as $acks
       | [ .[] | select(trusted and (machine | not) and (ts > $base)) ] as $cands
       | $cands | map(select(ts as $t | ($acks | any(.created_at > $t)) | not))
-      | if length == 0 then empty else (.[0] | "\\(ts) \\(.url): \\(.body | gsub("[\\r\\n]+"; " ") | .[0:300])") end' <<<"$allc")" || fail "keputusan owner tak dapat dievaluasi"
+      | if length == 0 then empty else (.[0] | "\(ts) \(.url): \(.body | gsub("[\r\n]+"; " ") | .[0:300])") end' <<<"$allc")" || fail "keputusan owner tak dapat dievaluasi"
     [ -z "$pend" ] || fail "keputusan owner setelah vonis terakhir untuk head belum diakui: $pend; terapkan, lalu penulis PR menulis komentar 'Decision applied: <ringkasan>' (dan vonis baru bila head berubah)"
   fi
   # baseline: rahasia memblokir (kecuali waiver owner untuk head), sisanya hanya peringatan; diff tak terbaca = tolak
