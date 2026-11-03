@@ -104,7 +104,13 @@
       "Bash(rtk gh repo delete:*)",
       "Bash(rtk gh ssh-key:*)",
       "Bash(rtk gh gist:*)",
-      "Bash(rtk gh auth token:*)"
+      "Bash(rtk gh auth token:*)",
+      "Bash(*autonomy.sh on*)",
+      "Bash(rtk *autonomy.sh on*)",
+      "Bash(*autonomy.sh _expire*)",
+      "Bash(rtk *autonomy.sh _expire*)",
+      "Edit(.aicrew/autonomy.json)",
+      "Write(.aicrew/autonomy.json)"
     ]
   },
   "modes": {
