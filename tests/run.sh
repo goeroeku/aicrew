@@ -2789,4 +2789,23 @@ ok "owner-only (#111): CRLF issue body is refused too" $? 1
 dg BODY="Closes #4" CLOSING=4 ISSB_4='' >/dev/null
 ok "owner-only (#111): empty issue body passes" $? 0
 
+# 3c-30. worktree-for-issue.sh --ensure (#78): satu issue satu cabang, percobaan ulang melanjutkan commit pertama
+EN="$tmp/en"; rm -rf "$EN"; mkdir -p "$EN"; git init -q --bare "$EN/remote.git"; git clone -q "$EN/remote.git" "$EN/w" 2>/dev/null
+EG() { git -C "$EN/w" "$@"; }; EG checkout -q -b main; EG commit -q --allow-empty -m base; EG push -q -u origin main
+EW() { (cd "$EN/w" && bash "$root/scripts/worktree-for-issue.sh" "$@" 2>"$EN/err"); }
+out="$(EW 51 --ensure "$EN/w-wt-51" main)"; ok "ensure (#78): tanpa jejak -> create dari origin/main" "$?|$(grep -c "^ensure.create.$EN/w-wt-51\$" <<<"$out")|$(git -C "$EN/w-wt-51" rev-parse --abbrev-ref HEAD)" '0|1|issue-51'
+git -C "$EN/w-wt-51" commit -q --allow-empty -m first-attempt; echo wip > "$EN/w-wt-51/u.txt"
+out="$(EW 51 --ensure "$EN/w-wt-51b" main)"; ok "ensure (#78): percobaan kedua memakai ulang worktree kanonik berisi kerja belum aman, tanpa worktree baru" "$?|$(grep -c "^ensure.reuse.*/w-wt-51\$" <<<"$out")|$([ -e "$EN/w-wt-51b" ] && echo ada || echo tidak)" '0|1|tidak'
+rm -f "$EN/w-wt-51/u.txt"; EG worktree remove --force "$EN/w-wt-51"
+out="$(EW 51 --ensure "$EN/w-wt-51c" main)"; ok "ensure (#78): cabang issue-51 punya commit sendiri -> continue dari commit percobaan pertama" "$?|$(grep -c "^ensure.continue.$EN/w-wt-51c\$" <<<"$out")|$(git -C "$EN/w-wt-51c" log -1 --format=%s)" '0|1|first-attempt'
+EG branch issue-52 main; EG commit -q --allow-empty -m moved; EG push -q origin main
+out="$(EW 52 --ensure "$EN/w-wt-52" main)"; ok "ensure (#78): cabang lokal tanpa commit sendiri dan tertinggal -> reset ke origin/main otomatis" "$?|$(grep -c '^ensure.reset' <<<"$out")|$(git -C "$EN/w-wt-52" log -1 --format=%s)" '0|1|moved'
+EG worktree add -q -b issue-53 "$EN/w-wt-53" main~1 2>/dev/null || EG worktree add -q -b issue-53 "$EN/w-wt-53" main
+out="$(EW 53 --ensure "$EN/w-wt-53x" main)"; ok "ensure (#78): worktree kanonik bersih tanpa commit sendiri dan tertinggal -> reset otomatis, path sama" "$?|$(grep -c "^ensure.reset.*/w-wt-53\$" <<<"$out")|$(git -C "$EN/w-wt-53" log -1 --format=%s)" '0|1|moved'
+EG branch issue-54-r2 main; EG worktree add -q "$EN/w-wt-54-r2" issue-54-r2; echo x > "$EN/w-wt-54-r2/d.txt"
+EW 54 --ensure "$EN/w-wt-54" main >/dev/null; ok "ensure (#78): worktree bersufiks dengan kerja belum aman -> exit 1, tidak membuat worktree" "$?|$([ -e "$EN/w-wt-54" ] && echo ada || echo tidak)" '1|tidak'
+EW 55 --ensure "$EN/w-wt-55" nobase >/dev/null 2>&1; ok "ensure (#78): basis origin/nobase tidak ada -> exit 2" $? 2
+EW 55 --ensure >/dev/null 2>&1; ok "ensure (#78): tanpa path dan basis -> exit 64" $? 64
+grep -q -- '--ensure' skills/orchestrate/SKILL.md; ok "orchestrate SKILL.md menyebut worktree-for-issue.sh --ensure" $? 0
+
 [ "$fails" = 0 ] && echo "SEMUA LULUS" || { echo "$fails GAGAL"; exit 1; }
