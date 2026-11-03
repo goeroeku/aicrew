@@ -2346,6 +2346,12 @@ rg ISSFAIL=1 >/dev/null; ok "gerbang REST (#113): label issue tak terbaca lewat 
 rg DIFFFAIL=1 >/dev/null; ok "gerbang REST (#113): diff tak terbaca lewat REST -> gagal" $? 1
 : > "$tmp/gcalls"; rg CALLS="$tmp/gcalls" CLOSING=2 >/dev/null
 ok "gerbang REST (#113): satu-satunya gh pr view adalah closingIssuesReferences, tanpa gh pr diff atau gh issue view" "$(grep -c '^pr view' "$tmp/gcalls")|$(grep '^pr view' "$tmp/gcalls" | grep -vc closingIssuesReferences)|$(grep -c '^pr diff\|^issue view' "$tmp/gcalls")" '1|0|0'
+for b in 'Fixes o/r#5' 'Closes https://github.com/o/r/issues/5' 'closes goeroeku/aicrew#5'; do rg GQLFAIL=1 BODY="$b" >/dev/null; ok "gerbang REST (#113): GraphQL habis + '$b' (lintas repo/URL) -> gagal tertutup" $? 1; done
+rg GQLFAIL=1 BODY=$'Closes\t#5' ISSL_5=needs-security >/dev/null; ok "gerbang REST (#113): GraphQL habis + kata kunci lalu tab lalu #5 -> issue 5 diperiksa" $? 1
+rg GQLFAIL=1 BODY=$'Closes\n#5' ISSL_5=needs-security >/dev/null; ok "gerbang REST (#113): GraphQL habis + #5 di baris berikutnya -> issue 5 diperiksa" $? 1
+rg GQLFAIL=1 BODY='Refs #5' ISSL_5=needs-security >/dev/null; ok "gerbang REST (#113): GraphQL habis -> semua #N di badan diperiksa (lebih ketat, hanya dalam cadangan)" $? 1
+rg BODY='Refs #5' ISSL_5=needs-security >/dev/null; ok "gerbang REST (#113): GraphQL tersedia -> 'Refs #5' tidak diperiksa seperti biasa" $? 0
+: > "$tmp/gcalls2"; rg CALLS="$tmp/gcalls2" >/dev/null; ok "gerbang REST (#113): gh pr view memakai -R repo yang sama dengan bacaan REST" "$(grep '^pr view' "$tmp/gcalls2" | grep -c -- '-R o/r')" 1
 out="$(rg PRFAIL=1 REST_REM=0)"; rc=$?
 ok "gerbang REST (#113): REST habis -> gagal, batas REST dan jam reset disebut" "$rc|$(grep -c 'batas REST GitHub habis; reset 23:48:37 UTC' <<<"$out")" '1|1'
 out="$(rg PRFAIL=1 REST_REM=3)"; ok "gerbang REST (#113): kegagalan REST biasa -> tanpa baris batas REST" "$(grep -c 'batas REST' <<<"$out")" 0

@@ -31,11 +31,16 @@ else
   labels="$(jq -r '.labels[]?.name' <<<"$prj")" || fail "label PR #$pr tak terbaca"
   # closingIssuesReferences hanya ada di GraphQL (#113). Bila batas GraphQL habis (rc 75): kata kunci di badan PR (sudah diurai di bawah) + timeline REST;
   # event `connected` (tautan sidebar) tak memuat nomor issue lewat REST, jadi ada tautan sidebar = gagal tertutup, tanpa tautan = lanjut dengan peringatan
-  closing="$(ghx_gql gh pr view "$pr" --json closingIssuesReferences -q '.closingIssuesReferences[].number')"; crc=$?
+  closing="$(ghx_gql gh pr view "$pr" -R "$cr" --json closingIssuesReferences -q '.closingIssuesReferences[].number')"; crc=$?
   if [ "$crc" = 75 ]; then
     closing=""; tl="$(gh api "repos/$cr/issues/$pr/timeline" --paginate --jq '.[] | select(.event=="connected" or .event=="disconnected") | .event')" || fail "timeline PR #$pr tak terbaca (REST); closingIssuesReferences tak dapat diperiksa saat GraphQL habis"
     [ "$(grep -cx connected <<<"$tl" || true)" -le "$(grep -cx disconnected <<<"$tl" || true)" ] || fail "PR #$pr punya tautan sidebar (Development) yang tak dapat diurai lewat REST saat GraphQL habis; tunggu reset lalu ulangi"
-    echo "PERINGATAN: GraphQL habis; issue yang ditutup PR dibaca dari kata kunci di badan PR (tanpa tautan sidebar)"
+    # cadangan harus lebih ketat dari closingIssuesReferences: referensi lintas repo atau URL issue di samping kata kunci tak dapat diperiksa (gagal tertutup),
+    # dan SEMUA #N di badan PR diperiksa labelnya (kata kunci + tab/baris baru/bentuk lain tidak lolos)
+    grep -Eiq '(close[sd]?|fix(e[sd])?|resolve[sd]?)[:[:space:]]+(https?://[^[:space:]]*/issues/[0-9]+|[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+#[0-9]+)' <<<"$body" \
+      && fail "PR #$pr menutup issue lewat URL atau owner/repo#N yang tak dapat diperiksa saat GraphQL habis; tunggu reset lalu ulangi"
+    closing="$(grep -Eo '#[0-9]+' <<<"$body" | tr -d '#' || true)"
+    echo "PERINGATAN: GraphQL habis; issue yang ditutup PR dibaca dari semua #N di badan PR (tanpa tautan sidebar)"
   elif [ "$crc" != 0 ]; then fail "closingIssuesReferences PR #$pr tak terbaca"; fi
   # issue yang diperiksa = daftar resmi GitHub (URL, owner/repo#n, sidebar Development) ∪ semua #n pada baris berkata-kunci
   for n in $( { grep -Ei '(close[sd]?|fix(e[sd])?|resolve[sd]?):? +#[0-9]' <<<"$body" | grep -Eo '#[0-9]+' | tr -d '#'; echo "$closing"; } | sort -un); do
