@@ -63,7 +63,7 @@ round_summary() { local pr m o t l; t="$(cat "$d/total" 2>/dev/null || echo 0)";
 
 # semua issue terbuka hanya menunggu manusia: needs-principal, atau punya PR terbuka (cabang issue-N, konvensi yang sama dengan resume.sh)
 has_open_pr() { [ "$(gh pr list --head "issue-$1" --state open --json number,state -q '[.[]|select(.state=="OPEN")]|length' 2>/dev/null)" -ge 1 ] 2>/dev/null; }
-is_principal() { jq -e --argjson n "$2" '.[]|select(.number==$n)|.labels|map(.name)|index("needs-principal")' <<<"$1" >/dev/null 2>&1; }
+is_principal() { jq -e --argjson n "$2" '.[]|select(.number==$n)|.labels|map(.name)|(index("needs-principal") or index("blocked"))' <<<"$1" >/dev/null 2>&1; }   # blocked (#108) waits on a human like needs-principal
 . "$here/ghx.sh"; . "$here/lib/ci-infra.sh"
 # open issue PR whose CI cannot start (infrastructure, #80): a round cannot fix it, so treat as waiting for the owner. Any error = not blocked (fail-closed).
 ci_infra_blocked() { local repo prs pn sha
@@ -179,10 +179,11 @@ for ((i=1; i<=max_rounds; i++)); do
   n_open="$(jq length <<<"$open")"
   cur_json="$(jq -c '[.[]|select(.labels|map(.name)|index("in-progress"))|{issue:.number,role:([.labels[].name|select(type=="string" and startswith("role:"))]|sort|.[0])}]' <<<"$open" 2>/dev/null)" || cur_json='[]'; [ -n "$cur_json" ] || cur_json='[]'
   board_sync
-  n_wait="$(jq '[.[]|select(.labels|map(.name)|index("needs-principal"))]|length' <<<"$open")"
+  n_wait="$(jq '[.[]|select(.labels|map(.name)|(index("needs-principal") or index("blocked")))]|length' <<<"$open")"
   [ "$n_open" = 0 ] && { cur_json='[]'; set_phase done "$((i-1))"; note "autopilot: semua issue selesai (putaran $((i-1)))"; exit 0; }
   [ "$n_open" = "$n_wait" ] && {
     m="autopilot: $n_open issue tersisa semuanya needs-principal; butuh keputusan owner"; set_phase waiting-owner
+    bl_list="$(bash "$here/blocked-list.sh" 2>/dev/null | tr '\t\n' ': ' || true)"; [ -z "$bl_list" ] || m="$m; blocked: $bl_list"
     if [ "$(cat "$d/principal-note" 2>/dev/null)" = "$m" ]; then log "$m"; else note "$m$(owner_actions)"; printf '%s' "$m" > "$d/principal-note"; fi  # satu notifikasi per keadaan, tidak tiap tick autostart
     exit 3; }
   if [ -n "$max_total" ]; then msg="$(bash "$here/budget.sh" check 999999 999 "" "$max_total")"; [ $? = 4 ] && { note "autopilot: $msg; total kumulatif antar-jalan, nolkan dengan --reset-total atau hapus .aicrew/total"; exit 4; }; fi

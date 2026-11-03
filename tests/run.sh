@@ -2429,4 +2429,36 @@ out="$(tg BEHIND=2 COMM='')"; ok "gerbang target (#109): pesan perbarui cabang m
 out="$(tg BEHIND=1 BASE=lain)"; ok "gerbang target (#109): basis salah tetap ditolak lebih dulu" "$(grep -c '^GAGAL: basis' <<<"$out")" 1
 grep -qF 'behind' "$root/README.md" && grep -qF 'skipped' "$root/README.md"; ok "README (#109): syarat tertinggal dan CI hijau, pengecualian dokumentasi" $? 0
 
+# 3c-23. blocked items (#108): blocked-mark.sh marks once, blocked-list.sh lists, autopilot treats blocked as waiting on the owner (exit 3, never 5)
+BM="$tmp/bm"; mkdir -p "$BM/bin"
+cat > "$BM/bin/gh" <<'GHEOF'
+#!/usr/bin/env bash
+echo "$*" >> "$BM_LOG"
+case "$1 $2" in
+  "issue view") if [ -f "$BM_LOG.marked" ]; then echo blocked; fi; echo role:qa ;;
+  "issue edit") : > "$BM_LOG.marked" ;;
+  "issue list") cat "$BM_ISSUES" ;;
+esac
+exit 0
+GHEOF
+chmod +x "$BM/bin/gh"
+bmk() { env PATH="$BM/bin:$PATH" BM_LOG="$BM/log" BM_ISSUES="$BM/issues.json" bash "$root/scripts/$1" "${@:2}"; }
+rm -f "$BM/log" "$BM/log.marked"
+bmk blocked-mark.sh 7 "QA failed on an owner question" >/dev/null; rc1=$?
+bmk blocked-mark.sh 7 "QA failed on an owner question" >/dev/null; rc2=$?
+ok "blocked-mark: marks once (second call is a no-op: one label edit, one comment)" "$rc1|$rc2|$(grep -c '^issue edit 7 --add-label blocked' "$BM/log")|$(grep -c '^issue comment 7 --body blocked: QA failed on an owner question' "$BM/log")" '0|0|1|1'
+bmk blocked-mark.sh abc x >/dev/null 2>&1; ok "blocked-mark: non-numeric item -> usage error 64" $? 64
+bmk blocked-mark.sh 7 >/dev/null 2>&1; ok "blocked-mark: missing reason -> usage error 64" $? 64
+echo '[{"number":7,"labels":[{"name":"blocked"}],"comments":[{"body":"hello"},{"body":"blocked: old"},{"body":"blocked: needs a design call\nmore"}]},{"number":8,"labels":[{"name":"role:qa"}],"comments":[]},{"number":9,"labels":[{"name":"blocked"}],"comments":[]}]' > "$BM/issues.json"
+ok "blocked-list: open blocked issues, one '#n<TAB>reason' per line (latest reason, '-' when none)" "$(bmk blocked-list.sh | tr '\t\n' '~|')" '#7~needs a design call|#9~-|'
+B1='{"number":1,"state":"OPEN","labels":[{"name":"blocked"}],"body":"","comments":[{"body":"blocked: needs owner call"}]}'
+ap3 "[$B1]" $'noop'; rc=$?
+ok "autopilot: only blocked issue left -> exit 3 (waiting for owner), no round, blockers in log and owner-actions.md" "$rc|$(cat "$AP3FX/n" 2>/dev/null || echo 0)|$(grep -c 'blocked: #1:' "$AP3/w/.aicrew/autopilot.log")|$(grep -c 'blocked: needs owner call' "$AP3/w/.aicrew/owner-actions.md")" '3|0|1|1'
+ap3 "[$B1,$(bj 2 needs-principal '')]" $'noop'; rc=$?
+ok "autopilot: blocked + needs-principal only -> exit 3" "$rc" 3
+ap3 "[$B1,$(bj 2 role:qa '')]" $'noop'; rc=$?
+ok "autopilot: blocked plus a runnable issue -> still runs rounds (exit 2, not 3)" "$rc|$(cat "$AP3FX/n")" '2|3'
+[ -x "$root/scripts/blocked-mark.sh" ] && [ -x "$root/scripts/blocked-list.sh" ]; ok "blocked scripts are executable" $? 0
+grep -q 'blocked-mark.sh' "$root/skills/orchestrate/SKILL.md"; ok "orchestrate skill documents blocked-mark.sh" $? 0
+
 [ "$fails" = 0 ] && echo "SEMUA LULUS" || { echo "$fails GAGAL"; exit 1; }
