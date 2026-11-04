@@ -1,18 +1,18 @@
-## Ringkasan
+## Summary
 
-<!-- Isi ringkasan. Tulis "Closes #<nomor>" satu per baris. -->
+<!-- Fill in the summary. Write "Closes #<number>" one per line. -->
 
 ## Release notes
 
 <!--
-Bila proyek memakai `Release notes: CHANGELOG.md` di docs/WORKFLOW.md, tulis satu baris per entri DI LUAR komentar ini
-(hanya baris ini yang masuk CHANGELOG.md; jangan menaruh nama paket privat atau rahasia):
+When the project uses `Release notes: CHANGELOG.md` in docs/WORKFLOW.md, write one line per entry OUTSIDE this comment
+(only these lines go into CHANGELOG.md; do not include private package names or secrets):
 
-Release note: Added - <teks untuk pengguna>
-Release note: Changed - <teks>
-Release note: Fixed - <teks>
-Release note: Security - <teks>
-Behavior change: <bawaan atau perilaku yang berubah>
+Release note: Added - <user-facing text>
+Release note: Changed - <text>
+Release note: Fixed - <text>
+Release note: Security - <text>
+Behavior change: <default or behavior that changed>
 
-PR internal, PR rilis (naik versi), atau PR yang hanya menulis CHANGELOG.md: tulis tepat "Release note: -".
+Internal PRs, release PRs (version bumps), or PRs that only touch CHANGELOG.md: write "Release note: -" exactly.
 -->

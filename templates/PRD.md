@@ -1,42 +1,42 @@
-# PRD — {{nama project}}
+# PRD — {{project name}}
 
-Status: {{draf | disetujui owner pada YYYY-MM-DD}}
+Status: {{draft | approved by owner on YYYY-MM-DD}}
 
-## Masalah dan pengguna
-{{siapa, masalah apa, kenapa sekarang — maks 5 baris}}
+## Problem and users
+{{who, what problem, why now — max 5 lines}}
 
-## Tujuan dan non-tujuan
-- Tujuan: {{hasil yang diukur}}
-- Non-tujuan (sengaja tidak dikerjakan): {{...}}
+## Goals and non-goals
+- Goals: {{measurable outcomes}}
+- Non-goals (intentionally out of scope): {{...}}
 
-## Kebutuhan
-Tiap kebutuhan punya ID tetap dan kriteria yang bisa diuji mesin atau diamati.
+## Requirements
+Each requirement has a permanent ID and machine-testable or observable acceptance criteria.
 
-| ID | Kebutuhan | Kriteria diterima (bisa dicek) | Prioritas |
+| ID | Requirement | Acceptance criteria (checkable) | Priority |
 |---|---|---|---|
-| R1 | {{...}} | {{tes/perintah/halaman yang membuktikan}} | {{must/should}} |
+| R1 | {{...}} | {{test/command/page that proves it}} | {{must/should}} |
 
 ## Journeys
-Apa yang bisa dilakukan pengguna, dalam bahasa yang dipahami lead. Tiap journey menjadi satu epic saat breakdown.
-Satu kebutuhan boleh melayani lebih dari satu journey.
+What a user can accomplish, in language a lead understands. Each journey becomes one epic during breakdown.
+One requirement may serve more than one journey.
 
-| ID | Journey | Kebutuhan (R-ID, N-ID) | Selesai bila |
+| ID | Journey | Requirements (R-ID, N-ID) | Done when |
 |---|---|---|---|
-| J1 | {{pengguna dapat masuk dengan SSO}} | {{R3, R4}} | {{hasil yang bisa diamati}} |
+| J1 | {{user can sign in with SSO}} | {{R3, R4}} | {{observable outcome}} |
 
-## Kebutuhan non-fungsional
-| ID | Kebutuhan | Kriteria diterima (bisa dicek) | Label |
+## Non-functional requirements
+| ID | Requirement | Acceptance criteria (checkable) | Label |
 |---|---|---|---|
-| N1 | {{login merespons < 1 s}} | {{uji beban / pengukuran}} | {{needs-perf / needs-security}} |
+| N1 | {{login responds in < 1 s}} | {{load test / measurement}} | {{needs-perf / needs-security}} |
 
-## Batasan
-Stack, kinerja, keamanan/otorisasi, data, biaya, tenggat: {{...}}
+## Constraints
+Stack, performance, security/authorization, data, cost, deadline: {{...}}
 
-## Risiko dan keputusan sulit dibalik
-{{skema DB, bentuk API, auth, uang — tandai yang butuh `needs-principal`}}
+## Risks and hard-to-reverse decisions
+{{DB schema, API shape, auth, money — flag items that need `needs-principal`}}
 
-## Pertanyaan terbuka
-{{daftar; kosongkan sebelum status disetujui, atau tandai eksplisit sebagai diterima}}
+## Open questions
+{{list; empty before status is approved, or explicitly mark as accepted}}
 
-## Peta issue (diisi oleh breakdown)
-{{R-ID / N-ID → #issue, gelombang, journey (J-ID → #epic)}}
+## Issue map (filled in by breakdown)
+{{R-ID / N-ID → #issue, wave, journey (J-ID → #epic)}}
