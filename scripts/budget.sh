@@ -6,6 +6,7 @@
 #   budget.sh newrun                     nolkan hitungan iterasi PUTARAN ini (total proyek tetap); dipanggil autopilot tiap putaran
 #   budget.sh check <maxIter> <maxFail> [issue] [maxTotal]   exit 2 = batas iterasi putaran, 3 = batas gagal, 4 = batas total proyek, 0 = boleh lanjut
 set -u
+source "$(dirname "$0")/lib/msg.sh"
 # state di repo utama, bukan cwd: worktree berbagi hitungan yang sama
 g="$(git rev-parse --git-common-dir 2>/dev/null)" && d="$(cd "$g/.." && pwd)/.aicrew" || d=".aicrew"; mkdir -p "$d"
 num() { [ -f "$1" ] && cat "$1" || echo 0; }
@@ -16,9 +17,9 @@ case "${1:-}" in
   reset) rm -f "$d/fail-${2:?issue}" ;;
   check)
     mi="${2:?maxIter}"; mf="${3:?maxFail}"
-    [ "$(num $d/iter)" -ge "$mi" ] && { echo "STOP: batas iterasi ($mi) tercapai"; exit 2; }
-    if [ -n "${4:-}" ] && [ "$(num "$d/fail-$4")" -ge "$mf" ]; then echo "STOP: issue $4 gagal $mf kali"; exit 3; fi
-    [ -n "${5:-}" ] && [ "$(num $d/total)" -ge "$5" ] && { echo "STOP: total $(num $d/total) >= $5 (--max-total)"; exit 4; }
-    echo "lanjut" ;;
-  *) echo "pakai: budget.sh iter|newrun|fail N|reset N|check maxIter maxFail [N] [maxTotal]" >&2; exit 64 ;;
+    [ "$(num $d/iter)" -ge "$mi" ] && { echo "$(msg budget.max_iter "$mi")"; exit 2; }
+    if [ -n "${4:-}" ] && [ "$(num "$d/fail-$4")" -ge "$mf" ]; then echo "$(msg budget.max_fail "$4" "$mf")"; exit 3; fi
+    [ -n "${5:-}" ] && [ "$(num $d/total)" -ge "$5" ] && { echo "$(msg budget.max_total "$(num $d/total)" "$5")"; exit 4; }
+    echo "$(msg budget.continue)" ;;
+  *) echo "$(msg budget.usage)" >&2; exit 64 ;;
 esac

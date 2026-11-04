@@ -3,10 +3,11 @@
 # Driver: AICREW_NOTIFY atau opsi plugin notify = telegram (bawaan) | orca | both.
 # Telegram aktif bila token dan chat ID diisi (pengaturan plugin atau AICREW_TG_*); selain itu diam.
 # Orca: menandai workspace (worktree path:<cwd>) belum dibaca dan menyimpan teks sebagai komentar; biner dari AICREW_ORCA_BIN, Orca.app, atau PATH.
+source "$(dirname "$0")/lib/msg.sh"
 driver="${CLAUDE_PLUGIN_OPTION_NOTIFY:-${AICREW_NOTIFY:-telegram}}"
 tok="${CLAUDE_PLUGIN_OPTION_TG_TOKEN:-${AICREW_TG_TOKEN:-}}"; chat="${CLAUDE_PLUGIN_OPTION_TG_CHAT:-${AICREW_TG_CHAT:-}}"
 input="$(cat 2>/dev/null)"
-msg="butuh perhatian"; dir="$PWD"
+msg="$(msg notify.default)"; dir="$PWD"
 if command -v jq >/dev/null 2>&1 && [ -n "$input" ]; then
   m="$(printf '%s' "$input" | jq -r '.message // empty' 2>/dev/null)"; [ -n "$m" ] && msg="$m"
   d="$(printf '%s' "$input" | jq -r '.cwd // empty' 2>/dev/null)"; [ -n "$d" ] && dir="$d"

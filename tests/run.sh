@@ -3095,4 +3095,18 @@ grep -q '^## Daftar periksa rilis' templates/WORKFLOW.md && grep -q '^- aicrew-p
 rrw="$tmp/rrw"; rm -rf "$rrw"; mkdir -p "$rrw/docs"; sed -n '/^## Daftar periksa rilis/,/^## [^D]/p' "$root/templates/WORKFLOW.md" | sed '$d' > "$rrw/docs/WORKFLOW.md"
 ok "limits (#71): butir baru terbaca sebagai item daftar (awalan '- ' di bawah judul yang sama)" "$(grep -c '^- ' "$rrw/docs/WORKFLOW.md")" "$(grep -c '^- ' "$rrw/docs/WORKFLOW.md")"
 
+# 3c-40. pesan autopilot, autostart, owner-actions, budget, notify, blocked-* dari katalog (#64 tahap D, kelompok autopilot)
+: > "$CURL_LOG"; echo '{}' | env -i PATH="$tmp/nbin:$PATH" CURL_LOG="$CURL_LOG" AICREW_TG_TOKEN=tk AICREW_TG_CHAT=1 AICREW_LANG=en bash "$root/scripts/notify.sh" >/dev/null 2>&1
+ok "notify msg (#64): tanpa pesan -> teks bawaan 'needs attention' (en)" "$(grep -c 'needs attention' "$CURL_LOG")" 1
+: > "$CURL_LOG"; echo '{}' | env -i PATH="$tmp/nbin:$PATH" CURL_LOG="$CURL_LOG" AICREW_TG_TOKEN=tk AICREW_TG_CHAT=1 AICREW_LANG=id bash "$root/scripts/notify.sh" >/dev/null 2>&1
+ok "notify msg (#64): AICREW_LANG=id -> 'butuh perhatian' persis seperti dulu" "$(grep -c 'butuh perhatian' "$CURL_LOG")" 1
+BB="$tmp/bud"; rm -rf "$BB"; mkdir -p "$BB"; git init -q "$BB"
+for l in en id; do out="$(cd "$BB" && AICREW_LANG=$l bash "$root/scripts/budget.sh" iter >/dev/null; for i in 1 2 3; do AICREW_LANG=$l bash "$root/scripts/budget.sh" iter >/dev/null; done; AICREW_LANG=$l bash "$root/scripts/budget.sh" check 2 2 2>&1)"; case $l in en) ok "budget msg (#64): en -> 'STOP: iteration limit'" "$(grep -c 'STOP: iteration limit' <<<"$out")" 1 ;; id) ok "budget msg (#64): id -> teks Indonesia lama (bukan 'iteration limit')" "$(grep -c 'iteration limit' <<<"$out")" 0 ;; esac; done
+allused="$(grep -ho 'msg [a-z]*\.[a-z0-9_]*' "$root"/scripts/*.sh | sed 's/msg //' | sort -u)"
+mkk() { grep -oE '^    [a-z]+\.[a-z0-9_]+\)' "$1" | tr -d ' )' | sort; }
+ok "msg (#64): setiap kunci yang dipakai skrip mana pun ada di en.sh dan id.sh, dan kuncinya sama" "$(comm -23 <(printf '%s\n' "$allused") <(mkk "$root/scripts/lib/msg/en.sh") | wc -l | tr -d ' ')|$(comm -23 <(printf '%s\n' "$allused") <(mkk "$root/scripts/lib/msg/id.sh") | wc -l | tr -d ' ')|$(diff <(mkk "$root/scripts/lib/msg/en.sh") <(mkk "$root/scripts/lib/msg/id.sh") | wc -l | tr -d ' ')" '0|0|0'
+for f in autopilot autostart owner-actions budget notify blocked-mark blocked-note; do
+  ok "msg (#64): $f.sh tanpa pesan Indonesia tersisa di echo/printf/log/note/die" "$(awk '{l=$0; sub(/^[ \t]*#.*/,"",l); sub(/[ \t]+# .*$/,"",l); print l}' "$root/scripts/$f.sh" | grep -E '(echo|printf|log|note|die) +"' | grep -v '\$(msg ' | grep -ciE '\b(yang|dan|tidak|belum|dengan|untuk|sudah|harus|gagal|ditolak|butuh)\b')" 0
+done
+
 [ "$fails" = 0 ] && echo "SEMUA LULUS" || { echo "$fails GAGAL"; exit 1; }

@@ -4,7 +4,7 @@
 # Item deterministik (tanpa model): issue berlabel needs-principal, dan PR terbuka bukan-draft dari cabang issue-<n> (menunggu merge owner).
 # Catatan agen: komentar terbaru berawalan "owner-action: <tindakan> | <perintah> | <alasan>" pada issue/PR itu ikut sebagai catatan (ditulis orchestrator, lihat skill orchestrate).
 set -u
-here="$(cd "$(dirname "$0")" && pwd)"; source "$here/ghx.sh"; source "$here/lib/ci-infra.sh"
+here="$(cd "$(dirname "$0")" && pwd)"; source "$here/ghx.sh"; source "$here/lib/ci-infra.sh"; source "$(dirname "$0")/lib/msg.sh"
 d="${1:-.aicrew}"; mkdir -p "$d"; f="$d/owner-actions.md"
 command -v jq >/dev/null 2>&1 || { rm -f "$f"; exit 0; }   # tanpa jq tidak bisa menyusun; berkas basi tidak dibiarkan
 issues="$(gh issue list --state open --limit 200 --json number,title,labels 2>/dev/null)" || { rm -f "$f"; exit 0; }   # gh gagal: jangan tinggalkan berkas basi
@@ -13,25 +13,25 @@ repo="$(ghx_repo 2>/dev/null)" || repo=""
 # catatan agen terbaru untuk #n ("" bila tidak ada); ponytail: hanya 100 komentar pertama
 note_of() { [ -n "$repo" ] || return 0; gh api "repos/$repo/issues/$1/comments?per_page=100" 2>/dev/null | jq -r '[.[]?|(.body // "")|select(startswith("owner-action:"))]|last // empty|split("\n")[0]|sub("^owner-action: *";"")|.[0:300]' 2>/dev/null; }
 lines="$({
-  jq -r '.[]?|select((.labels // [])|map(.name)|index("needs-principal"))|"\(.number)\t- #\(.number) \(.title) — answer the question in the issue, then remove the label — `gh issue edit \(.number) --remove-label needs-principal` — an owner decision; an agent must not decide it"' <<<"$issues" 2>/dev/null
-  jq -r '.[]?|select((.labels // [])|map(.name|ascii_downcase)|index("owner-hold"))|"\(.number)\t- #\(.number) \(.title) — owner-hold: only the owner may release this hold — `gh issue edit \(.number) --remove-label owner-hold`"' <<<"$issues" 2>/dev/null
-  bash "$here/blocked-list.sh" 2>/dev/null | while IFS=$'\t' read -r bn br; do [ -n "$bn" ] && printf '%s\t- %s blocked: %s — resolve the cause, then remove the label — `gh issue edit %s --remove-label blocked`\n' "${bn#\#}" "$bn" "$br" "${bn#\#}"; done || true
-  jq -r '.[]?|select(.isDraft==false and .isCrossRepository==false and (.headRefName|test("^issue-[0-9]+$")))|"\(.number)\t- PR #\(.number) (issue #\(.headRefName|sub("^issue-";""))) \(.title) — review and merge — `gh pr merge \(.number) --merge --match-head-commit \(.headRefOid)` — \(if ((.labels // [])|map(.name)|index("risk:L2")) then "risk:L2 is never merged automatically" elif ((.labels // [])|map(.name)|index("needs-security")) then "security review is pending" else "the merge mode needs the owner" end)"' <<<"$prs" 2>/dev/null
+  jq -r '.[]?|select((.labels // [])|map(.name)|index("needs-principal"))|"\(.number)\t- '"$(msg owner.needs_principal '\(.number)' '\(.title)' '\(.number)')"'"' <<<"$issues" 2>/dev/null
+  jq -r '.[]?|select((.labels // [])|map(.name|ascii_downcase)|index("owner-hold"))|"\(.number)\t- '"$(msg owner.owner_hold '\(.number)' '\(.title)' '\(.number)')"'"' <<<"$issues" 2>/dev/null
+  bash "$here/blocked-list.sh" 2>/dev/null | while IFS=$'\t' read -r bn br; do [ -n "$bn" ] && printf '%s\t- %s\n' "${bn#\#}" "$(msg owner.blocked "$bn" "$br" "${bn#\#}")"; done || true
+  jq -r --arg rl2 "$(msg owner.reason_l2)" --arg rsec "$(msg owner.reason_security)" --arg rmode "$(msg owner.reason_merge_mode)" '.[]?|select(.isDraft==false and .isCrossRepository==false and (.headRefName|test("^issue-[0-9]+$")))|"\(.number)\t- '"$(msg owner.pr_merge '\(.number)' '\(.headRefName|sub("^issue-";""))' '\(.title)' '\(.number)' '\(.headRefOid)' '\(if ((.labels // [])|map(.name)|index("risk:L2")) then $rl2 elif ((.labels // [])|map(.name)|index("needs-security")) then $rsec else $rmode end)')"'"' <<<"$prs" 2>/dev/null
 })"
-n=0; out="# Owner actions ($(date '+%F %T'))"$'\n'
+n=0; out="$(msg owner.header "$(date '+%F %T')")"$'\n'
 while IFS=$'\t' read -r num text; do
   [ -n "$num" ] || continue
   n=$((n+1)); out="$out"$'\n'"$text"
-  nt="$(note_of "$num")"; [ -z "$nt" ] || out="$out"$'\n'"  - agent note: $nt"
+  nt="$(note_of "$num")"; [ -z "$nt" ] || out="$out"$'\n'"  - $(msg owner.agent_note "$nt")"
 done <<<"$lines"
 # CI that cannot start (billing, no runner; #80): one line per such open issue PR; the file is rewritten each run, so never duplicated
 if [ -n "$repo" ]; then
   while IFS=$'\t' read -r pn sha; do
     [ -n "$pn" ] || continue
     ln="$(ci_infra_line "$repo" "$sha")" || continue
-    n=$((n+1)); out="$out"$'\n'"- PR #$pn — $ln"
+    n=$((n+1)); out="$out"$'\n'"- $(msg owner.ci_infra "$pn" "$ln")"
   done < <(jq -r '.[]?|select(.isDraft==false and .isCrossRepository==false and (.headRefName|test("^issue-[0-9]+$")))|"\(.number)\t\(.headRefOid)"' <<<"$prs" 2>/dev/null)
 fi
-[ "$n" -gt 0 ] || out="$out"$'\n'"No owner actions found."
+[ "$n" -gt 0 ] || out="$out"$'\n'"$(msg owner.none)"
 printf '%s\n' "$out" > "$f.tmp" && mv "$f.tmp" "$f"
-printf '%s (%s item)\n' "$f" "$n"
+printf '%s\n' "$(msg owner.summary "$f" "$n")"
