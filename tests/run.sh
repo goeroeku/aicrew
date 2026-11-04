@@ -469,7 +469,7 @@ ok "preflight izin: HOME berspasi dibaca" "$(cd "$tmp/pp/r1" && HOME="$tmp/pp/h 
 
 # 3c-3. orchestrate: PR konflik dengan cabang tujuan -> batalkan, worktree bersih, laporkan berkas dan klasifikasi, tanpa mengulang (#59)
 SK="$root/skills/orchestrate/SKILL.md"
-for k in 'Konflik dengan cabang tujuan' 'git diff --name-only --diff-filter=U' 'git merge --abort' 'git status --porcelain' 'terblokir: konflik merge' 'mechanical' 'design decision' 'Ragu = `design decision`' 'rev-parse -q --verify MERGE_HEAD' 'git fetch origin <target>' 'owner-action: merge origin/<target>' 'push cabang PR' 'komentar owner terbaru' 'Jangan mengulang'; do grep -qF -- "$k" "$SK"; ok "orchestrate (#59): konflik merge menyebut '$k'" $? 0; done
+for k in 'Conflict with the target branch' 'git diff --name-only --diff-filter=U' 'git merge --abort' 'git status --porcelain' 'terblokir: konflik merge' 'mechanical' 'design decision' 'doubt = `design decision`' 'rev-parse -q --verify MERGE_HEAD' 'git fetch origin <target>' 'owner-action: merge origin/<target>' 'push the PR branch' 'latest owner comment' 'Do not repeat'; do grep -qF -- "$k" "$SK"; ok "orchestrate (#59): konflik merge menyebut '$k'" $? 0; done
 
 # 3d. install-permissions: basis worktree absolut, izin merge per mode, deny baru
 IP() { (cd "$1" && bash "$root/scripts/install-permissions.sh" "$2" >/dev/null); }
@@ -551,10 +551,10 @@ grep -q '^## Journeys' templates/PRD.md && grep -q '^## Non-functional requireme
 grep -q 'journey' templates/PRD.md && grep -q 'R-ID' templates/PRD.md; ok "PRD: peta issue menyebut journey" $? 0
 [ -f templates/EPIC.md ] && grep -q -- '- \[ \] #' templates/EPIC.md; ok "EPIC.md ada dengan daftar centang anak" $? 0
 grep -q '`epic`' templates/WORKFLOW.md; ok "WORKFLOW: label epic" $? 0
-grep -q 'templates/EPIC.md' skills/breakdown/SKILL.md && grep -q 'Unassigned' skills/breakdown/SKILL.md && grep -q 'membuat epic tidak mengedit' skills/breakdown/SKILL.md && ! grep -q 'tidak pernah diedit' skills/breakdown/SKILL.md README.md; ok "breakdown: epic, Unassigned, issue lama tidak diedit" $? 0
-e1=$(grep -n 'epic' skills/orchestrate/SKILL.md | head -1 | cut -d: -f1); p4=$(grep -n '^4\. Ada issue terbuka' skills/orchestrate/SKILL.md | cut -d: -f1)
+grep -q 'templates/EPIC.md' skills/breakdown/SKILL.md && grep -q 'Unassigned' skills/breakdown/SKILL.md && grep -q 'creating an epic does not edit' skills/breakdown/SKILL.md && ! grep -q 'tidak pernah diedit' skills/breakdown/SKILL.md README.md; ok "breakdown: epic, Unassigned, issue lama tidak diedit" $? 0
+e1=$(grep -n 'epic' skills/orchestrate/SKILL.md | head -1 | cut -d: -f1); p4=$(grep -n '^4\. Open issues exist' skills/orchestrate/SKILL.md | cut -d: -f1)
 [ -n "$e1" ] && [ "$e1" -lt "$p4" ]; ok "orchestrate: pengecualian epic sebelum prasyarat 4" $? 0
-sed -n '/^## Tahap penutup/p' skills/orchestrate/SKILL.md | grep -q 'epic'; ok "orchestrate: tahap penutup mengabaikan epic" $? 0
+sed -n '/^## Closing stage/p' skills/orchestrate/SKILL.md | grep -q 'epic'; ok "orchestrate: tahap penutup mengabaikan epic" $? 0
 grep -q 'Journey' README.md && grep -q 'FR' README.md; ok "README: Journey dan epic" $? 0
 # 4c. kanban: status epic dihitung dari anak lewat board.sh --sync (gh palsu)
 mkdir -p "$tmp/eb" "$tmp/ebb"; cat > "$tmp/ebb/gh" <<'EOF'
@@ -708,8 +708,8 @@ grep -q 'Journey = epic = parent' README.md && grep -q 'Parent issue' README.md 
 grep -q 'lock.sh' skills/orchestrate/SKILL.md && grep -q 'No-parent label' templates/WORKFLOW.md && grep -q 'lock.sh' README.md; ok "0.6.3: skill, templat WORKFLOW dan README menyebut lock.sh dan tanpa-induk" $? 0
 # 4d. journey otomatis: skill prd menggali journey saat diskusi; breakdown mengusulkan journey bila PRD belum punya
 cd "$root" || exit 1
-grep -q 'Journeys' skills/prd/SKILL.md && grep -q 'infrastruktur' skills/prd/SKILL.md && grep -qi 'apa yang bisa dilakukan pengguna' skills/prd/SKILL.md; ok "prd: menggali journey, tiap kebutuhan masuk journey atau infrastruktur" $? 0
-grep -q 'Bila PRD belum punya Journeys' skills/breakdown/SKILL.md && grep -q 'Usulan journey' skills/breakdown/SKILL.md && grep -qi 'persetujuan owner' skills/breakdown/SKILL.md; ok "breakdown: mengusulkan journey dari kebutuhan dan issue lama, minta persetujuan" $? 0
+grep -q 'Journeys' skills/prd/SKILL.md && grep -q 'infrastruktur' skills/prd/SKILL.md && grep -qi 'what can a user accomplish' skills/prd/SKILL.md; ok "prd: menggali journey, tiap kebutuhan masuk journey atau infrastruktur" $? 0
+grep -q 'When the PRD does not yet have Journeys' skills/breakdown/SKILL.md && grep -q 'Proposed journeys' skills/breakdown/SKILL.md && grep -qi 'owner approval' skills/breakdown/SKILL.md; ok "breakdown: mengusulkan journey dari kebutuhan dan issue lama, minta persetujuan" $? 0
 ! grep -q 'bila PRD punya bagian Journeys' skills/breakdown/SKILL.md; ok "breakdown: epic tidak lagi dilewati diam-diam tanpa Journeys" $? 0
 cd "$root" || exit 1
 
@@ -1166,10 +1166,10 @@ rm -f "$AUD/docs/WORKFLOW.md"
 grep -q 'Private packages:' templates/WORKFLOW.md; ok "templat WORKFLOW memuat 'Private packages:'" $? 0
 grep -q 'Private packages:' PRIVACY.md && grep -q '~/.npmrc' PRIVACY.md; ok "PRIVACY: sumber pola dan ~/.npmrc tidak dibaca" $? 0
 grep -q 'Private packages:' README.md; ok "README menyebut 'Private packages:'" $? 0
-grep -q 'Paket privat' skills/cve-audit/SKILL.md; ok "skill cve-audit menyebut paket privat" $? 0
+grep -q 'Private packages' skills/cve-audit/SKILL.md; ok "skill cve-audit menyebut paket privat" $? 0
 grep -q '"version": "1.5.0"' .claude-plugin/plugin.json; ok "plugin.json versi 1.5.0" $? 0
 # 0.12.0: watchdog idle autopilot terdokumentasi (#48, #17)
-grep -q 'Mode tanpa pengawasan (autopilot)' skills/orchestrate/SKILL.md && grep -q 'exec claude' skills/orchestrate/SKILL.md; ok "orchestrate: subbagian Mode tanpa pengawasan (autopilot) memuat aturan exec claude" $? 0
+grep -q 'Unattended mode (autopilot)' skills/orchestrate/SKILL.md && grep -q 'exec claude' skills/orchestrate/SKILL.md; ok "orchestrate: subbagian Mode tanpa pengawasan (autopilot) memuat aturan exec claude" $? 0
 grep -q 'Idle watchdog' README.md && grep -q -- '--idle-limit' README.md; ok "README: Idle watchdog menyebut --idle-limit" $? 0
 grep -q 'AICREW_IDLE_LIMIT' scripts/autopilot.sh && grep -q 'AICREW_TERM_GRACE' scripts/autopilot.sh && grep -q 'AICREW_TRANSCRIPT_DIR' scripts/autopilot.sh; ok "autopilot.sh: komentar kepala mendokumentasikan variabel watchdog" $? 0
 grep -q 'git-ignored files' templates/WORKFLOW.md; ok "templat WORKFLOW: Clean up after merge menyebut file yang di-ignore ikut terhapus (#44)" $? 0
@@ -1268,7 +1268,7 @@ CLN --after-merge >/dev/null 2>&1; ok "setelah-merge tanpa --issue -> exit 64" $
 MK; WFO '- Clean up after merge: ya\n'; CLN --no-fetch --after-merge --issue 5 >/dev/null
 ok "setelah-merge --issue 5: worktree w-wt-5 dan cabang issue-5 terhapus dalam satu putaran" "$([ -d "$CL/w-wt-5" ] && echo ada || echo hilang)|$(LB | tr ' ' '\n' | grep -cx issue-5)" 'hilang|0'
 grep -q 'Clean up after merge:' templates/WORKFLOW.md; ok "templat WORKFLOW memuat 'Clean up after merge:'" $? 0
-grep -q 'cleanup.sh --after-merge' skills/orchestrate/SKILL.md && grep -q 'tidak pernah menghentikan' skills/orchestrate/SKILL.md; ok "orchestrate langkah 8 memanggil cleanup.sh --after-merge dan 'tidak pernah menghentikan'" $? 0
+grep -q 'cleanup.sh --after-merge' skills/orchestrate/SKILL.md && grep -q 'never stops the flow' skills/orchestrate/SKILL.md; ok "orchestrate langkah 8 memanggil cleanup.sh --after-merge dan 'tidak pernah menghentikan'" $? 0
 jq -e '.permissions.allow|index("Bash(git update-ref:*)")' templates/autopilot-permissions.json >/dev/null; ok "autopilot-permissions.json memuat git update-ref" $? 0
 for r in 'Bash(git merge:*)' 'Bash(make:*)' 'Bash(go test:*)'; do jq -e --arg r "$r" '.permissions.allow|index($r)' templates/autopilot-permissions.json >/dev/null; ok "autopilot-permissions.json memuat $r (#59, #58)" $? 0; done
 jq -e '.permissions.deny|map(select(startswith("Bash(git merge")))|length==0' templates/autopilot-permissions.json >/dev/null; ok "autopilot-permissions.json: tidak ada deny yang membatalkan git merge" $? 0
@@ -1421,7 +1421,7 @@ for k in 'version: 2' 'groups' 'github-actions' 'target-branch' 'needs-principal
 if python3 -c 'import yaml' 2>/dev/null; then python3 -c 'import sys,yaml; yaml.safe_load(open(sys.argv[1]))' "$DB" 2>/dev/null; ok "dependabot.yml: YAML valid" $? 0; else ok "dependabot.yml: YAML dilewati (PyYAML tak ada)" 0 0; fi
 
 # 3m-5. skill cve-audit: pola jembatan untuk repo yang dirilis dari cabang non-bawaan (#42)
-grep -q 'Repo yang dirilis dari cabang non-bawaan' skills/cve-audit/SKILL.md && grep -q 'target-branch' skills/cve-audit/SKILL.md && grep -q 'ref:' skills/cve-audit/SKILL.md && grep -q 'add/add' skills/cve-audit/SKILL.md && grep -q 'awaiting-release' skills/cve-audit/SKILL.md; ok "skill cve-audit: pola jembatan (target-branch, ref:, add/add, menunggu-rilis)" $? 0
+grep -q 'Repos released from a non-default branch' skills/cve-audit/SKILL.md && grep -q 'target-branch' skills/cve-audit/SKILL.md && grep -q 'ref:' skills/cve-audit/SKILL.md && grep -q 'add/add' skills/cve-audit/SKILL.md && grep -q 'awaiting-release' skills/cve-audit/SKILL.md; ok "skill cve-audit: pola jembatan (target-branch, ref:, add/add, menunggu-rilis)" $? 0
 
 # 3n-1. release-notes.sh: bagian catatan rilis dari baris bertanda di badan PR (#30)
 RN="$tmp/rn"; mkdir -p "$RN/fx" "$RN/w/docs"; git init -q --bare "$RN/o.git"; git init -q "$RN/w"
@@ -1612,7 +1612,7 @@ ok "autopilot log: tanpa PR -> PR digabung: - dan PR terbuka: -, tanpa batas tot
 # 3c-6. skill orchestrate: aksi resume berbahasa Inggris, nama lama sebagai alias usang (#66)
 for k in 'finish-merge' 'continue-pr' 'check-branch' 'requeue'; do grep -qF -- "- \`$k\`" "$root/skills/orchestrate/SKILL.md"; ok "orchestrate (#66): aksi resume $k" $? 0; done
 for k in 'selesaikan-merge' 'lanjut-pr' 'periksa-cabang' 'antre-ulang'; do grep -qF -- "$k" "$root/skills/orchestrate/SKILL.md"; ok "orchestrate (#66): alias usang $k disebut" $? 0; done
-grep -qF 'kolom 4' "$root/skills/orchestrate/SKILL.md"; ok "orchestrate (#66): kolom 4 alias disebut" $? 0
+grep -qF 'column 4' "$root/skills/orchestrate/SKILL.md"; ok "orchestrate (#66): kolom 4 alias disebut" $? 0
 
 # 3c-7. tes penjaga bahasa (#66): permukaan teknis skrip tanpa token Indonesia di luar alias usang bertanda
 # Teknis = kunci JSON yang ditulis, nilai fase, nama aksi, nama berkas status. Prosa pesan dan komentar tidak dipindai (itu #64). Baris alias diberi penanda 'alias-usang'.
@@ -1983,7 +1983,7 @@ grep -qF 'Laporan qa: lulus' "$root/skills/orchestrate/SKILL.md" && grep -qF 'La
 
 grep -q '^## Temporary grants' "$root/templates/WORKFLOW.md" && grep -q 'expires=EXAMPLE' "$root/templates/WORKFLOW.md"; ok "template (#61): bagian Temporary grants dengan contoh tak sah (expires=EXAMPLE)" $? 0
 ( . "$root/scripts/lib/grants.sh"; grants_lines "$(cat "$root/templates/WORKFLOW.md")" | while IFS= read -r l; do grant_parse "$l" >/dev/null 2>&1 && echo sah; done ) | grep -q sah; ok "template (#61): contoh di template tidak pernah menjadi izin sah" $? 1
-grep -qF 'jalankan gerbang ulang tepat sebelum' "$root/skills/orchestrate/SKILL.md"; ok "orchestrate (#61): gerbang dijalankan ulang tepat sebelum merge" $? 0
+grep -qF 're-run the gate right before' "$root/skills/orchestrate/SKILL.md"; ok "orchestrate (#61): gerbang dijalankan ulang tepat sebelum merge" $? 0
 grep -qF 'Temporary grants' "$root/README.md" && grep -qF 'branch protection' "$root/README.md"; ok "README (#61): format izin dan syarat perlindungan cabang" $? 0
 
 # 3x. breakdown mendeteksi dua issue yang menyentuh berkas sama (#60): scripts/file-overlap.sh
@@ -2023,7 +2023,7 @@ grep -qF 'every file you create or edit' "$root/templates/ISSUE.md"; ok "templat
 
 # 3t-0. keputusan owner terbaru dibaca sebelum needs-principal dipasang lagi (#62)
 SK="$root/skills/orchestrate/SKILL.md"
-for k in 'Sebelum memasang `needs-principal`' 'komentar owner terbaru' 'jangan pasang label' 'terblokir: <sebab>' 'tanpa `needs-principal`' 'Keputusan otomatis (principal)' 'tingkat 2 baru tetap dieskalasi' 'dua kali gagal setelah keputusan owner' 'Jangan ulangi komentar'; do
+for k in 'Before applying `needs-principal`' 'latest owner comment' 'do not apply the label' 'terblokir: <sebab>' 'without `needs-principal`' 'Keputusan otomatis (principal)' 'new level-2 concerns are still escalated' 'two consecutive failures' 'Do not repeat'; do
   grep -qF -- "$k" "$SK"; ok "orchestrate (#62): memuat '$k'" $? 0; done
 
 # 3t. sinkronisasi kartu kanban oleh kode (#69): card_status (tabel), board_ref, unsat_blockers, board.sh --sync-cards
@@ -2996,7 +2996,7 @@ out="$(rr_f)"; rc=$?
 ok "resume (#139): GraphQL dan REST gagal -> exit 1 (bukan sukses kosong); pesan hanya dengan AICREW_VERBOSE" "$rc|$(grep -c . <<<"$out")|$(AICREW_VERBOSE=1 rr_f | grep -c 'issue tak terbaca')" '1|0|1'
 
 # 3c-34. SKILL: blokir izin menghentikan hanya PR itu (#142); helper autonomy.sh selamat dari SIGHUP (#143)
-grep -q 'hentikan HANYA PR ini' "$root/skills/orchestrate/SKILL.md"; ok "SKILL (#142): langkah konflik/izin ditolak menghentikan hanya PR itu" $? 0
+grep -q 'stop ONLY this PR (not the whole round)' "$root/skills/orchestrate/SKILL.md"; ok "SKILL (#142): langkah konflik/izin ditolak menghentikan hanya PR itu" $? 0
 grep -q 'a permission block never ends the whole round' "$root/skills/orchestrate/SKILL.md"; ok "SKILL (#142): blokir izin tidak mengakhiri seluruh putaran" $? 0
 HU="$tmp/hup"; rm -rf "$HU"; mkdir -p "$HU/docs" "$HU/.claude"; git init -q "$HU"; printf '3. Integration branch: feature-x. Issue.\n' > "$HU/docs/WORKFLOW.md"
 hp="$(python3 - "$HU" "$root" "$(date -u -v+2H +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -d '+2 hours' +%Y-%m-%dT%H:%M:%SZ)" <<'PY'
@@ -3056,6 +3056,16 @@ for f in agents/*.md; do grep -q '^Language: reply in the language the user writ
 grep -q '^- Language (messages' templates/WORKFLOW.md; ok "bahasa (#64): templat WORKFLOW memuat baris Language:" $? 0
 for t in 'agents/qa.md|Laporan qa: lulus' 'agents/qa.md|Laporan qa: gagal' 'agents/security.md|Laporan security: lulus' 'agents/security.md|Laporan security: gagal' 'agents/perf.md|Laporan perf: lulus' 'agents/perf.md|Laporan perf: gagal' 'agents/perf.md|Angka sebelum/sesudah:' 'agents/perf.md|Tuning:' 'agents/perf.md|tidak ada (baru)' 'templates/WORKFLOW.md|## Daftar periksa rilis' 'templates/WORKFLOW.md|## Temporary grants'; do
   grep -qF -- "${t#*|}" "${t%%|*}"; ok "bahasa (#64): kontrak mesin '${t#*|}' utuh di ${t%%|*}" $? 0
+done
+
+# 3c-37. skill berbahasa Inggris, kontrak mesin utuh, kickoff menanyakan Language: (#64 tahap B)
+for f in skills/breakdown/SKILL.md skills/cve-audit/SKILL.md skills/kickoff/SKILL.md skills/orchestrate/SKILL.md skills/prd/SKILL.md; do
+  ok "bahasa (#64): $f tanpa kata Indonesia di luar kode" "$(idn_hits "$f")" 0
+  grep -q '^Language: reply in the language the user writes in' "$f"; ok "bahasa (#64): $f memuat aturan bahasa balasan" $? 0
+done
+grep -qi 'Language' skills/kickoff/SKILL.md && grep -q '`id`' skills/kickoff/SKILL.md && grep -q 'docs/WORKFLOW.md' skills/kickoff/SKILL.md; ok "bahasa (#64): kickoff menanyakan Language: en|id dan menuliskannya di WORKFLOW.md" $? 0
+for t in 'Laporan qa: lulus' 'Laporan perf: lulus' 'owner-action:' 'blocked-by-permission:' 'Temporary grants' 'Pengecualian disetujui owner'; do
+  grep -qF -- "$t" skills/orchestrate/SKILL.md; ok "bahasa (#64): kontrak mesin '$t' utuh di orchestrate" $? 0
 done
 
 [ "$fails" = 0 ] && echo "SEMUA LULUS" || { echo "$fails GAGAL"; exit 1; }

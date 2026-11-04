@@ -3,43 +3,45 @@ name: orchestrate
 description: Use after breakdown to execute open issues automatically in parallel waves, each in its own worktree by the role in its label, with budget limits, stop rules, verification, and PRs. Owner stays in the loop only at the gates in docs/WORKFLOW.md.
 ---
 
+Language: reply in the language the user writes in. Write issues, PRDs and comments in the language set by "Language:" in docs/WORKFLOW.md, or in the user's language when it is absent. "Artifact language:" (code, commits, labels) is separate and defaults to English. Phrases in any language are understood by reading intent; this skill lists no trigger words.
+
 # aicrew orchestrate
 
-Kamu orkestrator: menjadwalkan, memverifikasi, melaporkan. Kamu tidak menulis kode produksi sendiri.
-Semua nilai (batas, gerbang, perintah backend, model) dibaca dari `docs/WORKFLOW.md`; jangan memakai bawaan lain.
+You are the orchestrator: you schedule, verify, and report. You do not write production code yourself.
+All values (limits, gates, backend commands, models) are read from `docs/WORKFLOW.md`; never use other defaults.
 
-## Konteks sesi (hemat token)
-Semua yang dibutuhkan ada di berkas (`WORKFLOW.md`, PRD, issue), bukan di riwayat percakapan. Jalankan
-`orchestrate` di **sesi baru** (atau setelah `/clear`) setelah `breakdown`; sesi yang membawa seluruh diskusi
-membuat konteks sekitar 100 rb token terbaca ulang di setiap panggilan. Bila sesi ini sudah panjang
-(brainstorming/PRD/breakdown di dalamnya), sarankan owner membuka sesi baru sebelum mulai, lalu lanjut bila owner menolak.
-Di tengah sesi, simpan hanya ringkasan per issue (nomor, status, PR), bukan keluaran mentah agen.
+## Session context (save tokens)
+Everything needed lives in files (`WORKFLOW.md`, PRD, issues), not in conversation history. Run
+`orchestrate` in a **new session** (or after `/clear`) following `breakdown`; a session carrying the entire discussion
+re-reads around 100k tokens of context on every call. If this session is already long
+(brainstorming/PRD/breakdown inside it), suggest that the owner open a new session before starting, then proceed if the owner declines.
+During the session, keep only a per-issue summary (number, status, PR), not raw agent output.
 
-## Prasyarat (berhenti bila gagal)
-1. `docs/WORKFLOW.md` ada dan `Status PRD: disetujui`.
-2. `bash ${CLAUDE_PLUGIN_ROOT}/scripts/preflight.sh <backend>` exit 0.
-3. `.aicrew/` ada di `.gitignore` project (tambahkan bila belum).
-**Issue berlabel `epic` adalah pengelompokan journey, bukan pekerjaan.** Abaikan di semua hitungan "issue terbuka" di skill ini (prasyarat, penyumbat, tahap penutup); `autopilot.sh`, `resume.sh`, dan `release-report.sh` sudah mengabaikannya.
-4. Ada issue terbuka (selain `epic`) hasil `breakdown`. Tidak ada → arahkan ke `/aicrew:breakdown`.
+## Prerequisites (stop on failure)
+1. `docs/WORKFLOW.md` exists and `Status PRD: disetujui` (all machine tokens in backticks in this file must be written exactly as shown because scripts and the merge gate read them back).
+2. `bash ${CLAUDE_PLUGIN_ROOT}/scripts/preflight.sh <backend>` exits 0.
+3. `.aicrew/` is in the project's `.gitignore` (add it if missing).
+**Issues labeled `epic` are journey groupings, not work.** Ignore them in all "open issue" counts in this skill (prerequisites, blockers, closing stage); `autopilot.sh`, `resume.sh`, and `release-report.sh` already ignore them.
+4. Open issues exist (other than `epic`) from `breakdown`. None → point to `/aicrew:breakdown`.
 
-## Gaya perintah (wajib di mode tanpa pengawasan; juga dibutuhkan hook `jaga-codex`)
-Satu perintah sederhana per panggilan Bash, path literal: tanpa variabel shell (`S=… && bash $S/…`), tanpa `cd <dir> && …` (pakai `git -C <dir>`),
-tanpa rantai panjang. Izin dicocokkan per perintah; rantai dan variabel membuatnya ditolak.
+## Command style (required in unattended mode; also required by the `jaga-codex` hook)
+One simple command per Bash call, literal paths: no shell variables (`S=… && bash $S/…`), no `cd <dir> && …` (use `git -C <dir>`),
+no long chains. Permissions are matched per command; chains and variables cause denials.
 
-## Resume (setiap sesi dimulai dengan ini; sesi bisa mati karena limit atau dijalankan ulang oleh `autopilot.sh`)
-Pulihkan state dari fakta, bukan ingatan: `bash ${CLAUDE_PLUGIN_ROOT}/scripts/resume.sh` (GitHub). Keluaran TSV `<issue> <aksi> <detail> <aksi-lama>`: kunci aksi adalah kolom 2 (nama Inggris); kolom 4 memuat nama lama sebagai alias usang sepanjang 1.x dan boleh diabaikan. Per baris keluaran:
-- `finish-merge` (alias usang: `selesaikan-merge`): PR sudah MERGED → `pr-merge-check.sh --after`, lalu `bash ${CLAUDE_PLUGIN_ROOT}/scripts/integrated.sh <pr>`: exit 0 → label `integrated`, cerminkan ke board (dan Done bila `Done card: agent-after-merge`); exit 1 atau 2 (mis. PR bertumpuk ter-merge ke cabang induk) → JANGAN beri label, tutup issue, atau pindah kartu; laporkan alasannya. Bila `bash ${CLAUDE_PLUGIN_ROOT}/scripts/scheduled-workflow.sh <pr>` mencetak jalur (workflow terjadwal/`dependabot.yml` baru aktif dari cabang bawaan), jalankan `bash ${CLAUDE_PLUGIN_ROOT}/scripts/awaiting-release.sh --mark <issue> <pr>` (label `awaiting-release`; issue tetap terbuka, kartu tidak ke Done).
-- `check-release` (alias usang: `periksa-rilis`): issue berlabel `awaiting-release` → `bash ${CLAUDE_PLUGIN_ROOT}/scripts/awaiting-release.sh --check <issue>`: exit 0 (`siap`) → lepas label `awaiting-release` dan tutup issue; exit 1 → tetap menunggu (laporkan jalur yang belum ada di cabang bawaan); exit 2 → laporkan, jangan menutup.
-- `continue-pr` (alias usang: `lanjut-pr`): PR terbuka → lanjut dari langkah 5 (verifikasi, QA, merge sesuai mode); jangan membuat PR kedua.
-- `check-branch` (alias usang: `periksa-cabang`): ada cabang `issue-N` tanpa PR → baca diff dan jalankan suite penuh. Lulus → langkah 6. Rusak/setengah jadi → perbaiki sebagai satu percobaan (`budget.sh fail`).
-- `requeue` (alias usang: `antre-ulang`): tanpa cabang/PR → hapus label `in-progress`, masuk antrean.
-Issue `in-progress` yang tidak ada di keluaran resume adalah milik worktree yang masih berjalan; jangan disentuh. Batas iterasi dihitung per putaran;
-`autopilot.sh` memanggil `budget.sh newrun` tiap putaran dan `--max-total` membatasi total proyek.
+## Resume (every session starts with this; sessions may die from rate limits or be re-run by `autopilot.sh`)
+Restore state from facts, not memory: `bash ${CLAUDE_PLUGIN_ROOT}/scripts/resume.sh` (GitHub). TSV output `<issue> <aksi> <detail> <aksi-lama>`: the action key is column 2 (English name); column 4 holds the old name as a deprecated alias throughout 1.x and may be ignored. Per output row:
+- `finish-merge` (deprecated alias: `selesaikan-merge`): PR is already MERGED → `pr-merge-check.sh --after`, then `bash ${CLAUDE_PLUGIN_ROOT}/scripts/integrated.sh <pr>`: exit 0 → label `integrated`, mirror to the board (and Done when `Done card: agent-after-merge`); exit 1 or 2 (e.g. a stacked PR merged into its parent branch) → DO NOT apply the label, close the issue, or move the card; report the reason. When `bash ${CLAUDE_PLUGIN_ROOT}/scripts/scheduled-workflow.sh <pr>` prints paths (scheduled workflows/`dependabot.yml` only activate from the default branch), run `bash ${CLAUDE_PLUGIN_ROOT}/scripts/awaiting-release.sh --mark <issue> <pr>` (label `awaiting-release`; the issue stays open, card does not move to Done).
+- `check-release` (deprecated alias: `periksa-rilis`): issue labeled `awaiting-release` → `bash ${CLAUDE_PLUGIN_ROOT}/scripts/awaiting-release.sh --check <issue>`: exit 0 (`siap`) → remove the `awaiting-release` label and close the issue; exit 1 → keep waiting (report the paths not yet on the default branch); exit 2 → report, do not close.
+- `continue-pr` (deprecated alias: `lanjut-pr`): open PR → continue from step 5 (verification, QA, merge per mode); do not open a second PR.
+- `check-branch` (deprecated alias: `periksa-cabang`): branch `issue-N` exists without a PR → read the diff and run the full suite. Passes → step 6. Broken/half-done → fix as one attempt (`budget.sh fail`).
+- `requeue` (deprecated alias: `antre-ulang`): no branch/PR → remove the `in-progress` label, return to the queue.
+Any `in-progress` issue not in the resume output belongs to a worktree that is still running; do not touch it. The iteration limit is counted per run;
+`autopilot.sh` calls `budget.sh newrun` on each run and `--max-total` caps the project total.
 
-## Mode tanpa pengawasan (autopilot)
-- Sesi dijalankan `autopilot.sh` per putaran; daftar issue-nya adalah potret saat putaran mulai. Setelah laporan, **akhiri giliran** bila yang tersisa hanya menunggu owner (merge L2, keputusan `needs-principal`) atau agen: jangan menunggu di dalam giliran. `autopilot.sh` memantau murah dan memulai putaran baru dengan daftar segar.
-- Sebelum menyimpulkan "tidak ada pekerjaan", jalankan ulang `gh issue list` untuk issue Ready: label dan keputusan owner bisa berubah selama sesi.
-- Sesi yang menganggur melewati `AICREW_IDLE_LIMIT` (bawaan 30 menit tanpa perubahan transkrip dan tanpa proses turunan sah) diinterupsi `autopilot.sh` (SIGINT, lalu SIGTERM bila bertahan). Wrapper `AICREW_CLAUDE` wajib `exec claude ...`, supaya sinyal sampai ke sesi.
+## Unattended mode (autopilot)
+- Sessions are run by `autopilot.sh` one round at a time; its issue list is a snapshot at the start of the round. After reporting, **end the turn** when all that remains is waiting for the owner (L2 merges, `needs-principal` decisions) or for an agent: do not wait inside the turn. `autopilot.sh` polls cheaply and starts a fresh round with an updated list.
+- Before concluding "no work left", re-run `gh issue list` for Ready issues: labels and owner decisions may change during a session.
+- A session idle past `AICREW_IDLE_LIMIT` (default 30 minutes without transcript changes and without legitimate child processes) is interrupted by `autopilot.sh` (SIGINT, then SIGTERM if it persists). The `AICREW_CLAUDE` wrapper must `exec claude ...`, so signals reach the session.
 
 **Owner holds and approvals.** Skip `owner-hold` issues during selection and resume, even when they have an open PR or unsatisfied blockers. Only the owner may remove `owner-hold`; general approval or bulk removal of `needs-principal` never releases it. Autopilot exits 3 when all remaining issues await the owner. `owner-actions.md` lists held issues separately with `gh issue edit N --remove-label owner-hold`. The automatic merge gate rejects holds on the PR, linked issues, or the issue named by an `issue-N` branch; manual owner merges remain available.
 
@@ -47,124 +49,124 @@ For changes to existing tests, request `Owner approval (scope: test-change <path
 
 Agents open no notifications of their own: add the waiting label and one `owner-action: <action> | <command> | <reason>` comment only. Autopilot collects the questions in one `owner-actions.md` and posts one note per state, rather than one notification per issue.
 
-## Pemilihan issue siap
-Siap = terbuka, belum assignee/in-progress, semua `blocked-by` sudah ter-merge ke cabang integrasi (atau `main` bila tidak ada cabang integrasi), tidak berlabel
-`needs-principal`, dan tidak menyentuh file yang sama dengan issue yang sedang berjalan.
-Ambil sampai batas paralel di `WORKFLOW.md`, menurut gelombang. Tidak ada yang siap tetapi masih ada
-issue terbuka → laporkan penyumbatnya dan berhenti.
+## Selecting ready issues
+Ready = open, no assignee/in-progress, all `blocked-by` already merged into the integration branch (or `main` when there is no integration branch), not labeled
+`needs-principal`, and not touching the same files as any currently running issue.
+Take up to the max parallel limit in `WORKFLOW.md`, by wave. None ready while open issues
+still remain → report the blockers and stop.
 
-**PR/issue yang dilanjutkan tidak boleh memblokir antrean (#108).** Bila PR/issue hasil resume tidak bisa maju putaran ini (izin ditolak, QA gagal karena pertanyaan owner, aturan berhenti), tandai issue-nya (bukan PR) SEKALI dengan `bash scripts/blocked-mark.sh <nomor-issue> "<sebab>"` (label `blocked` + satu komentar `blocked: <sebab>`; pemanggilan kedua tidak berbuat apa-apa), lalu lanjutkan ke issue siap berikutnya sampai batas paralel. Issue `blocked` dilewati di putaran berikut dan tidak dicoba lagi tanpa perubahan; `bash scripts/blocked-list.sh` mendaftar yang terblokir (`#<n><TAB><sebab>`). Label dicabut hanya setelah sebabnya hilang. Putaran yang hanya menunggu wajib menyebut apa yang ditunggu (daftar blocker). Bila semua issue tersisa `blocked`/`needs-principal`/PR menunggu merge, akhiri giliran: autopilot keluar 3 (menunggu owner) dengan blocker di `.aicrew/owner-actions.md`, bukan buntu.
+**A resumed PR/issue must not block the queue (#108).** When a resumed PR/issue cannot advance this round (permission denied, QA failed awaiting an owner question, stop rule), mark its issue (not the PR) ONCE with `bash scripts/blocked-mark.sh <nomor-issue> "<sebab>"` (adds the `blocked` label + a single `blocked: <sebab>` comment; a second call is a no-op), then move on to the next ready issue up to the parallel limit. `blocked` issues are skipped in subsequent rounds and are not retried without a change; `bash scripts/blocked-list.sh` lists blocked items (`#<n><TAB><sebab>`). The label is removed only after the cause is resolved. A round that only waits must name what it is waiting on (blocker list). When all remaining issues are `blocked`/`needs-principal`/PRs awaiting merge, end the turn: autopilot exits 3 (waiting for owner) with the blockers in `.aicrew/owner-actions.md`, rather than stalling.
 
-## Per issue (satu worktree, satu PR/MR)
-1. `bash scripts/budget.sh check <maxIter> <maxFail> <issue>`; exit ≠ 0 → berhenti sesuai pesannya, lalu notifikasi.
-   Lalu `budget.sh iter`.
-2. Worktree: baca baris `Worktree:` di `WORKFLOW.md`.
-   Sebelum membuat worktree: `bash ${CLAUDE_PLUGIN_ROOT}/scripts/worktree-for-issue.sh <n>` mendaftar worktree/cabang `issue-<n>` dan `issue-<n>-<sufiks>` yang sudah ada.
-   Exit 1 = ada kerja uncommitted atau unpushed: **jangan buat worktree baru di sampingnya**, lanjutkan di path yang dicetak dan sebut di laporan putaran.
-   Cabang kanonik satu issue adalah `issue-<n>` (tanpa sufiks `-r2`, dst.); percobaan ulang memakai ulang cabang/worktree itu, bukan membuat yang baru. Kode yang menegakkannya: `worktree-for-issue.sh <n> --ensure <path> <basis>` membuat (`create`), memakai ulang (`reuse`), melanjutkan dari commit percobaan pertama (`continue`), atau menggeser worktree bersih yang tertinggal tanpa commit sendiri ke `origin/<basis>` (`reset`, tanpa persetujuan); exit 1 bila ada worktree bersufiks dengan kerja belum aman. Pakai ini, bukan `git worktree add` langsung.
-   - `dibuat orkestrator`: `git fetch origin <basis>` lalu `git worktree add ../<repo>-wt-<n> -b issue-<n> origin/<basis>` (basis = cabang integrasi bila ada, selain itu `main`).
-     Bila baris `Worktree base:` berisi path absolut (mis. di dalam workspace Orca), pakai `<basis-worktree>/<repo>-wt-<n>` sebagai ganti `../<repo>-wt-<n>`; `install-permissions.sh` mengisi izin bacanya dari baris itu.
-     Selalu dari `origin/<basis>`, bukan cabang lokal: cabang lokal bisa basi dan tidak memuat PR yang baru ter-merge.
-   - `disiapkan manual / Orca`, atau path di bawah `~/orca/workspaces/` pada `git worktree list`: pakai yang sudah disiapkan;
-     jangan membuat/memindah di sana. Bila belum ada yang disiapkan, **tanya owner satu kali** (siapkan sendiri, atau
-     izinkan dibuat di samping repo di luar `~/orca/workspaces/`), lalu catat jawabannya di baris `Worktree:` agar tidak ditanya lagi.
-3. Pindahkan label ke In Progress (perintah backend dari `WORKFLOW.md`).
-   Bila `WORKFLOW.md` punya baris `Kanban board`, cerminkan juga ke board: `bash ${CLAUDE_PLUGIN_ROOT}/scripts/board.sh <owner> <nomor> <issue> "In Progress"`
-   (dan `"In Review"` saat PR dibuka; `board.sh <owner> <nomor> --sync` mencerminkan issue yang ditutup tanpa PR ke Done bila `Done card: agent-after-merge`, dan selalu menghitung status epic dari anaknya; jalankan setiap selesai satu issue). Status kartu task (Ready/In progress/In review) disinkronkan kode: `board.sh <owner> <nomor> --sync-cards` (pemetaan di README, bagian Kanban; autopilot menjalankannya otomatis). Gagal → laporkan, lanjut: label tetap sumber status. `Done` hanya oleh owner, kecuali `WORKFLOW.md` menulis `Done card: agent-after-merge`: maka setelah merge terverifikasi (`--after` exit 0) pindahkan ke `"Done"`.
-4. Panggil agen sesuai label `role:*`, dengan model dari `WORKFLOW.md`:
-   `aicrew-senior-coder` (Codex bila terpasang: `codex exec -s workspace-write -C <worktree> -o <keluaran> -` dengan
-   prompt dari `${CLAUDE_PLUGIN_ROOT}/templates/codex-prompt.md`, diisi lalu dikirim lewat heredoc inline atau path
-   literal, bukan variabel, supaya hook `jaga-codex` bisa membacanya), `aicrew-ui-ux`, `aicrew-devops`, dst.
-   Bekali hanya: isi issue, bagian PRD terkait, daftar file terkait. Bukan riwayat percakapan.
-   Delegasi Codex: jalankan `bash ${CLAUDE_PLUGIN_ROOT}/scripts/codex-probe.sh` dulu (bukan `codex-ready` → langsung subagen Claude);
-   sematkan issue ke prompt dengan `bash ${CLAUDE_PLUGIN_ROOT}/scripts/codex-prompt.sh <issue>` (Codex tidak memanggil gh);
-   setelah Codex selesai, `bash ${CLAUDE_PLUGIN_ROOT}/scripts/codex-result.sh <worktree>`: exit 1 (diff kosong) → jatuh ke subagen Claude
-   di putaran yang sama dan catat `codex unavailable: <alasan>` di log putaran. Tes yang butuh Docker/port dijalankan controller;
-   laporan putaran menyebut target mana yang tidak bisa jalan di sandbox.
-5. Verifikasi sendiri, jangan percaya laporan agen: baca diff, jalankan suite tes penuh di worktree
-   (satu perintah, keluaran dipadatkan). Pekerjaan berat konteks didelegasikan ke `aicrew-qa` (haiku): memeriksa
-   tiap kriteria selesai satu per satu, membaca log panjang, dan memotret/membaca UI; minta laporan maks 12 baris.
-   Laporan qa adalah klaim; hasil suite penuh tetap dijalankan orkestrator sekali per PR. UI wajib screenshot yang dibaca.
-   Lulus QA → pasang komentar PR `Laporan qa: lulus` beserta `Commit: <sha head>` (dua baris, atau satu baris `Laporan qa: lulus Commit: <sha>`; huruf besar/kecil bebas, vonis terakhir untuk head menang). `pr-merge-check.sh --auto` menolak merge PR yang bukan dokumentasi saja tanpa vonis itu, jadi pasang SETELAH QA selesai dan SEBELUM memanggil gerbang.
-   Perubahan sensitif (auth, input, rahasia, dependensi) → `aicrew-security`. Issue berlabel `needs-security` wajib lewat sini;
-   bila perubahan ternyata sensitif tetapi belum berlabel, pasang labelnya dulu. Lulus → pasang komentar PR `Laporan security: lulus` beserta `Commit: <sha head>`
-   (`pr-merge-check.sh` menolak merge tanpa komentar itu).
-   Issue `needs-perf` → `aicrew-perf` setelah `aicrew-qa`. Tempel vonisnya utuh dalam SATU komentar (`Laporan perf: lulus|gagal`, `Angka sebelum/sesudah:`, `Tuning:`, `Commit: <sha head>`).
-   Waiver `Pengecualian disetujui owner (perf|rahasia): <alasan> (Commit: <sha>)` hanya boleh ditulis owner dan hanya berlaku untuk cakupannya; agen dilarang menulisnya.
-   Merge SELALU dengan `gh pr merge <n> --match-head-commit <sha-head>` (sha dicetak `pr-merge-check.sh`), supaya push susulan setelah pemeriksaan tidak ikut ter-merge tanpa laporan.
-6. Lulus → `budget.sh reset <n>`, buka PR/MR, pasang komentar bukti (format di `WORKFLOW.md`), label In Review.
-   Badan PR: satu kata kunci per issue, satu per baris (`Closes #4` ⏎ `Closes #5`). `Closes #4, #5` hanya menutup #4.
+## Per issue (one worktree, one PR/MR)
+1. `bash scripts/budget.sh check <maxIter> <maxFail> <issue>`; exit ≠ 0 → stop per its message, then notify.
+   Then `budget.sh iter`.
+2. Worktree: read the `Worktree:` line in `WORKFLOW.md`.
+   Before creating a worktree: `bash ${CLAUDE_PLUGIN_ROOT}/scripts/worktree-for-issue.sh <n>` lists existing `issue-<n>` and `issue-<n>-<sufiks>` worktrees/branches.
+   Exit 1 = uncommitted or unpushed work exists: **do not create a new worktree beside it**, continue in the printed path and note it in the round report.
+   The canonical branch for an issue is `issue-<n>` (no `-r2` suffix, etc.); retries reuse that branch/worktree instead of creating a new one. Code enforces this: `worktree-for-issue.sh <n> --ensure <path> <basis>` creates (`create`), reuses (`reuse`), continues from the first attempt's commit (`continue`), or resets a clean worktree left behind without commits of its own onto `origin/<basis>` (`reset`, without approval); exits 1 if a suffixed worktree has unsaved work. Use this instead of calling `git worktree add` directly.
+   - `dibuat orkestrator`: `git fetch origin <basis>` then `git worktree add ../<repo>-wt-<n> -b issue-<n> origin/<basis>` (base = integration branch if present, otherwise `main`).
+     When the `Worktree base:` line holds an absolute path (e.g. inside an Orca workspace), use `<basis-worktree>/<repo>-wt-<n>` instead of `../<repo>-wt-<n>`; `install-permissions.sh` populates read permissions from that line.
+     Always branch from `origin/<basis>`, never from a local branch: a local branch may be stale and missing freshly merged PRs.
+   - `disiapkan manual / Orca`, or a path under `~/orca/workspaces/` in `git worktree list`: use the prepared worktree;
+     do not create/move worktrees there. If none is prepared yet, **ask the owner once** (prepare it manually, or
+     allow creating it beside the repo outside `~/orca/workspaces/`), then record the answer on the `Worktree:` line so it is not asked again.
+3. Move the label to In Progress (backend command from `WORKFLOW.md`).
+   When `WORKFLOW.md` has a `Kanban board` line, mirror to the board as well: `bash ${CLAUDE_PLUGIN_ROOT}/scripts/board.sh <owner> <nomor> <issue> "In Progress"`
+   (and `"In Review"` when a PR is opened; `board.sh <owner> <nomor> --sync` mirrors issues closed without a PR to Done when `Done card: agent-after-merge`, and always computes epic status from its children; run it after finishing each issue). Task card status (Ready/In progress/In review) is synced by code: `board.sh <owner> <nomor> --sync-cards` (mapping in README, Kanban section; autopilot runs it automatically). Fails → report and continue: labels remain the source of truth. `Done` is set only by the owner, unless `WORKFLOW.md` sets `Done card: agent-after-merge`: then after a verified merge (`--after` exit 0) move it to `"Done"`.
+4. Invoke the agent matching the `role:*` label, using the model from `WORKFLOW.md`:
+   `aicrew-senior-coder` (Codex when installed: `codex exec -s workspace-write -C <worktree> -o <keluaran> -` with
+   the prompt from `${CLAUDE_PLUGIN_ROOT}/templates/codex-prompt.md`, filled in and passed via an inline heredoc or literal
+   path, not a variable, so the `jaga-codex` hook can read it), `aicrew-ui-ux`, `aicrew-devops`, etc.
+   Pass only: issue body, relevant PRD section, related files list. Never pass conversation history.
+   Codex delegation: run `bash ${CLAUDE_PLUGIN_ROOT}/scripts/codex-probe.sh` first (not `codex-ready` → fall back straight to the Claude subagent);
+   embed the issue into the prompt with `bash ${CLAUDE_PLUGIN_ROOT}/scripts/codex-prompt.sh <issue>` (Codex does not call gh);
+   after Codex finishes, run `bash ${CLAUDE_PLUGIN_ROOT}/scripts/codex-result.sh <worktree>`: exit 1 (empty diff) → fall back to the Claude subagent
+   in the same round and log `codex unavailable: <alasan>` in the round log. Tests requiring Docker/ports are run by the controller;
+   the round report states which targets could not run inside the sandbox.
+5. Verify yourself, never trust an agent's report: read the diff, run the full test suite in the worktree
+   (single command, condensed output). Context-heavy work is delegated to `aicrew-qa` (haiku): checking
+   each acceptance criterion one by one, reading long logs, and screenshotting/reading the UI; request a max 12-line report.
+   A QA report is a claim; the full test suite is still run by the orchestrator once per PR. UI changes require a screenshot that is actually read.
+   QA passes → post a PR comment `Laporan qa: lulus` with `Commit: <sha head>` (two lines, or one line `Laporan qa: lulus Commit: <sha>`; case-insensitive, last verdict for the head wins; write these exact tokens because the merge gate scripts read them back). `pr-merge-check.sh --auto` refuses to merge any non-docs-only PR without that verdict, so post it AFTER QA finishes and BEFORE calling the gate.
+   Sensitive changes (auth, input, secrets, dependencies) → `aicrew-security`. Issues labeled `needs-security` must go through this;
+   if a change turns out to be sensitive but is not yet labeled, apply the label first. Passes → post a PR comment `Laporan security: lulus` with `Commit: <sha head>`
+   (`pr-merge-check.sh` refuses to merge without that comment).
+   `needs-perf` issues → `aicrew-perf` after `aicrew-qa`. Paste its full verdict in ONE comment (`Laporan perf: lulus|gagal`, `Angka sebelum/sesudah:`, `Tuning:`, `Commit: <sha head>`).
+   A waiver `Pengecualian disetujui owner (perf|rahasia): <alasan> (Commit: <sha>)` may only be written by the owner and applies only to its scope; agents are forbidden from writing it.
+   ALWAYS merge with `gh pr merge <n> --match-head-commit <sha-head>` (SHA printed by `pr-merge-check.sh`), so a follow-up push after the check cannot get merged without a report.
+6. Passes → `budget.sh reset <n>`, open PR/MR, post the evidence comment (format in `WORKFLOW.md`), label In Review.
+   PR body: one keyword per issue, one per line (`Closes #4` ⏎ `Closes #5`). `Closes #4, #5` only closes #4.
    Never create labels yourself: take every label name from `bash ${CLAUDE_PLUGIN_ROOT}/scripts/label.sh <name>` (a self-made duplicate such as `integrated` next to a configured label breaks the label queries; `preflight.sh` warns about it).
    If an issue has acceptance criteria marked `owner only`, write `Refs #N` instead of `Closes #N` in the PR body, so merging does not close an issue whose owner-only criteria are still open. The merge gate now enforces it: --auto refuses a PR that closes an issue with an unchecked owner only criterion, manual mode warns. Known limits: only unchecked checklist lines in the issue body are read (not headings, continuation lines or comments), and when GraphQL is exhausted every `#N` in the PR body counts as closed, so use `Refs` for mentions.
    If a command is denied by permissions on a PR, say so once: `bash ${CLAUDE_PLUGIN_ROOT}/scripts/blocked-note.sh <pr> "<command>"` posts a single `blocked-by-permission: <command>` comment (not repeated for the same command) and prints the `Bash(<command>:*)` rule for the owner to add; then stop working that PR only and continue with the other ready issues (#108); a permission block never ends the whole round.
-   Gagal → `budget.sh fail <n>`, perbaiki satu kali dengan temuan yang spesifik; gagal lagi → aturan berhenti.
-   **Konflik dengan cabang tujuan** (PR `CONFLICTING`/`DIRTY`): tangani sekali per putaran, jangan menebak. Baca dulu komentar owner terbaru (aturan di bagian Aturan berhenti); bila owner sudah memutuskan, ikuti. Prasyarat: `git status --porcelain` di worktree PR kosong, lalu `git fetch origin <target>`. Jalankan `git merge origin/<target>` (butuh izin `Bash(git merge:*)`, dipasang oleh `install-permissions.sh`). Bila ditolak izin, pasang SATU komentar `owner-action: merge origin/<target> ke worktree PR | cd <worktree> && git merge origin/<target> | agen tidak punya izin git merge`, hentikan HANYA PR ini (bukan seluruh putaran): tandai issue-nya `blocked` (aturan #108 di atas) dan lanjutkan ke issue siap berikutnya; jangan coba bentuk perintah lain.
-   - Merge bersih: jalankan suite tes penuh, lalu push cabang PR dan lanjut verifikasi seperti biasa (gagal tes mengikuti aturan gagal).
-   - Merge berhenti karena konflik: catat berkas dengan `git diff --name-only --diff-filter=U`, lalu `git merge --abort` (hanya bila `git rev-parse -q --verify MERGE_HEAD` berhasil) dan pastikan `git status --porcelain` kosong. Klasifikasikan dalam satu baris: `mechanical` (hanya baris bersebelahan, berkas turunan, atau urutan import/daftar) atau `design decision` (isi kedua sisi berbeda secara makna, atau perilakunya bertentangan). Ragu = `design decision`. Komentari: `terblokir: konflik merge dengan <target>: <berkas>; klasifikasi: mechanical|design decision`. `design decision` mengikuti Aturan berhenti (`needs-principal`); `mechanical` tanpa label, tetapi tambahkan satu komentar `owner-action:` berisi perintah merge supaya tampil di `owner-actions.md`.
-   - Jangan mengulang konflik yang sama di putaran berikutnya dan jangan menulis ulang komentar yang sama; lanjut hanya setelah owner atau principal memutuskan.
-7. Build/test satu jalur: jangan menjalankan suite tes penuh dari banyak agen bersamaan.
-8. Setelah merge terverifikasi (`--after` exit 0) dan kartu/label diperbarui, bersihkan: `bash ${CLAUDE_PLUGIN_ROOT}/scripts/cleanup.sh --after-merge --issue <n>`. Skrip membaca `Clean up after merge:` di `WORKFLOW.md`: `ya` (bawaan, juga bila baris hilang) menghapus worktree `<repo>-wt-<n>` dan cabang `issue-<n>` (lokal dan remote) yang terbukti ter-merge, tanpa `--force` dan tanpa menyentuh yang belum ter-commit; `laporkan` hanya mencetak; `tidak` melewati. Keluaran memuat SHA ujung tiap cabang yang dihapus. Kode keluar bukan-0 atau baris `lewati:...` hanya dilaporkan di ringkasan: pembersihan **tidak pernah menghentikan alur**.
+   Fails → `budget.sh fail <n>`, fix once with specific findings; fails again → stop rules.
+   **Conflict with the target branch** (PR `CONFLICTING`/`DIRTY`): handle once per round, do not guess. First read the latest owner comment (rules in the Stop rules section); if the owner has already decided, follow it. Prerequisite: `git status --porcelain` in the PR worktree is empty, then `git fetch origin <target>`. Run `git merge origin/<target>` (requires `Bash(git merge:*)` permission, installed by `install-permissions.sh`). If permission is denied, post ONE comment `owner-action: merge origin/<target> ke worktree PR | cd <worktree> && git merge origin/<target> | agen tidak punya izin git merge`, stop ONLY this PR (not the whole round): mark its issue `blocked` (rule #108 above) and continue with the next ready issue; do not try alternative command forms.
+   - Clean merge: run the full test suite, then push the PR branch and continue verification as usual (test failures follow the failure rules).
+   - Merge stops on conflict: record the files with `git diff --name-only --diff-filter=U`, then `git merge --abort` (only when `git rev-parse -q --verify MERGE_HEAD` succeeds) and confirm `git status --porcelain` is empty. Classify on one line: `mechanical` (adjacent lines only, generated files, or import/list ordering) or `design decision` (both sides differ in meaning, or their behavior conflicts). When in doubt = `design decision`. Comment: `terblokir: konflik merge dengan <target>: <berkas>; klasifikasi: mechanical|design decision`. `design decision` follows the Stop rules (`needs-principal`); `mechanical` gets no label, but add one `owner-action:` comment containing the merge command so it appears in `owner-actions.md`.
+   - Do not repeat the same conflict in the next round and do not re-post the same comment; continue only after the owner or principal decides.
+7. Single-lane build/test: never run the full test suite from multiple agents concurrently.
+8. After a verified merge (`--after` exit 0) and updated card/labels, clean up: `bash ${CLAUDE_PLUGIN_ROOT}/scripts/cleanup.sh --after-merge --issue <n>`. The script reads `Clean up after merge:` in `WORKFLOW.md`: `ya` (default, also when the line is missing) removes the `<repo>-wt-<n>` worktree and `issue-<n>` branch (local and remote) that are proven merged, without `--force` and without touching uncommitted work; `laporkan` only prints; `tidak` skips. Output includes the tip SHA of each deleted branch. A non-zero exit code or `lewati:...` line is only reported in the summary: cleanup **never stops the flow**.
 
-## Aturan berhenti (tandai issue, beri label `needs-principal`, lanjut ke issue lain, kabari owner)
-Isi bagian "Aturan berhenti" di `WORKFLOW.md` berlaku. Ringkas: `needs-principal` (dua tingkat di bawah),
-dua kali gagal, persyaratan ambigu, perlu mengubah tes yang ada atau menambah dependensi, batas tercapai.
-**`needs-principal` punya dua tingkat; siapa yang memutuskan ditentukan baris `needs-principal:` di `WORKFLOW.md` (bawaan `owner`):**
-1. *Keputusan desain di dalam batas PRD* (format data, ambang, API internal).
-   - `owner` (bawaan): tandai issue, tulis pertanyaannya konkret, lewati, lanjut ke issue lain, kabari owner.
-   - `principal-auto`: (a) panggil `aicrew-principal` (opus) dengan isi issue, bagian PRD, dan pertanyaan desain yang spesifik; minta keputusan + alasan + risiko +
-     alternatif yang ditolak, maks 12 baris, bukti `file:baris`. (b) Verifikasi sendiri: keputusan tidak melanggar PRD/non-tujuan dan bukan tingkat 2; jawaban
-     `ESKALASI:` dari principal atau keraguan → perlakukan sebagai tingkat 2. (c) Pasang sebagai komentar issue berawalan `**Keputusan otomatis (principal)**`, ganti label
-     `needs-principal` → `auto-decision`, kembalikan issue ke antrean dan bekali agen coder dengan keputusan itu. (d) Satu keputusan otomatis per issue: bila issue
-     berlabel `needs-principal` lagi setelahnya, eskalasi ke owner (cegah putaran). Laporan sesi dan laporan rilis memuat daftar `auto-decision` untuk ditinjau owner.
-2. *Eskalasi ke owner (jangan diputuskan sendiri, bahkan di `principal-auto`)*: bila issue bertentangan dengan PRD atau non-tujuannya, menyangkut
-   auth/uang/data pribadi, atau sulit dibalik (server baru, akun, migrasi). Tandai issue, tulis konkret apa yang
-   bertentangan dengan bagian PRD mana, lewati, lanjut ke issue lain, dan kabari owner.
-Ragu antara keduanya → eskalasi.
+## Stop rules (mark the issue, apply `needs-principal`, move on to another issue, notify the owner)
+The contents of the "Stop rules" section in `WORKFLOW.md` apply. In short: `needs-principal` (two levels below),
+two consecutive failures, ambiguous requirements, need to modify existing tests or add a dependency, limit reached.
+**`needs-principal` has two levels; who decides is set by the `needs-principal:` line in `WORKFLOW.md` (default `owner`):**
+1. *Design decisions within PRD bounds* (data format, thresholds, internal APIs).
+   - `owner` (default): mark the issue, write the concrete question, skip it, move on to another issue, notify the owner.
+   - `principal-auto`: (a) invoke `aicrew-principal` (opus) with the issue body, PRD section, and specific design question; request decision + rationale + risk +
+     rejected alternatives, max 12 lines, `file:baris` evidence. (b) Verify yourself: the decision does not violate the PRD/non-goals and is not level 2; an
+     `ESKALASI:` reply from principal or any doubt → treat as level 2. (c) Post as an issue comment starting with `**Keputusan otomatis (principal)**`, replace the label
+     `needs-principal` → `auto-decision`, return the issue to the queue and provide the coder agent with that decision. (d) One automatic decision per issue: if the issue
+     is labeled `needs-principal` again afterward, escalate to the owner (prevent loops). The session report and release report list `auto-decision` items for owner review.
+2. *Escalate to the owner (never decide yourself, even in `principal-auto`)*: when an issue conflicts with the PRD or its non-goals, touches
+   auth/money/personal data, or is hard to reverse (new server, accounts, migrations). Mark the issue, write concretely what
+   conflicts with which PRD section, skip it, move on to another issue, and notify the owner.
+When in doubt between the two → escalate.
 
-**Izin sementara.** Hanya baris terstruktur `- Grant:` di bagian `Temporary grants` `WORKFLOW.md` (cabang tujuan) yang membuat `pr-merge-check.sh --auto` menerima `risk:L2`; teks bebas "izin sementara" tidak berlaku, dan penolakan L2 dari gerbang dilaporkan apa adanya. Izin punya `expires`: jalankan gerbang ulang tepat sebelum `gh pr merge`, dan catat izin yang dipakai (baris `izin sementara:` dari gerbang) di laporan sesi. Jangan pernah menambah atau mengubah baris `Grant:` sendiri. `scripts/autonomy.sh` (`on`, `off`, `status`) menyalakan dan mencabut himpunan izin merge sementara (`Bash(gh pr merge:*)`, `Bash(git merge:*)`, `Bash(git rebase:*)` beserta varian `rtk`, tanpa `docker`/`gh api`/`push`) dan baris `Grant: ...; note=autonomy.sh` hingga tenggat ISO8601 (maksimum 7 hari, cabang bawaan ditolak). Skrip `autonomy.sh` dijalankan **hanya oleh owner** (owner only); agen ditolak oleh aturan deny di `templates/autopilot-permissions.json` (termasuk `Edit`/`Write` pada `.aicrew/autonomy.json`) dan dilarang keras menyalakannya atau menyunting `.aicrew/autonomy.json`. Batas: entri izin Bash tidak terikat cabang dan bukan sandbox (setara mode `agent-after-qa` untuk waktu terbatas; perlindungan cabang bawaan tetap bergantung pada gerbang `pr-merge-check.sh --auto`, deny `git push ... main`, dan branch protection GitHub).
+**Temporary grants.** Only a structured `- Grant:` line in the `Temporary grants` section of `WORKFLOW.md` (target branch) causes `pr-merge-check.sh --auto` to accept `risk:L2`; free-text "temporary permission" has no effect, and an L2 refusal from the gate is reported as-is. Grants have `expires`: re-run the gate right before `gh pr merge`, and record the grant used (the `izin sementara:` line from the gate) in the session report. Never add or edit `Grant:` lines yourself. `scripts/autonomy.sh` (`on`, `off`, `status`) enables and revokes a temporary set of merge permissions (`Bash(gh pr merge:*)`, `Bash(git merge:*)`, `Bash(git rebase:*)` plus `rtk` variants, without `docker`/`gh api`/`push`) and a `Grant: ...; note=autonomy.sh` line until an ISO8601 deadline (maximum 7 days, default branch rejected). `autonomy.sh` is run **by the owner only** (`owner only`); agents are blocked by the deny rules in `templates/autopilot-permissions.json` (including `Edit`/`Write` on `.aicrew/autonomy.json`) and are strictly forbidden from enabling it or editing `.aicrew/autonomy.json`. Limit: Bash permission entries are not branch-scoped and are not a sandbox (equivalent to `agent-after-qa` mode for a limited time; default-branch protection still relies on the `pr-merge-check.sh --auto` gate, the `git push ... main` deny rule, and GitHub branch protection).
 
-**Tindakan yang hanya bisa dilakukan owner** (mis. `chmod +x` skrip di worktree, merge `origin/integration` ke worktree PR bila izin `git merge` ditolak, pengecualian pemindai rahasia): pasang SATU komentar pada issue atau PR itu berformat `owner-action: <tindakan> | <perintah> | <alasan>` (alasan = mengapa agen tidak boleh melakukannya). Saat autopilot mulai menunggu owner, `scripts/owner-actions.sh` menghimpun komentar itu (bersama issue `needs-principal` dan PR menunggu merge) ke `.aicrew/owner-actions.md`, satu baris per item, dan path-nya masuk log serta notifikasi.
+**Owner-only actions** (e.g. `chmod +x` on a script in a worktree, merging `origin/integration` into a PR worktree when `git merge` permission is denied, secret-scanner exemptions): post ONE comment on that issue or PR in the format `owner-action: <tindakan> | <perintah> | <alasan>` (reason = why the agent is not allowed to do it). When autopilot starts waiting for the owner, `scripts/owner-actions.sh` collects those comments (along with `needs-principal` issues and PRs awaiting merge) into `.aicrew/owner-actions.md`, one line per item, and its path is logged and included in the notification.
 
-**Sebelum memasang `needs-principal` (atau memasangnya lagi), baca komentar issue.** "komentar owner terbaru" = komentar terbaru yang bukan tulisan agen: bukan berawalan `**Keputusan otomatis (principal)**`, `terblokir:`, `blocked:`, atau `aicrew-progress`, dan bila `WORKFLOW.md` menyebut pemilik, penulisnya orang itu (akun gh sama dengan agen tidak membuat komentar agen menjadi keputusan owner). Bila komentar itu sudah memutuskan pertanyaan yang akan diajukan (mis. dependensi disetujui dengan pin persis), anggap terjawab: jangan pasang label dan jangan bertanya ulang. Pengecualian: kekhawatiran tingkat 2 baru tetap dieskalasi (keputusan lama tidak menutupnya), begitu juga bila owner sudah mencabut atau mengubah keputusannya. Kendala nyata yang bukan keputusan owner (implementasi belum ada, kriteria selesai belum terpenuhi, lingkungan mati seperti daemon Docker, dua kali gagal setelah keputusan owner) dilaporkan apa adanya sebagai `terblokir: <sebab>` di komentar issue dan laporan sesi, tanpa `needs-principal`; issue dilewati dan dicoba lagi di putaran berikut. Jangan ulangi komentar `terblokir:` bila sebabnya sama dengan komentar agen sebelumnya (autopilot berhenti sebagai buntu bila keadaan tidak berubah).
-Agen dilarang melonggarkan sandbox atau mengubah tes yang ada tanpa izin. Kena limit (Codex/agen lain) →
-ambil alih dengan model Claude sesuai bobot tugas dan sebutkan di laporan.
+**Before applying `needs-principal` (or re-applying it), read the issue comments.** "latest owner comment" = the latest comment not written by an agent: not starting with `**Keputusan otomatis (principal)**`, `terblokir:`, `blocked:`, or `aicrew-progress`, and when `WORKFLOW.md` names an owner, authored by that person (sharing a `gh` account with the agent does not make an agent comment an owner decision). If that comment already resolves the question about to be asked (e.g. a dependency approved with an exact pin), treat it as answered: do not apply the label and do not ask again. Exception: new level-2 concerns are still escalated (an older decision does not cover them), as is any case where the owner has revoked or changed the decision. Real obstacles that are not owner decisions (missing implementation, unmet acceptance criteria, dead environment such as the Docker daemon, two consecutive failures after an owner decision) are reported as-is as `terblokir: <sebab>` in the issue comment and session report, without `needs-principal`; the issue is skipped and retried in the next round. Do not repeat a `terblokir:` comment when its cause is identical to the previous agent comment (autopilot stops as stalled when state does not change).
+Agents are forbidden from loosening the sandbox or modifying existing tests without permission. Hit a rate limit (Codex/another agent) →
+take over with a Claude model matching the task weight and note it in the report.
 
-## Gerbang
-- PR/MR pertama: berhenti dan minta owner memeriksa sebelum melanjutkan wave berikutnya (kecuali `WORKFLOW.md` melonggarkan).
-- Integration branch: PR issue memakai cabang itu sebagai basis. Merge ke cabang integrasi hanya oleh agen bila
-  `WORKFLOW.md` mengizinkannya secara tertulis; bila ditolak oleh izin Bash, jangan diakali: minta owner merge
-  (beri tautan PR) dan lanjutkan issue yang tidak bergantung. Integration branch belum ada tetapi ada rantai
-  `blocked-by` → usulkan satu ke owner dan catat di `WORKFLOW.md` sebelum membuatnya.
-- **Auto-merge (`agent-after-qa`)**: hanya bila `WORKFLOW.md` menulisnya dan hanya ke cabang integrasi. Syarat semua terpenuhi
-  pada PR itu: suite penuh hijau, laporan `aicrew-qa` lulus, `aicrew-security` lulus bila sensitif (`needs-security`), `aicrew-perf` lulus bila `needs-perf`, tidak ada `needs-principal`,
-  `pr-merge-check.sh <n> <cabang-tujuan> --auto` exit 0 (menolak `risk:L2`: L2 selalu owner). Lalu merge, jalankan lagi dengan `--after`, lalu `integrated.sh <pr>` (exit 0 wajib), ganti label ke `integrated`. Satu syarat gagal → jangan merge,
-  kembali ke manual (minta owner). Qa wajib dipanggil di mode ini (tidak boleh dilewati). Merge ke `main` tetap owner.
-- **CI tak dapat mulai (infrastruktur) dan owner menulis izin `scope=ci-local` di `WORKFLOW.md`:** jalankan suite PENUH di worktree PR pada head itu, lalu tulis komentar `Laporan ci-lokal: lulus` + `Commit: <sha head>` + `Perintah: <perintah>` + `Hasil: <ringkasan keluaran>`; gerbang `--auto` hanya menerimanya bila CI terklasifikasi `infrastructure`, izin belum kedaluwarsa, dan cabang tujuan bukan cabang bawaan. Tanpa izin owner, jangan menulis laporan itu. Head baru = laporan baru.
-- **CI gagal:** sebelum menjalankan ulang job atau membuka perbaikan, klasifikasikan dulu: `gh api repos/<owner>/<repo>/commits/<sha>/check-runs | bash ${CLAUDE_PLUGIN_ROOT}/scripts/ci-classify.sh`. Hasil `infrastructure` (billing/akun, job tanpa runner) = bukan salah kode: JANGAN jalankan ulang job, JANGAN buka percobaan perbaikan; catat baris `owner-action:` yang dicetak (tulis ke komentar `owner-action: ...` seperti biasa), tahan merge yang butuh CI, dan teruskan item yang tidak butuh CI. `code` = perbaiki seperti biasa; `pending` = tunggu. Exit ≠ 0 = anggap `code`.
-- Merge ke `main` dan pindah ke Done mengikuti `WORKFLOW.md`; default: **hanya owner**. Jangan memindahkan ke Done sendiri.
-- **Issue lanjutan** yang kamu buat (tindak lanjut temuan QA/security, pecahan issue) wajib mewarisi epic sumbernya, tidak boleh yatim: `bash ${CLAUDE_PLUGIN_ROOT}/scripts/epic-link.sh --inherit <issue-sumber> <issue-baru>` (exit 3 = sumber memang tanpa epic; laporkan). Audit yatim berkala: `bash ${CLAUDE_PLUGIN_ROOT}/scripts/epic-link.sh --check` (exit 3 = ada issue terbuka tanpa induk; laporkan ke owner, jangan memasang sendiri tanpa dasar journey yang jelas).
-- **Stack bersama** (Docker/Keycloak, DB tes yang dipakai banyak sesi atau worktree): jalankan tesnya lewat kunci, `bash ${CLAUDE_PLUGIN_ROOT}/scripts/lock.sh <nama-stack> -- <perintah tes>`, atau beri nama proyek compose per worktree (`COMPOSE_PROJECT_NAME`). Dua sesi yang menyalakan ulang stack yang sama membuat tes gagal acak.
-- Nama label `integrated` dan `auto-decision` di skill ini adalah bawaan; nama sebenarnya: `bash ${CLAUDE_PLUGIN_ROOT}/scripts/label.sh integrated|auto` (dapat diubah lewat `WORKFLOW.md`).
-- Label status: `in-progress` saat mulai, `in-review` saat PR dibuka, `integrated` setelah PR ter-merge ke cabang
-  integrasi (ganti `in-review`). Issue baru ditutup saat merge ke `main`. Buat labelnya bila belum ada.
-- **PR bertumpuk** (issue B bercabang dari issue A yang belum ter-merge): sebelum merge PR apa pun, WAJIB jalankan
-  `bash ${CLAUDE_PLUGIN_ROOT}/scripts/pr-merge-check.sh <n> <cabang-tujuan>` (exit ≠ 0 = jangan merge). Merge dari bawah ke atas; setelah PR induk ter-merge,
-  ubah basis PR anak ke cabang integrasi (`gh pr edit <n> --base <integrasi>`) SEBELUM di-merge. PR yang basisnya
-  bukan cabang integrasi/`main` dan induknya sudah ter-merge = jebakan: perubahannya tidak sampai ke integrasi.
-  Setelah merge, jalankan lagi dengan `--after`; status "Merged" saja bukan bukti.
-- Perintah yang mengubah server/produksi atau biaya: selalu konfirmasi owner.
+## Gates
+- First PR/MR: stop and ask the owner to review before continuing to the next wave (unless `WORKFLOW.md` relaxes this).
+- Integration branch: issue PRs use that branch as their base. Merging into the integration branch is done by the agent only when
+  `WORKFLOW.md` explicitly allows it in writing; if denied by Bash permissions, do not work around it: ask the owner to merge
+  (provide the PR link) and continue with non-dependent issues. No integration branch exists yet but there is a `blocked-by`
+  chain → propose one to the owner and record it in `WORKFLOW.md` before creating it.
+- **Auto-merge (`agent-after-qa`)**: only when `WORKFLOW.md` specifies it and only into the integration branch. All conditions must hold
+  on that PR: full suite green, `aicrew-qa` report passes, `aicrew-security` passes when sensitive (`needs-security`), `aicrew-perf` passes when `needs-perf`, no `needs-principal`,
+  `pr-merge-check.sh <n> <cabang-tujuan> --auto` exits 0 (rejects `risk:L2`: L2 is always owner). Then merge, re-run with `--after`, then run `integrated.sh <pr>` (exit 0 required), and change the label to `integrated`. Any single condition fails → do not merge,
+  fall back to manual (ask the owner). QA must be invoked in this mode (never skipped). Merging to `main` stays with the owner.
+- **CI cannot start (infrastructure) and the owner wrote a `scope=ci-local` grant in `WORKFLOW.md`:** run the FULL suite in the PR worktree on that head, then post a comment `Laporan ci-lokal: lulus` + `Commit: <sha head>` + `Perintah: <perintah>` + `Hasil: <ringkasan keluaran>`; the `--auto` gate accepts it only when CI is classified as `infrastructure`, the grant has not expired, and the target branch is not the default branch. Without an owner grant, never write that report. New head = new report.
+- **CI fails:** before re-running jobs or opening a fix attempt, classify first: `gh api repos/<owner>/<repo>/commits/<sha>/check-runs | bash ${CLAUDE_PLUGIN_ROOT}/scripts/ci-classify.sh`. Result `infrastructure` (billing/account, job with no runner) = not a code fault: DO NOT re-run the job, DO NOT open a fix attempt; record the printed `owner-action:` line (post it as an `owner-action: ...` comment as usual), hold merges that require CI, and continue with items that do not require CI. `code` = fix as usual; `pending` = wait. Exit ≠ 0 = treat as `code`.
+- Merging to `main` and moving to Done follow `WORKFLOW.md`; default: **owner only**. Never move items to Done yourself.
+- **Follow-up issues** that you create (QA/security follow-ups, split issues) must inherit their source epic, never left orphaned: `bash ${CLAUDE_PLUGIN_ROOT}/scripts/epic-link.sh --inherit <issue-sumber> <issue-baru>` (exit 3 = source genuinely has no epic; report it). Periodic orphan audit: `bash ${CLAUDE_PLUGIN_ROOT}/scripts/epic-link.sh --check` (exit 3 = open issues exist without a parent; report to the owner, never attach them yourself without a clear journey basis).
+- **Shared stack** (Docker/Keycloak, test DB shared across sessions or worktrees): run its tests through the lock, `bash ${CLAUDE_PLUGIN_ROOT}/scripts/lock.sh <nama-stack> -- <perintah tes>`, or name the compose project per worktree (`COMPOSE_PROJECT_NAME`). Two sessions restarting the same stack cause random test failures.
+- The label names `integrated` and `auto-decision` in this skill are defaults; the effective names come from `bash ${CLAUDE_PLUGIN_ROOT}/scripts/label.sh integrated|auto` (configurable via `WORKFLOW.md`).
+- Status labels: `in-progress` when starting, `in-review` when a PR is opened, `integrated` after the PR is merged into the integration
+  branch (replaces `in-review`). Issues are only closed when merged into `main`. Create the labels if they do not exist yet.
+- **Stacked PRs** (issue B branches from an unmerged issue A): before merging any PR, you MUST run
+  `bash ${CLAUDE_PLUGIN_ROOT}/scripts/pr-merge-check.sh <n> <cabang-tujuan>` (exit ≠ 0 = do not merge). Merge bottom-up; after the parent PR is merged,
+  retarget the child PR base to the integration branch (`gh pr edit <n> --base <integrasi>`) BEFORE merging it. A PR whose base
+  is not the integration branch/`main` while its parent is already merged is a trap: its changes never reach integration.
+  After merging, re-run with `--after`; a "Merged" status alone is not proof.
+- Commands that change servers/production or incur cost: always confirm with the owner.
 
-## Tahap penutup: calon rilis (bila tidak ada issue siap/berjalan, hanya `integrated` yang tersisa; issue `epic` tidak dihitung)
-1. `bash ${CLAUDE_PLUGIN_ROOT}/scripts/release-report.sh --test-cmd "<perintah tes penuh>" --dry-run` lebih dulu. Skrip memvonis FAKTA
-   (PR tanpa komentar `Bukti selesai`, issue belum `integrated`, `needs-principal`, suite di salinan segar). `BELUM SIAP` → perbaiki yang disebut
-   (mis. pasang komentar bukti yang hilang dari fakta nyata, bukan karangan), lalu ulangi; yang butuh owner dilaporkan dan berhenti.
-2. Isi item "Daftar periksa" satu per satu dengan perintah dan hasilnya (delegasikan ke `aicrew-qa`/`aicrew-security`); jangan mencentang tanpa bukti.
-3. SIAP dan daftar periksa terisi → ulangi tanpa `--dry-run` dengan `--open-pr` (membuka PR `integrasi → main` berbadan laporan). Tidak pernah merge ke `main`
-   kecuali `WORKFLOW.md` mengizinkannya (mode auto ke `main`, bila ada). Kabari owner dengan tautan PR dan butir "Keputusan otomatis" yang perlu ditinjau.
+## Closing stage: release candidate (when no ready/running issues remain, only `integrated` is left; `epic` issues are not counted)
+1. Run `bash ${CLAUDE_PLUGIN_ROOT}/scripts/release-report.sh --test-cmd "<perintah tes penuh>" --dry-run` first. The script verdicts FACTS
+   (PRs missing a `Bukti selesai` completion evidence comment, issues not yet `integrated`, `needs-principal`, suite in a fresh clone). `BELUM SIAP` → fix what is named
+   (e.g. post a missing evidence comment from real facts, never fabricated), then re-run; anything requiring the owner is reported and stops.
+2. Fill in the `## Daftar periksa rilis` (release checklist) items one by one with the command and its output (delegate to `aicrew-qa`/`aicrew-security`); never check an item off without evidence.
+3. `SIAP` and the checklist is filled in → re-run without `--dry-run` and with `--open-pr` (opens an `integrasi → main` PR with the report as its body). Never merge to `main`
+   unless `WORKFLOW.md` allows it (auto mode to `main`, if configured). Notify the owner with the PR link and any `Keputusan otomatis` (automatic decision) items to review.
 
-## Notifikasi
+## Notifications
 For waiting items, agents create no notifications: use the label and `owner-action:` comment only. Autopilot sends one note per state through the configured notification hook; never store tokens in files.
 
-## Laporan akhir sesi (maks 12 baris)
-Selesai / In Review / ditandai `needs-principal` / dilewati, jumlah iterasi terpakai, yang tidak diverifikasi,
-dan apa yang diambil alih bila ada agen kena limit.
+## Final session report (max 12 lines)
+Done / In Review / marked `needs-principal` / skipped, iterations used, what was not verified,
+and what was taken over if any agent hit a rate limit.

@@ -3,44 +3,46 @@ name: kickoff
 description: Use at the start of a new project (or when adopting aicrew in an existing repo) to decide the working pattern and write docs/WORKFLOW.md. Asks the owner for repo/backend, profile (ringan/standar/penuh), roles, gates, and stop rules.
 ---
 
+Language: reply in the language the user writes in. Write issues, PRDs and comments in the language set by "Language:" in docs/WORKFLOW.md, or in the user's language when it is absent. "Artifact language:" (code, commits, labels) is separate and defaults to English. Phrases in any language are understood by reading intent; this skill lists no trigger words.
+
 # aicrew kickoff
 
-Tujuan: satu diskusi singkat dengan owner, hasilnya `docs/WORKFLOW.md` di repo project.
-Bahasa dokumen: Indonesia. Jangan menulis kode project di skill ini.
+Goal: one short discussion with the owner, resulting in `docs/WORKFLOW.md` in the project repo.
+Document language: follows `Language:` in `docs/WORKFLOW.md` (default English). Do not write project code in this skill.
 
-## Aturan
-- **Repo dan backend (GitHub/GitLab) adalah keputusan owner.** Tanyakan; jangan memilih sendiri. Cek `command -v gh glab` hanya untuk memberi tahu apa yang terpasang.
-- Baca repo dulu bila sudah ada (ukuran, stack, tes) sebelum menyarankan profil.
-- Satu pertanyaan per giliran. Beri rekomendasi, bukan daftar pilihan kosong.
+## Rules
+- **Repo and backend (GitHub/GitLab) are the owner's decision.** Ask; never choose on your own. Check `command -v gh glab` only to report what is installed.
+- Read the repo first when it already exists (size, stack, tests) before recommending a profile.
+- One question per turn. Offer a recommendation, not an empty list of choices.
 
-## Mode audit (bila `docs/WORKFLOW.md` sudah ada)
-Jangan menulis ulang. Bandingkan dengan `templates/WORKFLOW.md`: ukuran task, label, aturan berhenti,
-batas, bukti selesai, perintah backend, PRD/Existing code. Laporkan tabel *sesuai / kurang / bertentangan*
-(dengan baris yang bersangkutan). Aturan lokal yang sengaja berbeda dihormati dan hanya dicatat.
-Baris `Release notes:` yang hilang dilaporkan sebagai *kurang* dan disarankan (tidak diterapkan otomatis). Siapkan perubahan siap-terapkan (diff) dan minta persetujuan owner sekali sebelum menerapkannya.
+## Audit mode (when `docs/WORKFLOW.md` already exists)
+Do not overwrite it. Compare against `templates/WORKFLOW.md`: task size, labels, stop rules,
+limits, completion evidence, backend commands, PRD/Existing code. Report a *matches / missing / conflicts* table
+(with the relevant lines). Local rules that intentionally differ are respected and only noted.
+A missing `Release notes:` line is reported as *missing* and recommended (not applied automatically). Prepare ready-to-apply changes (diff) and ask for owner approval once before applying them.
 
-## Langkah
-0. **PRD yang sudah ada**: cari `PRD*`, `docs/`, `spec*`. Jika ada, minta owner mengonfirmasi lokasi dan
-   apakah PRD itu sudah disetujui; catat keduanya di `WORKFLOW.md` (`PRD: <path>`, `Status PRD: disetujui|belum`).
-   PRD berstatus `draf` (hasil jalur draf `prd`) → catat `Status PRD: belum`.
-   Jalankan `git check-ignore -v docs`. Bila `docs/` di-ignore: tampilkan aturan dan berkasnya, lalu tanyakan owner
-   (jangan ubah `.gitignore` sendiri): (a) tetap di-ignore (disengaja), atau (b) hanya `PRD.md` dan `WORKFLOW.md`
-   yang dilacak. Catat jawabannya di `WORKFLOW.md`.
-   Jangan mengubah PRD. Jika repo sudah berisi kode, catat `Existing code: yes` (memicu audit status di breakdown).
-1. **Konteks**: apa yang dibangun, siapa pengguna, risiko (auth, uang, data, migrasi?).
-2. **Profil** (sarankan satu, owner memutuskan):
-   - `ringan`: tanpa PRD; satu issue, satu role. Untuk skrip/perbaikan kecil.
-   - `standar`: PRD + issue + role seperlunya; gerbang di PRD dan PR pertama.
-   - `penuh`: semua role, reviewer PRD tanpa konteks, aturan berhenti ketat, fase paralel.
-3. **Backend & repo**: GitHub atau GitLab, nama repo. Setelah owner memilih, jalankan
-   `bash ${CLAUDE_PLUGIN_ROOT}/scripts/preflight.sh <backend>`; bila gagal (CLI belum terpasang/login),
-   sampaikan apa yang kurang dan jangan lanjut ke tahap yang membutuhkannya. Tampilkan juga status Codex dan Telegram. Bila preflight mencetak `AWAS` (workflow jalan saat push ke main), catat di gerbang 4 `WORKFLOW.md` dan tanyakan owner. Tulis perintah backend di satu bagian `WORKFLOW.md` supaya mudah diganti.
-4. **Active roles**: pilih dari `agents/` (principal, senior-coder, qa, security, perf, devops, ui-ux).
-5. **Gerbang & aturan berhenti**: mulai dari bawaan di `templates/WORKFLOW.md`; owner boleh menimpa. Tanyakan juga apakah memakai board kanban (GitHub Project; perlu scope `gh` `project`: preflight menampilkan perintahnya). Bila ya dan belum ada board, buat dengan `bash ${CLAUDE_PLUGIN_ROOT}/scripts/board-init.sh <owner> "<nama project>"` (cetak nomornya; catat di `WORKFLOW.md`); bila owner sudah punya, pakai nomornya sebagai argumen ketiga. Tanyakan juga siapa yang memindahkan kartu ke Done: `owner` (bawaan) atau `agent-after-merge` (autopilot, cocok dengan mode merge `agent-after-qa`). Tanyakan juga siapa yang memutuskan `needs-principal` tingkat 1: `owner` (bawaan) atau `principal-auto` (butuh role principal aktif; tingkat 2 tetap owner). Tanyakan mode merge ke cabang integrasi: `owner` (bawaan, manual) atau `agent-after-qa` (otomatis setelah QA lulus; rekomendasi: merge ke `main` tetap owner).
-5a. **Release notes**: tanyakan opsi `Release notes:` (`CHANGELOG.md` | `external` | `none`); rekomendasikan `CHANGELOG.md` untuk proyek baru dan jelaskan bahwa PR perlu baris `Release note: <Added|Changed|Fixed|Security> - <teks>`. Proyek lama tanpa baris itu = `none` (opt-in; jangan menambahkannya tanpa persetujuan owner).
-5b. **Batas perangkat keras**: tanyakan IOPS disk, RAM, tier volume, opsi mount, dan batas container host; isi bagian `Batas perangkat keras` di `WORKFLOW.md`. Belum tahu → tulis "tidak diketahui" (bukan angka tebakan).
-6. **Batas**: paralel maksimum, iterasi per sesi, gagal berturut-turut per issue.
-6b. **`.gitignore`**: jalankan `bash ${CLAUDE_PLUGIN_ROOT}/scripts/ensure-gitignore.sh` (menambah `.aicrew/` dan `.claude/settings.local.json`, idempoten) dan sebutkan hasilnya ke owner. Di dalam workspace Orca (preflight mencetak `AWAS` Orca), tanyakan juga path absolut basis worktree dan isi baris `Worktree base:`; sampaikan bahwa Orca meluncurkan agen dengan `--dangerously-skip-permissions` secara bawaan.
-7. Tulis `docs/WORKFLOW.md` dari `${CLAUDE_PLUGIN_ROOT}/templates/WORKFLOW.md`, isi nilainya, tunjukkan ke owner, minta persetujuan.
+## Steps
+0. **Existing PRD**: search for `PRD*`, `docs/`, `spec*`. If found, ask the owner to confirm the location and
+   whether that PRD is already approved; record both in `WORKFLOW.md` (`PRD: <path>`, `Status PRD: disetujui|belum`). Write machine tokens such as `Status PRD: disetujui`, `Status PRD: belum`, and `tidak diketahui` exactly as shown because scripts read them back.
+   A PRD with status `draf` (from the `prd` draft path) → record `Status PRD: belum`.
+   Run `git check-ignore -v docs`. When `docs/` is ignored: show the rule and its file, then ask the owner
+   (do not edit `.gitignore` yourself): (a) keep ignored (intentional), or (b) track only `PRD.md` and `WORKFLOW.md`.
+   Record the answer in `WORKFLOW.md`.
+   Do not modify the PRD. If the repo already contains code, record `Existing code: yes` (triggers the status audit in breakdown).
+1. **Context**: what is being built, who the users are, risks (auth, money, data, migration?).
+2. **Profile** (recommend one, owner decides):
+   - `ringan`: no PRD; one issue, one role. For small scripts/fixes.
+   - `standar`: PRD + issues + roles as needed; gates on the PRD and first PR.
+   - `penuh`: all roles, context-free PRD reviewer, strict stop rules, parallel phases.
+3. **Backend & repo**: GitHub or GitLab, repo name. Once the owner chooses, run
+   `bash ${CLAUDE_PLUGIN_ROOT}/scripts/preflight.sh <backend>`; if it fails (CLI not installed/logged in),
+   report what is missing and do not proceed to steps that require it. Also show Codex and Telegram status. If preflight prints `AWAS` (workflows run on push to main), record it under gate 4 of `WORKFLOW.md` and ask the owner. Write backend commands in a single section of `WORKFLOW.md` so they are easy to swap.
+4. **Active roles**: choose from `agents/` (principal, senior-coder, qa, security, perf, devops, ui-ux).
+5. **Gates & stop rules**: start from the defaults in `templates/WORKFLOW.md`; the owner may override them. Also ask whether to use a Kanban board (GitHub Project; requires the `gh` `project` scope: preflight prints the command). If yes and no board exists yet, create one with `bash ${CLAUDE_PLUGIN_ROOT}/scripts/board-init.sh <owner> "<nama project>"` (prints its number; record it in `WORKFLOW.md`); if the owner already has one, pass its number as the third argument. Also ask who moves cards to Done: `owner` (default) or `agent-after-merge` (autopilot, pairs with `agent-after-qa` merge mode). Also ask who decides level-1 `needs-principal`: `owner` (default) or `principal-auto` (requires an active principal role; level 2 stays with the owner). Ask the merge mode for the integration branch: `owner` (default, manual) or `agent-after-qa` (automatic after QA passes; recommendation: merging to `main` stays with the owner). Also ask for the message language, `en` (default) or `id`, and write the answer as the `Language:` line of `docs/WORKFLOW.md`.
+5a. **Release notes**: ask for the `Release notes:` option (`CHANGELOG.md` | `external` | `none`); recommend `CHANGELOG.md` for new projects and explain that PRs need a `Release note: <Added|Changed|Fixed|Security> - <teks>` line. Older projects without that line = `none` (opt-in; do not add it without owner approval).
+5b. **Hardware limits**: ask for disk IOPS, RAM, volume tier, mount options, and host container limits; fill in the `Batas perangkat keras` (`Hardware limits`) section in `WORKFLOW.md`. Not yet known → write "unknown" (`tidak diketahui`, not a guessed number).
+6. **Limits**: max parallel, iterations per session, consecutive failures per issue.
+6b. **`.gitignore`**: run `bash ${CLAUDE_PLUGIN_ROOT}/scripts/ensure-gitignore.sh` (adds `.aicrew/` and `.claude/settings.local.json`, idempotent) and report the result to the owner. Inside an Orca workspace (preflight prints the Orca `AWAS`), also ask for the absolute worktree base path and fill in the `Worktree base:` line; note that Orca launches agents with `--dangerously-skip-permissions` by default.
+7. Write `docs/WORKFLOW.md` from `${CLAUDE_PLUGIN_ROOT}/templates/WORKFLOW.md`, fill in the values, show it to the owner, and ask for approval.
 
-Selesai hanya bila `docs/WORKFLOW.md` ada dan disetujui owner.
+Done only when `docs/WORKFLOW.md` exists and is approved by the owner.
