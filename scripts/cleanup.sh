@@ -108,7 +108,7 @@ while IFS="$tab" read -r p b h l; do
     */orca/workspaces/*) act="lewati:orca" ;;
     *) if [ "$l" = 1 ]; then act="lewati:terkunci"
        elif [ "$b" = "-" ]; then act="lewati:tanpa-cabang"
-       elif [ -n "$(git -C "$p" status --porcelain 2>/dev/null)" ]; then act="lewati:kotor"
+       elif [ -n "$(git -C "$p" status --porcelain 2>/dev/null | grep -vE '^\?\? \.aicrew-(out|prompt)-[^/]*\.md$')" ]; then act="lewati:kotor"   # berkas scratch agen yang tak terlacak tidak menahan pembersihan (#138)
        else
          lr="$(awk -F'\t' -v n="$b" '$1==n{print $3 "\t" $4; found=1} END{if(!found)print "-\tdilindungi"}' "$T/loc")"
          if [ "${lr#*$tab}" = "" ]; then act="hapus"; ev="${lr%%$tab*}"; else act="lewati:${lr#*$tab}"; fi
@@ -124,7 +124,8 @@ emit() { # <jenis> <nama> <ujung> <bukti> <aksi> <path> <cabang-worktree>
   local act="$5" msg pr lr lrc
   if [ "$apply" = 1 ] && [ "$act" = hapus ]; then
     case "$1" in
-      worktree) if msg="$(git worktree remove "$6" 2>&1)"; then act=dihapus; else act="lewati:gagal:$(tr '\n' ' ' <<<"$msg")"; echo "$7" >> "$T/surv"; fi ;;   # gagal: cabangnya tetap ter-checkout
+      worktree) for sf in "$6"/.aicrew-out-*.md "$6"/.aicrew-prompt-*.md; do [ -f "$sf" ] && ! git -C "$6" ls-files --error-unmatch -- "${sf##*/}" >/dev/null 2>&1 && rm -f "$sf"; done   # hanya yang tak terlacak
+        if msg="$(git worktree remove "$6" 2>&1)"; then act=dihapus; else act="lewati:gagal:$(tr '\n' ' ' <<<"$msg")"; echo "$7" >> "$T/surv"; fi ;;   # gagal: cabangnya tetap ter-checkout
       cabang-lokal) if git worktree list --porcelain | grep -qxF "branch refs/heads/$2"; then act="lewati:checkout"   # penjagaan akhir: jangan pernah menghapus cabang yang masih ter-checkout
         elif git branch -d "$2" >/dev/null 2>&1 || git update-ref -d "refs/heads/$2" "$3" 2>/dev/null; then git config --remove-section "branch.$2" 2>/dev/null; act=dihapus; else act="lewati:gagal:ujung-berubah-atau-tak-terhapus"; fi ;;
       cabang-remote) msg="$(git push -q origin --force-with-lease="refs/heads/$2:$3" --delete "refs/heads/$2" 2>&1)"; pr=$?

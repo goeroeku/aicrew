@@ -2964,4 +2964,33 @@ tg CHECKRUNS="$CIINF
 "'{"name":"build","app":{"id":15368,"slug":"github-actions"},"status":"completed","conclusion":"success","started_at":"2026-01-01T00:00:00Z"}' WFTEXT="$CIOK" COMM2="$CIV" >/dev/null; ok "ci-local (#83): infrastruktur + check lain sukses -> tetap boleh digantikan" $? 0
 tg CHECKRUNS="${CIINF/github-actions/evil-app}" WFTEXT="$CIOK" COMM2="$CIV" >/dev/null; ok "ci-local (#83): kegagalan 'infrastruktur' dari app selain GitHub Actions -> tidak digantikan" $? 1
 
+# 3c-33. cleanup: berkas scratch agen tak terlacak tidak menahan worktree (#138); resume.sh: jalur REST (#139)
+MK
+printf x > "$CL/w-wt-5/.aicrew-out-1.md"; printf x > "$CL/w-wt-5/.aicrew-out-2b.md"; printf x > "$CL/w-wt-5/.aicrew-prompt-3.md"
+ok "cleanup (#138): worktree dengan hanya berkas scratch agen tak terlacak -> hapus" "$(CLN --no-fetch --issue 5 | cut -f1,2,5 | grep -c '^worktree.w-wt-5.hapus$')" 1
+CLN --no-fetch --apply --issue 5 >/dev/null
+ok "cleanup (#138): --apply menghapus berkas scratch lalu worktree" "$([ -e "$CL/w-wt-5" ] && echo ada || echo tidak)" tidak
+printf x > "$CL/w-wt-6/.aicrew-out-9.md"
+ok "cleanup (#138): berkas tak terlacak lain tetap menahan (lewati:kotor)" "$(CLN --no-fetch --issue 6 | cut -f1,2,5 | grep -c '^worktree.w-wt-6.lewati:kotor$')" 1
+MK; printf x > "$CL/w-wt-5/.aicrew-out-1.txt"
+ok "cleanup (#138): nama mirip tetapi bukan pola (.txt) tetap menahan" "$(CLN --no-fetch --issue 5 | cut -f1,2,5 | grep -c '^worktree.w-wt-5.lewati:kotor$')" 1
+RR="$tmp/rr"; rm -rf "$RR"; mkdir -p "$RR/bin"
+printf '[{"number":10,"labels":[{"name":"in-progress"}]},{"number":11,"labels":[{"name":"in-review"}]},{"number":12,"labels":[{"name":"in-progress"}],"pull_request":{}},{"number":13,"labels":[{"name":"in-progress"}]},{"number":14,"labels":[{"name":"in-progress"},{"name":"epic"}]}]' > "$RR/issues.json"
+printf '[{"number":20,"state":"closed","merged_at":"2026-11-01T00:00:00Z","head":{"ref":"issue-10"}},{"number":21,"state":"open","merged_at":null,"head":{"ref":"issue-11-r2"}},{"number":22,"state":"closed","merged_at":null,"head":{"ref":"issue-13"}}]' > "$RR/pulls.json"
+cat > "$RR/bin/gh" <<'EOF'
+#!/usr/bin/env bash
+case "$1 $2" in "issue list"|"pr list") exit 1 ;; esac
+[ -n "${RR_FAIL:-}" ] && exit 1
+f=""; prev=""; for a in "$@"; do [ "$prev" = --jq ] && f="$a"; prev="$a"; done
+case "$*" in *"/issues?"*) src="$RR/issues.json" ;; *"/pulls?"*) src="$RR/pulls.json" ;; *) exit 1 ;; esac
+[ -n "$f" ] && jq -c "$f" "$src" || jq -c '.[]' "$src"
+EOF
+chmod +x "$RR/bin/gh"; git init -q "$RR/repo"
+rr() { (cd "$RR/repo" && RR="$RR" GH_REPO=o/r PATH="$RR/bin:$PATH" bash "$root/scripts/resume.sh" "$@" 2>"$RR/err"); }
+out="$(rr | awk -F'\t' '$2!="check-release"{print $1":"$2}' | paste -sd' ' -)"; rc=$?
+ok "resume (#139): GraphQL gagal -> REST: merged, open (bersufiks), PR ditutup tanpa merge, PR bukan issue, epic diabaikan" "$out" '10:finish-merge 11:continue-pr 13:requeue'
+rr_f() { (cd "$RR/repo" && RR="$RR" RR_FAIL=1 GH_REPO=o/r PATH="$RR/bin:$PATH" bash "$root/scripts/resume.sh" 2>&1); }
+out="$(rr_f)"; rc=$?
+ok "resume (#139): GraphQL dan REST gagal -> exit 1 (bukan sukses kosong); pesan hanya dengan AICREW_VERBOSE" "$rc|$(grep -c . <<<"$out")|$(AICREW_VERBOSE=1 rr_f | grep -c 'issue tak terbaca')" '1|0|1'
+
 [ "$fails" = 0 ] && echo "SEMUA LULUS" || { echo "$fails GAGAL"; exit 1; }
