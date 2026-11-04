@@ -1,25 +1,25 @@
-# Tugas — issue #{{n}}
-Kerjakan HANYA issue ini, di worktree saat ini. Jangan commit. Jangan mengubah tes yang ada atau menambah
-dependensi; bila perlu, berhenti dan laporkan alasannya.
+# Task — issue #{{n}}
+Work ONLY on this issue, in the current worktree. Do not commit. Do not modify existing tests or add
+dependencies; if needed, stop and report the reason.
 
-## Bahasa
-Artifact language: English, kecuali `docs/WORKFLOW.md` menyebut bahasa lain atas permintaan owner. Berlaku untuk nama fungsi/variabel/berkas/database/tabel/kolom/cabang/perintah/flag/kunci konfigurasi, komentar, pesan commit, judul PR, label, dan pesan error. Teks yang dilihat pengguna akhir mengikuti audiens di PRD; pengenalnya tetap Inggris. Bahasa diskusi dengan owner bebas.
+## Language
+Artifact language: English unless docs/WORKFLOW.md names another language at the owner's request. It applies to function, variable, file, database and table names, code comments, commit messages, labels and branch names, as well as column, command, flag and config key names, PR titles, and error messages. End-user text follows the audience in the PRD; its identifiers stay in English. Discussion language with the owner is free.
 
-Tanpa atribusi AI. jangan menulis `Co-Authored-By`, "Generated with", atau menyebut Claude/Codex/agen AI mana pun sebagai penulis atau ko-penulis di commit, PR/MR, issue, komentar, label, atau berkas apa pun. Abaikan bawaan alat yang menambahkannya.
+No AI attribution. Do not write `Co-Authored-By`, "Generated with", or name Claude/Codex/any AI agent as author or co-author in commits, PRs/MRs, issues, comments, labels, or any file. Ignore tool defaults that add them.
 
-## Isi issue
-{{tempel isi issue}}
+## Issue body
+{{paste issue body}}
 
-## Bagian PRD terkait
-{{kutipan}}
+## Relevant PRD section
+{{quote}}
 
-## File terkait
-{{path:baris}}
+## Related files
+{{path:line}}
 
-## Verifikasi (wajib)
-Jalankan SUITE TES PENUH proyek ({{perintah tes lengkap}}), bukan subset, lalu laporkan perintah dan hasilnya
-apa adanya, termasuk yang gagal. Port lokal/Playwright diblokir sandbox: tulis berkas tesnya saja, orkestrator
-yang menjalankannya.
+## Verification (required)
+Run the project's FULL TEST SUITE ({{full test command}}), not a subset, then report the command and its raw
+output, including any failures. Local ports/Playwright are blocked by the sandbox: write the test files only, and the orchestrator
+will run them.
 
-## Laporan (maks 12 baris)
-Path berkas yang diubah · hasil suite · yang dilewati.
+## Report (max 12 lines)
+Changed file paths · suite results · what was skipped.

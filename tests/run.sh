@@ -372,14 +372,14 @@ for k in skills/*/SKILL.md; do head -1 "$k" | grep -q '^---$'; ok "frontmatter $
 head -6 agents/perf.md | grep -q '^name: aicrew-perf$' && head -6 agents/perf.md | grep -q '^model: sonnet$'; ok "perf: frontmatter aicrew-perf, sonnet" $? 0
 head -6 agents/perf.md | grep '^tools:' | grep -Eq 'Edit|Write'; ok "perf: read-only (tanpa Edit/Write)" $? 1
 for f in templates/WORKFLOW.md skills/breakdown/SKILL.md skills/orchestrate/SKILL.md agents/perf.md; do grep -q 'needs-perf' "$f"; ok "needs-perf disebut di $f" $? 0; done
-for f in templates/WORKFLOW.md skills/kickoff/SKILL.md; do grep -q 'Batas perangkat keras' "$f"; ok "Batas perangkat keras disebut di $f" $? 0; done
+for f in templates/WORKFLOW.md skills/kickoff/SKILL.md; do grep -qE 'Batas perangkat keras|Hardware limits' "$f"; ok "Batas perangkat keras disebut di $f" $? 0; done
 grep -q 'perf' README.md && grep -q 'perf' skills/kickoff/SKILL.md && grep -q 'perf=sonnet' templates/WORKFLOW.md; ok "role perf terdaftar (README, kickoff, model per role)" $? 0
 grep -q 'Tuning:' agents/perf.md && grep -q 'Angka sebelum/sesudah:' agents/perf.md && grep -q 'Commit:' agents/perf.md; ok "perf: format vonis memuat Angka, Tuning, Commit" $? 0
-grep -qi 'log audit' agents/security.md && grep -q 'Commit:' agents/security.md; ok "security: log audit dan Commit di daftar/format" $? 0
+grep -qiE 'log audit|audit log' agents/security.md && grep -q 'Commit:' agents/security.md; ok "security: log audit dan Commit di daftar/format" $? 0
 grep -q 'Laporan perf: lulus' skills/orchestrate/SKILL.md && grep -q 'Pengecualian disetujui owner' skills/orchestrate/SKILL.md; ok "orchestrate: vonis perf dan larangan agen menulis waiver" $? 0
 
 # aicrew-perf membawa resep ukur baca-saja (dari kasus mailora), bukan hanya daftar periksa
-for k in 'PGOPTIONS' 'default_transaction_read_only' 'statement_timeout' 'pg_stat_user_tables' 'n_tup_hot_upd' 'pg_stat_activity' 'pg_stat_database' '/proc/pressure/io' 'vmstat' 'docker stats' '/dev/shm' 'redis-cli' 'server_version' 'tidak boleh dijalankan di server nyata tanpa izin'; do
+for k in 'PGOPTIONS' 'default_transaction_read_only' 'statement_timeout' 'pg_stat_user_tables' 'n_tup_hot_upd' 'pg_stat_activity' 'pg_stat_database' '/proc/pressure/io' 'vmstat' 'docker stats' '/dev/shm' 'redis-cli' 'server_version' 'must not be run on a real server without explicit owner permission'; do
   grep -qF -- "$k" agents/perf.md; ok "perf: resep ukur memuat '$k'" $? 0
 done
 
@@ -387,12 +387,12 @@ grep -q 'autostart.sh' README.md && grep -q -- '--wait-max' README.md && [ -f sc
 
 # Atribusi AI dilarang: aturan harus ada di agen penulis kode dan prompt Codex
 for f in agents/senior-coder.md agents/ui-ux.md agents/devops.md agents/perf.md templates/codex-prompt.md; do
-  grep -q "Tanpa atribusi AI" "$f"; ok "aturan tanpa atribusi AI di $f" $? 0
+  grep -q "No AI attribution" "$f"; ok "aturan tanpa atribusi AI di $f" $? 0
 done
 
 # ui-ux: bagian Aset (ikon SVG, logo) memuat kata kunci wajib
-grep -q '^## Aset' agents/ui-ux.md; ok "ui-ux: bagian Aset ada" $? 0
-for k in 'viewBox' 'currentColor' '<title>' 'persetujuan owner' 'shot.mjs' 'lisensi'; do
+grep -q '^## Assets' agents/ui-ux.md; ok "ui-ux: bagian Aset ada" $? 0
+for k in 'viewBox' 'currentColor' '<title>' 'owner approval' 'shot.mjs' 'license'; do
   grep -qF -- "$k" agents/ui-ux.md; ok "ui-ux: Aset memuat '$k'" $? 0
 done
 
@@ -547,7 +547,7 @@ cd "$tmp/rr" || exit 1
 rr "$(jq -c '. + ['"$EPIC"']' <<<"$OKI")" "$OKPR" --test-cmd true; ok "epic: release-report SIAP walau epic masih terbuka" $? 0
 # 4b. templat PRD/EPIC dan skill breakdown/orchestrate
 cd "$root" || exit 1
-grep -q '^## Journeys' templates/PRD.md && grep -q '^## Kebutuhan non-fungsional' templates/PRD.md; ok "PRD: bagian Journeys dan NFR" $? 0
+grep -q '^## Journeys' templates/PRD.md && grep -q '^## Non-functional requirements' templates/PRD.md; ok "PRD: bagian Journeys dan NFR" $? 0
 grep -q 'journey' templates/PRD.md && grep -q 'R-ID' templates/PRD.md; ok "PRD: peta issue menyebut journey" $? 0
 [ -f templates/EPIC.md ] && grep -q -- '- \[ \] #' templates/EPIC.md; ok "EPIC.md ada dengan daftar centang anak" $? 0
 grep -q '`epic`' templates/WORKFLOW.md; ok "WORKFLOW: label epic" $? 0
@@ -1172,7 +1172,7 @@ grep -q '"version": "1.5.0"' .claude-plugin/plugin.json; ok "plugin.json versi 1
 grep -q 'Mode tanpa pengawasan (autopilot)' skills/orchestrate/SKILL.md && grep -q 'exec claude' skills/orchestrate/SKILL.md; ok "orchestrate: subbagian Mode tanpa pengawasan (autopilot) memuat aturan exec claude" $? 0
 grep -q 'Idle watchdog' README.md && grep -q -- '--idle-limit' README.md; ok "README: Idle watchdog menyebut --idle-limit" $? 0
 grep -q 'AICREW_IDLE_LIMIT' scripts/autopilot.sh && grep -q 'AICREW_TERM_GRACE' scripts/autopilot.sh && grep -q 'AICREW_TRANSCRIPT_DIR' scripts/autopilot.sh; ok "autopilot.sh: komentar kepala mendokumentasikan variabel watchdog" $? 0
-grep -q 'file yang di-ignore' templates/WORKFLOW.md; ok "templat WORKFLOW: Clean up after merge menyebut file yang di-ignore ikut terhapus (#44)" $? 0
+grep -q 'git-ignored files' templates/WORKFLOW.md; ok "templat WORKFLOW: Clean up after merge menyebut file yang di-ignore ikut terhapus (#44)" $? 0
 # 0.10.0: skill orchestrate, templat WORKFLOW, README memuat integrasi terverifikasi dan menunggu-rilis (#28, #32)
 for k in 'integrated.sh' 'periksa-rilis' 'check-release' 'awaiting-release.sh --mark' 'scheduled-workflow.sh'; do grep -qF -- "$k" skills/orchestrate/SKILL.md; ok "orchestrate memuat '$k'" $? 0; done
 grep -q 'Awaiting-release label' templates/WORKFLOW.md; ok "templat WORKFLOW: Awaiting-release label" $? 0
@@ -1540,8 +1540,8 @@ rm -f "$RN/w/CHANGELOG.md"
 mkdir -p "$CF/main/docs"; printf -- '- Release notes: CHANGELOG.md\n' > "$CF/main/docs/WORKFLOW.md"
 out="$(export DIFF="$DRM" GBODY=$'Closes #1\nCatatan rilis: Fixed - x'; GE2)"; ok "gerbang catatan: kunci Indonesia tidak lagi dikenali (tanpa alias) -> PERINGATAN" "$(grep -c "baris 'Release note:'" <<<"$out")" 1
 rm -rf "$CF/main/docs"
-for f in agents/senior-coder.md agents/devops.md agents/ui-ux.md templates/codex-prompt.md; do grep -q 'database/tabel/kolom/cabang/perintah/flag/kunci konfigurasi' "$f"; ok "aturan bahasa artefak di $f mencakup database, cabang, perintah, flag, kunci konfigurasi" $? 0; done
-grep -q 'nama cabang/database' templates/WORKFLOW.md; ok "templat WORKFLOW: Bahasa artefak menyebut nama cabang/database" $? 0
+for f in agents/senior-coder.md agents/devops.md agents/ui-ux.md templates/codex-prompt.md; do grep -q 'database and table names' "$f" && grep -q 'config key names' "$f"; ok "aturan bahasa artefak di $f mencakup database, cabang, perintah, flag, kunci konfigurasi" $? 0; done
+grep -q 'branch/database names' templates/WORKFLOW.md; ok "templat WORKFLOW: Bahasa artefak menyebut nama cabang/database" $? 0
 
 # 3p. autopilot: watchdog idle dan status (#48, #17) — harness mandiri (gh, claude, sleep palsu)
 AP3="$tmp/ap3"; mkdir -p "$AP3/bin" "$AP3/w" "$AP3/fx" "$AP3/tr"; git init -q "$AP3/w"; export AP3FX="$AP3/fx"; mkfifo "$AP3/fx/fifo"
@@ -3047,5 +3047,15 @@ keys() { grep -oE '^    [a-z0-9._-]+\)' "$1" | tr -d ' )' | sort; }
 ok "msg (#64): en.sh dan id.sh punya kunci yang sama" "$(keys "$root/scripts/lib/msg/en.sh" | paste -sd, -)" "$(keys "$root/scripts/lib/msg/id.sh" | paste -sd, -)"
 grep -q "scripts/lib/msg.sh" "$root/README.md" && grep -q "AICREW_LANG" "$root/README.md"; ok "msg (#64): README menjelaskan pilihan bahasa" $? 0
 ok "msg (#64): sintaks msg.sh dan katalog" "$(bash -n "$root/scripts/lib/msg.sh" && bash -n "$root/scripts/lib/msg/en.sh" && bash -n "$root/scripts/lib/msg/id.sh" && echo ok)" ok
+
+# 3c-36. agen dan template berbahasa Inggris, kontrak mesin tetap utuh (#64 tahap A)
+for f in agents/devops.md agents/perf.md agents/principal.md agents/qa.md agents/reviewer.md agents/security.md agents/senior-coder.md agents/ui-ux.md templates/codex-prompt.md templates/EPIC.md templates/ISSUE.md templates/PRD.md templates/pull_request_template.md templates/WORKFLOW.md; do
+  ok "bahasa (#64): $f tanpa kata Indonesia di luar kode" "$(idn_hits "$f")" 0
+done
+for f in agents/*.md; do grep -q '^Language: reply in the language the user writes in' "$f"; ok "bahasa (#64): $f memuat aturan bahasa balasan" $? 0; done
+grep -q '^- Language (messages' templates/WORKFLOW.md; ok "bahasa (#64): templat WORKFLOW memuat baris Language:" $? 0
+for t in 'agents/qa.md|Laporan qa: lulus' 'agents/qa.md|Laporan qa: gagal' 'agents/security.md|Laporan security: lulus' 'agents/security.md|Laporan security: gagal' 'agents/perf.md|Laporan perf: lulus' 'agents/perf.md|Laporan perf: gagal' 'agents/perf.md|Angka sebelum/sesudah:' 'agents/perf.md|Tuning:' 'agents/perf.md|tidak ada (baru)' 'templates/WORKFLOW.md|## Daftar periksa rilis' 'templates/WORKFLOW.md|## Temporary grants'; do
+  grep -qF -- "${t#*|}" "${t%%|*}"; ok "bahasa (#64): kontrak mesin '${t#*|}' utuh di ${t%%|*}" $? 0
+done
 
 [ "$fails" = 0 ] && echo "SEMUA LULUS" || { echo "$fails GAGAL"; exit 1; }
