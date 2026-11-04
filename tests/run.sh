@@ -2927,7 +2927,7 @@ ok "autonomy (#116): template menolak git rebase --exec/-x dan gh pr merge --adm
 
 # 3c-32. izin ci-local: suite lokal menggantikan CI hanya saat CI terklasifikasi infrastruktur (#83)
 CIE="$(date -u -v+2H +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -d '+2 hours' +%Y-%m-%dT%H:%M:%SZ)"; CIO="$(date -u -v-2H +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -d '-2 hours' +%Y-%m-%dT%H:%M:%SZ)"
-CIINF='{"name":"tests","status":"completed","conclusion":"failure","started_at":"2026-01-01T00:00:00Z","output":{"summary":"The job was not started because recent account payments have failed or your spending limit needs to be increased."}}'
+CIINF='{"name":"tests","app":{"id":15368,"slug":"github-actions"},"status":"completed","conclusion":"failure","started_at":"2026-01-01T00:00:00Z","output":{"summary":"The job was not started because recent account payments have failed or your spending limit needs to be increased."}}'
 cig() { printf '## Temporary grants\n- Grant: %s\n' "$1"; }
 CIOK="$(cig "scope=ci-local; branch=integrasi; expires=$CIE; note=ci down")"
 CIV='Laporan ci-lokal: lulus Commit: abc1234'
@@ -2955,5 +2955,13 @@ gu() { ( . "$root/scripts/lib/grants.sh"; grant_allows "$1" "$2" "$3" "$(date -u
 ok "ci-local (#83): grant_allows ci-local menerima baris ci-local, menolak cabang bawaan" "$(gu ci-local integrasi "$CIOK")|$(gu ci-local main "$(cig "scope=ci-local; branch=main; expires=$CIE; note=x")")" '0|1'
 ok "ci-local (#83): grant_allows L2 tidak menerima baris ci-local" "$(gu L2 integrasi "$CIOK")" 1
 grep -q 'scope=ci-local' "$root/templates/WORKFLOW.md" && grep -q 'ci-lokal' "$root/skills/orchestrate/SKILL.md" && grep -q 'ci-local' "$root/README.md"; ok "ci-local (#83): template WORKFLOW, SKILL, README menjelaskan" $? 0
+
+for extra in '{"name":"ext","app":{"id":9,"slug":"x"},"status":"in_progress","conclusion":null,"started_at":"2026-01-01T00:00:00Z"}' '{"name":"ext","app":{"id":9,"slug":"x"},"status":"completed","conclusion":"action_required","started_at":"2026-01-01T00:00:00Z"}' '{"name":"ext","app":{"id":9,"slug":"x"},"status":"completed","conclusion":"cancelled","started_at":"2026-01-01T00:00:00Z"}'; do
+  tg CHECKRUNS="$CIINF
+$extra" WFTEXT="$CIOK" COMM2="$CIV" >/dev/null; crc=$?; ok "ci-local (#83): check lain tidak selesai/action_required/cancelled ikut -> tidak digantikan ($(jq -r .conclusion <<<"$extra"))" $crc 1
+done
+tg CHECKRUNS="$CIINF
+"'{"name":"build","app":{"id":15368,"slug":"github-actions"},"status":"completed","conclusion":"success","started_at":"2026-01-01T00:00:00Z"}' WFTEXT="$CIOK" COMM2="$CIV" >/dev/null; ok "ci-local (#83): infrastruktur + check lain sukses -> tetap boleh digantikan" $? 0
+tg CHECKRUNS="${CIINF/github-actions/evil-app}" WFTEXT="$CIOK" COMM2="$CIV" >/dev/null; ok "ci-local (#83): kegagalan 'infrastruktur' dari app selain GitHub Actions -> tidak digantikan" $? 1
 
 [ "$fails" = 0 ] && echo "SEMUA LULUS" || { echo "$fails GAGAL"; exit 1; }

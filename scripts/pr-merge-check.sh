@@ -117,7 +117,10 @@ else
           none) jq -e 'all(.check_runs[]; .conclusion | IN("success","skipped","neutral"))' <<<"$crj" >/dev/null 2>&1 || fail "CI untuk head $head punya check dengan hasil yang belum dapat dianggap hijau (mis. action_required atau stale)"
                 jq -e 'any(.check_runs[]; .conclusion=="success")' <<<"$crj" >/dev/null 2>&1 || fail "CI untuk head $head tidak punya check yang berhasil (semua dilewati atau netral)" ;;
           pending) fail "CI belum selesai untuk head $head; tunggu lalu ulangi" ;;
-          infrastructure) ci_infra="CI tidak dapat mulai (infrastruktur, bukan kegagalan kode): $(sed -n 2p <<<"$cv")" ;;   # diputuskan setelah verdict_ok terdefinisi (#83)
+          infrastructure) ci_infra="CI tidak dapat mulai (infrastruktur, bukan kegagalan kode): $(sed -n 2p <<<"$cv")"   # diputuskan setelah verdict_ok terdefinisi (#83)
+            # ci-local hanya bila SEMUA check selesai dan tiap yang gagal dari GitHub Actions: check lain yang belum selesai, action_required, stale, cancelled, atau gagal dari app lain tidak boleh ikut tergantikan
+            jq -e 'all(.check_runs[]; .status == "completed" and ((.conclusion | IN("success","skipped","neutral")) or ((.conclusion | IN("failure","timed_out","startup_failure")) and .app.slug == "github-actions")))' <<<"$crj" >/dev/null 2>&1 ||
+              fail "$ci_infra; ada check lain yang belum selesai, dibatalkan, perlu tindakan, atau gagal dari app selain GitHub Actions: suite lokal tidak dapat menggantikan CI" ;;
           code) fail "CI gagal untuk head $head" ;;
           *) fail "klasifikasi CI untuk head $head tak dikenal" ;;
         esac
