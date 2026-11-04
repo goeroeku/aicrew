@@ -2901,7 +2901,7 @@ ok "autonomy (#116): helper lain yang bukan _expire repo ini tidak dimatikan" "$
 # 3c-31c. autonomy.sh: ronde review kedua (#116)
 cp "$AU/set.orig" "$AU/.claude/settings.local.json"; cp "$AU/wf.orig" "$AU/docs/WORKFLOW.md"; rm -rf "$AU/.aicrew"; chmod 644 "$AU/docs/WORKFLOW.md" "$AU/.claude/settings.local.json"
 AUT on "$UNT" >/dev/null; AUT off >/dev/null
-ok "autonomy (#116): mode berkas (644) terjaga setelah on lalu off" "$(stat -f %Lp "$AU/docs/WORKFLOW.md" 2>/dev/null || stat -c %a "$AU/docs/WORKFLOW.md")|$(stat -f %Lp "$AU/.claude/settings.local.json" 2>/dev/null || stat -c %a "$AU/.claude/settings.local.json")" '644|644'
+ok "autonomy (#116): mode berkas (644) terjaga setelah on lalu off" "$(stat -c %a "$AU/docs/WORKFLOW.md" 2>/dev/null || stat -f %Lp "$AU/docs/WORKFLOW.md")|$(stat -c %a "$AU/.claude/settings.local.json" 2>/dev/null || stat -f %Lp "$AU/.claude/settings.local.json")" '644|644'
 mkdir -p "$AU/.aicrew/autonomy.lock"
 ok "autonomy (#116): direktori kunci tanpa pid dianggap basi" "$(AUT on "$UNT" >/dev/null; echo $?)" 0
 AUT off >/dev/null

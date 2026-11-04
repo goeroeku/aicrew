@@ -38,7 +38,7 @@ allow_json="$(printf '%s\n' "${AUTONOMY_ALLOW[@]}" | jq -R . | jq -sc .)"
 LINE_RX='^- Grant: scope=merge; risk=L2; branch=[A-Za-z0-9][A-Za-z0-9._/-]*; expires=[0-9TZ:+-]+; note=autonomy\.sh$'
 
 # helper tulis aman: tidak mengikuti symlink, nama sementara acak, atomik
-keepmode() { [ ! -e "$1" ] || chmod "$(stat -f %Lp "$1" 2>/dev/null || stat -c %a "$1")" "$2" 2>/dev/null; return 0; }   # mktemp membuat 0600: pertahankan mode berkas asal
+keepmode() { [ ! -e "$1" ] || chmod "$(stat -c %a "$1" 2>/dev/null || stat -f %Lp "$1")" "$2" 2>/dev/null; return 0; }   # mktemp membuat 0600: pertahankan mode berkas asal
 okfile() { [ ! -L "$1" ] && { [ ! -e "$1" ] || [ -f "$1" ]; }; }
 jedit() { local f="$1" t; shift; okfile "$f" || return 2; t="$(mktemp "$f.XXXXXX")" || return 2; if jq "$@" "$f" > "$t"; then keepmode "$f" "$t"; mv "$t" "$f"; else rm -f "$t"; return 2; fi; }
 settings_name() { case "${1##*/}" in settings.json|settings.local.json) return 0 ;; esac; return 1; }
