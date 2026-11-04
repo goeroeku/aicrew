@@ -3068,4 +3068,18 @@ for t in 'Laporan qa: lulus' 'Laporan perf: lulus' 'owner-action:' 'blocked-by-p
   grep -qF -- "$t" skills/orchestrate/SKILL.md; ok "bahasa (#64): kontrak mesin '$t' utuh di orchestrate" $? 0
 done
 
+# 3c-38. gerbang pr-merge-check.sh: pesan dari katalog (#64 tahap D, kelompok gerbang)
+out="$(tg AICREW_LANG=en CHECKRUNS='{"name":"tests","status":"completed","conclusion":"failure","started_at":"2026-01-01T00:00:00Z"}')"; rc=$?
+ok "gate msg (#64): bawaan en -> 'GAGAL: CI failed for head', prefiks mesin tetap" "$rc|$(grep -c '^GAGAL: CI failed for head abc1234567' <<<"$out")" '1|1'
+out="$(tg AICREW_LANG=id CHECKRUNS='{"name":"tests","status":"completed","conclusion":"failure","started_at":"2026-01-01T00:00:00Z"}')"; rc=$?
+ok "gate msg (#64): id -> 'GAGAL: CI gagal untuk head' persis pesan lama" "$rc|$(grep -c '^GAGAL: CI gagal untuk head abc1234567' <<<"$out")" '1|1'
+out="$(tg AICREW_LANG=en)"; rc=$?
+ok "gate msg (#64): en lolos -> 'gate passed for head' dengan perintah merge" "$rc|$(grep -c '^ok: gate passed for head abc1234567. Merge with: gh pr merge 9 --match-head-commit abc1234567' <<<"$out")" '0|1'
+out="$(tg AICREW_LANG=en COMM='')"; rc=$?
+ok "gate msg (#64): en tanpa vonis QA -> ditolak, pesan menyebut token Laporan qa: lulus persis" "$rc|$(grep -c "Laporan qa: lulus" <<<"$out")" '1|1'
+mk_keys() { grep -oE '^    gate\.[a-z0-9_]+\)' "$1" | tr -d ' )' | sort; }
+used="$(grep -o 'msg gate\.[a-z0-9_]*' "$root/scripts/pr-merge-check.sh" | sed 's/msg //' | sort -u)"
+ok "gate msg (#64): setiap kunci gate yang dipakai ada di en.sh dan id.sh" "$(comm -23 <(printf '%s\n' "$used") <(mk_keys "$root/scripts/lib/msg/en.sh") | wc -l | tr -d ' ')|$(comm -23 <(printf '%s\n' "$used") <(mk_keys "$root/scripts/lib/msg/id.sh") | wc -l | tr -d ' ')" '0|0'
+ok "gate msg (#64): tak ada pesan Indonesia tersisa di echo/fail gerbang selain kontrak mesin" "$(awk '{l=$0; sub(/^[ \t]*#.*/,"",l); print l}' "$root/scripts/pr-merge-check.sh" | grep -E '^[^#]*(fail|echo) +"' | grep -vE 'GAGAL: \$|ok: \$|PERINGATAN: \$|fail\(\)|PERINGATAN: cve|\$\(msg ' | grep -ciE '\b(yang|dan|tidak|belum|dengan|untuk|ditolak|butuh)\b')" 0
+
 [ "$fails" = 0 ] && echo "SEMUA LULUS" || { echo "$fails GAGAL"; exit 1; }
