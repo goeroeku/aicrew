@@ -19,12 +19,22 @@ done
 source "$(dirname "$0")/lib/merge-mode.sh"; mmode="$(merge_mode "$(git rev-parse --show-toplevel 2>/dev/null || pwd)/docs/WORKFLOW.md")"
 # izin subagen (#58): subagen unattended ditolak diam-diam bila aturan Bash tak ada; baca .permissions.allow efektif, sebut aturan yang hilang
 top="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+aut_added=""
+if have jq && [ -f "$top/.aicrew/autonomy.json" ]; then
+  aut_added="$(jq -r '.files[]?.added_allow[]? | strings' "$top/.aicrew/autonomy.json" 2>/dev/null)"
+  aut_ep="$(jq -r '.until_epoch // empty' "$top/.aicrew/autonomy.json" 2>/dev/null)"
+  aut_un="$(jq -r '.until // empty' "$top/.aicrew/autonomy.json" 2>/dev/null)"
+  if [[ "$aut_ep" =~ ^[0-9]+$ ]] && [ "$(date +%s)" -ge "$aut_ep" ]; then
+    say AWAS "autonomy: KEDALUWARSA, jalankan: autonomy.sh off (sampai $aut_un)"
+  fi
+fi
 set -- "$HOME/.claude/settings.json" "$HOME/.claude/settings.local.json" "$top/.claude/settings.json" "$top/.claude/settings.local.json"
 ex=(); for f in "$@"; do [ -f "$f" ] && ex+=("$f"); done
 if ! have jq; then say info "izin subagen: jq tidak ada, aturan Bash tidak diperiksa"
 elif [ "${#ex[@]}" -gt 0 ] && jq -e '.permissions.defaultMode == "bypassPermissions"' "${ex[@]}" 2>/dev/null | grep -q true; then say info "izin subagen: mode bypassPermissions aktif, aturan Bash tidak diperiksa"
 else
   allow="$( [ "${#ex[@]}" -gt 0 ] && jq -r '.permissions.allow[]? | strings' "${ex[@]}" 2>/dev/null)"
+  [ -n "$aut_added" ] && allow="$(grep -vxF -f <(printf '%s\n' "$aut_added") <<<"$allow" || true)"
   need="git worktree|git commit|git push"; [ "$backend" = github ] && need="$need|gh pr|gh issue"
   [ -f "$top/Makefile" ] && need="$need|make"; [ -f "$top/go.mod" ] && need="$need|go test"
   [ "$mmode" = agent-after-qa ] && need="$need|git merge|git rebase"
@@ -43,7 +53,13 @@ case "$backend" in
     elif gh auth status >/dev/null 2>&1; then say ok "gh login"
     else say GAGAL "gh belum login (jalankan: gh auth login)"; rc=1; fi
     # mode merge (#66): sama seperti install-permissions.sh: env AICREW_MERGE_MODE, lalu docs/WORKFLOW.md, bawaan owner; agent-after-qa menuntut aturan 'gh pr merge'
-    if grep -qsE 'Bash\(gh pr merge' "$HOME/.claude/settings.json" "$HOME/.claude/settings.local.json" "$top/.claude/settings.json" "$top/.claude/settings.local.json"; then
+    has_merge_perm=0
+    if [ -n "$aut_added" ]; then
+      grep -qE 'Bash\(gh pr merge' <<<"$allow" && has_merge_perm=1
+    elif grep -qsE 'Bash\(gh pr merge' "$HOME/.claude/settings.json" "$HOME/.claude/settings.local.json" "$top/.claude/settings.json" "$top/.claude/settings.local.json"; then
+      has_merge_perm=1
+    fi
+    if [ "$has_merge_perm" = 1 ]; then
       say ok "aturan izin 'gh pr merge' ada"
     elif [ "$mmode" = agent-after-qa ]; then say AWAS "mode merge agent-after-qa tanpa aturan izin 'gh pr merge': agen akan ditolak saat merge dan PR menggantung. Pasang: ! bash $(dirname "$0")/install-permissions.sh (menambah aturan sesuai mode di docs/WORKFLOW.md)"
     else say info "tanpa aturan izin 'gh pr merge' (mode merge owner: owner yang merge; mode agent-after-qa butuh aturan ini, pasang dengan install-permissions.sh)"; fi

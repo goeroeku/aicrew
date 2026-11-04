@@ -2808,4 +2808,121 @@ EW 55 --ensure "$EN/w-wt-55" nobase >/dev/null 2>&1; ok "ensure (#78): basis ori
 EW 55 --ensure >/dev/null 2>&1; ok "ensure (#78): tanpa path dan basis -> exit 64" $? 64
 grep -q -- '--ensure' skills/orchestrate/SKILL.md; ok "orchestrate SKILL.md menyebut worktree-for-issue.sh --ensure" $? 0
 
+# 3c-31. autonomy.sh on/off/status (#116)
+AU="$tmp/au"; rm -rf "$AU"; mkdir -p "$AU/docs" "$AU/.claude"; git init -q "$AU"
+printf '# WF\n3. Integration branch: feature-x. Issue.\n\n## Batas\n- x\n' > "$AU/docs/WORKFLOW.md"
+printf '{"permissions":{"allow":["Bash(ls:*)"],"deny":["Bash(rm -rf:*)"]}}' > "$AU/.claude/settings.local.json"
+cp "$AU/docs/WORKFLOW.md" "$AU/wf.orig"; cp "$AU/.claude/settings.local.json" "$AU/set.orig"
+fut() { date -u -v+"$1"S +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -d "+$1 seconds" +%Y-%m-%dT%H:%M:%SZ; }
+AUT() { (cd "$AU" && AUTONOMY_POLL=1 bash "$root/scripts/autonomy.sh" "$@" 2>&1); }
+UNT="$(fut 7200)"
+out="$(AUT on "$UNT")"; rc=$?
+ok "autonomy (#116): on -> exit 0 dan menyebut cabang" "$rc|$(grep -c 'cabang feature-x' <<<"$out")" '0|2'
+ok "autonomy (#116): on menambah 6 entri allow dan tidak menyentuh deny" "$(jq -c '[(.permissions.allow|length),(.permissions.deny|length)]' "$AU/.claude/settings.local.json")" '[7,1]'
+ok "autonomy (#116): on menulis tepat satu baris Grant di WORKFLOW" "$(grep -c "^- Grant: scope=merge; risk=L2; branch=feature-x; expires=$UNT; note=autonomy.sh\$" "$AU/docs/WORKFLOW.md")" 1
+source "$root/scripts/lib/grants.sh"; ok "autonomy (#116): baris Grant yang ditulis on diterima grant_allows untuk L2 pada cabang integrasi, bukan main" "$(grant_allows L2 feature-x "$(cat "$AU/docs/WORKFLOW.md")" "$(date +%s)" >/dev/null; echo $?)|$(grant_allows L2 main "$(cat "$AU/docs/WORKFLOW.md")" "$(date +%s)" >/dev/null; echo $?)" '0|1'
+ok "autonomy (#116): status menampilkan tenggat dan helper hidup" "$(AUT status | grep -cE "aktif sampai $UNT|helper: hidup")" 2
+AUT on "$UNT" >/dev/null
+ok "autonomy (#116): on dua kali idempoten (entri dan baris tidak berlipat)" "$(jq '.permissions.allow|length' "$AU/.claude/settings.local.json")|$(grep -c 'note=autonomy.sh' "$AU/docs/WORKFLOW.md")" '7|1'
+hp="$(jq -r .helper_pid "$AU/.aicrew/autonomy.json")"
+out="$(AUT off)"; rc=$?
+ok "autonomy (#116): off -> settings setara aslinya, WORKFLOW identik, status hilang, helper mati" "$rc|$([ "$(jq -S . "$AU/.claude/settings.local.json")" = "$(jq -S . "$AU/set.orig")" ] && echo s)|$(cmp -s "$AU/docs/WORKFLOW.md" "$AU/wf.orig" && echo w)|$([ -e "$AU/.aicrew/autonomy.json" ] && echo ada || echo tidak)|$(kill -0 "$hp" 2>/dev/null && echo hidup || echo mati)" '0|s|w|tidak|mati'
+ok "autonomy (#116): off dua kali -> exit 0 'autonomy: mati'" "$(AUT off >/dev/null; echo $?)|$(AUT off | grep -c 'autonomy: mati')" '0|1'
+ok "autonomy (#116): status saat mati" "$(AUT status | grep -c '^autonomy: mati')" 1
+printf '{"permissions":{"allow":["Bash(git merge:*)"]}}' > "$AU/.claude/settings.local.json"
+AUT on "$UNT" >/dev/null; AUT off >/dev/null
+ok "autonomy (#116): entri milik owner yang sudah ada (git merge) tidak dicabut off" "$(jq -c '.permissions.allow' "$AU/.claude/settings.local.json")" '["Bash(git merge:*)"]'
+cp "$AU/set.orig" "$AU/.claude/settings.local.json"
+for a in 'on 2020-01-01T00:00:00Z' "on $(fut 900000)" 'on bukan-tanggal'; do AUT $a >/dev/null; ok "autonomy (#116): tenggat tak sah ditolak exit 1 ($a)" $? 1; done
+AUT on "$UNT" --branch main >/dev/null; ok "autonomy (#116): cabang bawaan main ditolak" $? 1
+AUT on "$UNT" --branch '../x' >/dev/null; ok "autonomy (#116): cabang tak sah ditolak" $? 1
+AUT >/dev/null; ok "autonomy (#116): tanpa argumen exit 64" $? 64
+AUT on >/dev/null; ok "autonomy (#116): on tanpa tenggat exit 64" $? 64
+ok "autonomy (#116): penolakan tidak mengubah apa pun" "$([ "$(jq -S . "$AU/.claude/settings.local.json")" = "$(jq -S . "$AU/set.orig")" ] && echo s)|$([ -e "$AU/.aicrew/autonomy.json" ] && echo ada || echo tidak)" 's|tidak'
+cp "$AU/docs/WORKFLOW.md" "$AU/wf.keep"; printf '# WF\nIntegration branch: none\n' > "$AU/docs/WORKFLOW.md"
+AUT on "$UNT" >/dev/null; ok "autonomy (#116): Integration branch none tanpa --branch ditolak" $? 1; cp "$AU/wf.keep" "$AU/docs/WORKFLOW.md"
+# berkas status yang disunting tidak bisa membuat off mencabut entri di luar himpunan tetap
+AUT on "$UNT" >/dev/null
+jq '.permissions.allow += ["Bash(rm:*)"]' "$AU/.claude/settings.local.json" > "$AU/t.json" && mv "$AU/t.json" "$AU/.claude/settings.local.json"
+jq '.files[0].added_allow += ["Bash(rm:*)"]' "$AU/.aicrew/autonomy.json" > "$AU/t.json" && mv "$AU/t.json" "$AU/.aicrew/autonomy.json"
+AUT off >/dev/null
+ok "autonomy (#116): berkas status disunting -> off tidak mencabut entri di luar himpunan" "$(jq -c '.permissions.allow|index("Bash(rm:*)") != null' "$AU/.claude/settings.local.json")" true
+cp "$AU/set.orig" "$AU/.claude/settings.local.json"; cp "$AU/wf.orig" "$AU/docs/WORKFLOW.md"
+# berkas settings tambahan yang dibuat on dihapus off bila kosong
+AUT on "$UNT" --file "$AU/extra/settings.json" >/dev/null
+ok "autonomy (#116): --file baru dibuat dengan 6 entri" "$(jq '.permissions.allow|length' "$AU/extra/settings.json" 2>/dev/null)" 6
+AUT off >/dev/null; ok "autonomy (#116): berkas yang dibuat on dihapus off" "$([ -e "$AU/extra/settings.json" ] && echo ada || echo tidak)" tidak
+# kedaluwarsa: status menandai, preflight memperingatkan
+AUT on "$UNT" >/dev/null
+jq '.until_epoch = 1' "$AU/.aicrew/autonomy.json" > "$AU/t.json" && mv "$AU/t.json" "$AU/.aicrew/autonomy.json"
+ok "autonomy (#116): status KEDALUWARSA bila lewat tenggat" "$(AUT status | grep -c KEDALUWARSA)" 1
+ok "autonomy (#116): preflight AWAS autonomy KEDALUWARSA" "$(cd "$AU" && HOME="$AU/h" bash "$root/scripts/preflight.sh" 2>&1 | grep -c 'AWAS.*autonomy: KEDALUWARSA')" 1
+AUT off >/dev/null
+# helper mencabut sendiri setelah tenggat (jam dinding, bukan tidur panjang)
+AUT on "$(fut 4)" >/dev/null
+for i in $(seq 1 15); do [ -e "$AU/.aicrew/autonomy.json" ] || break; sleep 1; done
+ok "autonomy (#116): helper mencabut setelah tenggat terlewati" "$([ -e "$AU/.aicrew/autonomy.json" ] && echo ada || echo tidak)|$([ "$(jq -S . "$AU/.claude/settings.local.json")" = "$(jq -S . "$AU/set.orig")" ] && echo s)|$(grep -c 'note=autonomy.sh' "$AU/docs/WORKFLOW.md")" 'tidak|s|0'
+# himpunan tetap dan penjaga template
+aset="$(sed -n '/^AUTONOMY_ALLOW=(/,/^)/p' "$root/scripts/autonomy.sh")"
+ok "autonomy (#116): himpunan tanpa docker, gh api, push, admin" "$(grep -ciE 'docker|gh api|push|--admin' <<<"$aset")|$(grep -o 'Bash(' <<<"$aset" | wc -l | tr -d ' ')" '0|6'
+ok "autonomy (#116): template menolak agen menjalankan on/_expire dan menyunting status" "$(jq -r '.permissions.deny[]' "$root/templates/autopilot-permissions.json" | grep -cE 'autonomy\.sh \*on|autonomy\.sh _expire|autonomy\.json|--exec|rebase -x|--admin')" 12
+ok "autonomy (#116): tak ada skrip lain yang memanggil 'autonomy.sh on'" "$(grep -rl 'autonomy\.sh on' "$root/scripts" | grep -vc 'autonomy.sh$')" 0
+grep -q 'autonomy.sh' "$root/README.md"; ok "autonomy (#116): README menjelaskan perintah" $? 0
+
+# 3c-31b. autonomy.sh: perbaikan review keamanan (#116)
+printf '{"permissions":{"allow":["Bash(zzz)","Bash(aaa)","Bash(zzz)"]}}' > "$AU/.claude/settings.local.json"
+AUT on "$UNT" >/dev/null; AUT off >/dev/null
+ok "autonomy (#116): urutan dan duplikat allow milik owner utuh setelah on lalu off" "$(jq -c .permissions.allow "$AU/.claude/settings.local.json")" '["Bash(zzz)","Bash(aaa)","Bash(zzz)"]'
+cp "$AU/set.orig" "$AU/.claude/settings.local.json"
+mkdir -p "$AU/bd"; printf '{bad' > "$AU/bd/settings.json"
+AUT on "$UNT" --file "$AU/bd/settings.json" >/dev/null; rc=$?
+ok "autonomy (#116): --file rusak -> exit 2 dan tak ada yang tertulis (atomik)" "$rc|$([ "$(jq -S . "$AU/.claude/settings.local.json")" = "$(jq -S . "$AU/set.orig")" ] && echo s)|$([ -e "$AU/.aicrew/autonomy.json" ] && echo ada || echo tidak)" '2|s|tidak'
+rm -rf "$AU/bd"; AUT off >/dev/null
+ok "autonomy (#116): nama berkas bukan settings*.json ditolak" "$(AUT on "$UNT" --file "$AU/x.txt" >/dev/null; echo $?)" 1
+printf 'rahasia' > "$AU/victim"; ln -sf "$AU/victim" "$AU/docs/WORKFLOW.md.tmp"
+AUT on "$UNT" >/dev/null; AUT off >/dev/null
+ok "autonomy (#116): symlink di nama sementara tidak menimpa berkas lain" "$(cat "$AU/victim")" rahasia
+rm -f "$AU/docs/WORKFLOW.md.tmp"
+AUT on "$UNT" >/dev/null
+jq --arg v "$AU/victim" '.files += [{path:"/nope",backup:$v,created:true},{path:$v,created:true,added_allow:[]}] | .workflow.line = "- Grant: scope=merge; risk=L2; branch=x; expires=1; note=mine" ' "$AU/.aicrew/autonomy.json" > "$AU/t.json" && mv "$AU/t.json" "$AU/.aicrew/autonomy.json"
+printf '%s\n' '- Grant: scope=merge; risk=L2; branch=x; expires=1; note=mine' >> "$AU/docs/WORKFLOW.md"
+AUT off >/dev/null
+ok "autonomy (#116): jalur/backup/baris yang disunting di berkas status tidak dipakai: berkas lain utuh, baris milik owner utuh" "$(cat "$AU/victim")|$(grep -c 'branch=x; expires=1; note=mine' "$AU/docs/WORKFLOW.md")" 'rahasia|1'
+cp "$AU/set.orig" "$AU/.claude/settings.local.json"; cp "$AU/wf.orig" "$AU/docs/WORKFLOW.md"; rm -rf "$AU/.aicrew"
+mkdir -p "$AU/.aicrew/autonomy.lock"; echo 999999 > "$AU/.aicrew/autonomy.lock/pid"
+ok "autonomy (#116): kunci basi (proses mati) diambil alih" "$(AUT on "$UNT" >/dev/null; echo $?)" 0
+AUT off >/dev/null
+mkdir -p "$AU/.aicrew/autonomy.lock"; echo $$ > "$AU/.aicrew/autonomy.lock/pid"
+ok "autonomy (#116): kunci milik proses hidup menolak (exit 1)" "$(AUT on "$UNT" >/dev/null; echo $?)" 1
+rm -rf "$AU/.aicrew/autonomy.lock"
+ok "autonomy (#116): cabang Main (huruf besar) ditolak" "$(AUT on "$UNT" --branch Main >/dev/null; echo $?)" 1
+ok "autonomy (#116): helper lain yang bukan _expire repo ini tidak dimatikan" "$(sleep 30 & p=$!; AUT on "$UNT" >/dev/null; jq --argjson p "$p" '.helper_pid = $p' "$AU/.aicrew/autonomy.json" > "$AU/t.json"; mv "$AU/t.json" "$AU/.aicrew/autonomy.json"; AUT off >/dev/null; kill -0 $p 2>/dev/null && echo hidup; kill $p 2>/dev/null)" hidup
+
+# 3c-31c. autonomy.sh: ronde review kedua (#116)
+cp "$AU/set.orig" "$AU/.claude/settings.local.json"; cp "$AU/wf.orig" "$AU/docs/WORKFLOW.md"; rm -rf "$AU/.aicrew"; chmod 644 "$AU/docs/WORKFLOW.md" "$AU/.claude/settings.local.json"
+AUT on "$UNT" >/dev/null; AUT off >/dev/null
+ok "autonomy (#116): mode berkas (644) terjaga setelah on lalu off" "$(stat -c %a "$AU/docs/WORKFLOW.md" 2>/dev/null || stat -f %Lp "$AU/docs/WORKFLOW.md")|$(stat -c %a "$AU/.claude/settings.local.json" 2>/dev/null || stat -f %Lp "$AU/.claude/settings.local.json")" '644|644'
+mkdir -p "$AU/.aicrew/autonomy.lock"
+ok "autonomy (#116): direktori kunci tanpa pid dianggap basi" "$(AUT on "$UNT" >/dev/null; echo $?)" 0
+AUT off >/dev/null
+printf '{bad' > "$AU/.claude/settings.local.json" ; AUT on "$UNT" >/dev/null; printf '{bad' > "$AU/.claude/settings.local.json"
+AUT on "$UNT" >/dev/null; ok "autonomy (#116): on menolak settings rusak (exit 2) tanpa menyisakan status" "$?|$([ -e "$AU/.aicrew/autonomy.json" ] && echo ada || echo tidak)" '2|tidak'
+cp "$AU/set.orig" "$AU/.claude/settings.local.json"; AUT on "$UNT" >/dev/null; printf '{bad' > "$AU/.claude/settings.local.json"
+out="$(AUT off)"; rc=$?
+ok "autonomy (#116): off dengan satu settings rusak -> memperingatkan, status dibuang, exit 0 (tidak macet)" "$rc|$(grep -c 'PERINGATAN JSON rusak' <<<"$out")|$([ -e "$AU/.aicrew/autonomy.json" ] && echo ada || echo tidak)" '0|1|tidak'
+cp "$AU/set.orig" "$AU/.claude/settings.local.json"; cp "$AU/wf.orig" "$AU/docs/WORKFLOW.md"
+printf 'x' > "$AU/blocker"; rm -rf "$AU/.claude" "$AU/.aicrew"
+AUT on "$UNT" --file "$AU/blocker/x/settings.json" >/dev/null; rc=$?
+ok "autonomy (#116): gagal di tengah target -> exit 2 dan berkas yang sudah dibuat dibatalkan" "$rc|$([ -e "$AU/.claude/settings.local.json" ] && echo ada || echo tidak)|$([ -e "$AU/.claude/settings.local.json.bak-autonomy" ] && echo ada || echo tidak)" '2|tidak|tidak'
+mkdir -p "$AU/.claude"; cp "$AU/set.orig" "$AU/.claude/settings.local.json"; printf 'milik user' > "$AU/.claude/settings.local.json.bak-autonomy"
+AUT on "$UNT" >/dev/null; AUT off >/dev/null
+ok "autonomy (#116): cadangan bernama sama milik user tidak ditimpa dan tidak dihapus" "$(cat "$AU/.claude/settings.local.json.bak-autonomy")" 'milik user'
+rm -f "$AU/.claude/settings.local.json.bak-autonomy"
+# helper tetap mengulang off bila kunci sedang dipegang, dan mencabut begitu kunci lepas
+AUT on "$(fut 3)" >/dev/null; mkdir -p "$AU/.aicrew/autonomy.lock"; echo $$ > "$AU/.aicrew/autonomy.lock/pid"; sleep 6
+held="$(jq -c '[(.permissions.allow|length)]' "$AU/.claude/settings.local.json")"; rm -rf "$AU/.aicrew/autonomy.lock"
+for i in $(seq 1 10); do [ -e "$AU/.aicrew/autonomy.json" ] || break; sleep 1; done
+ok "autonomy (#116): kunci terpegang -> grant tetap, helper mengulang dan mencabut setelah kunci lepas" "$held|$([ -e "$AU/.aicrew/autonomy.json" ] && echo ada || echo tidak)" '[7]|tidak'
+ok "autonomy (#116): template menolak git rebase --exec/-x dan gh pr merge --admin" "$(jq -r '.permissions.deny[]' "$root/templates/autopilot-permissions.json" | grep -cE 'rebase \* --exec|rebase -x|merge \* --admin')" 6
+
 [ "$fails" = 0 ] && echo "SEMUA LULUS" || { echo "$fails GAGAL"; exit 1; }
