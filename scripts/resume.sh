@@ -11,15 +11,16 @@
 set -u
 act() { printf '%s\t%s\t%s\t%s\n' "$1" "$2" "$3" "$4"; }   # alias-usang: argumen ke-4 adalah nama lama aksi
 source "$(dirname "$0")/ghx.sh"
+source "$(dirname "$0")/lib/msg.sh"
 # GraphQL (gh issue list / gh pr list) habis: jalur REST (gh api) dengan bentuk data sama; gagal keduanya = galat, bukan "tidak ada issue" (#113)
 rest=0; pj="[]"; readfail=""
 resume_fail() { readfail=1; [ -t 2 ] || [ -n "${AICREW_VERBOSE:-}" ] && echo "resume: $1" >&2; ij="[]"; }   # sem: bisu bila stderr bukan terminal (keluaran TSV dibaca mesin), kecuali AICREW_VERBOSE
 ij="$(gh issue list --state open --limit 200 --json number,labels 2>/dev/null)" || {
-  repo="$(ghx_repo 2>/dev/null)"; [ -n "$repo" ] || resume_fail "issue tak terbaca (GraphQL gagal dan repo tak dapat ditentukan)"
+  repo="$(ghx_repo 2>/dev/null)"; [ -n "$repo" ] || resume_fail "$(msg resume.issues_repo_unknown)"
   if [ -z "$readfail" ]; then
-  raw="$(gh api "repos/$repo/issues?state=open&per_page=100" --paginate --jq '.[]|select(.pull_request==null)|{number,labels:[.labels[]|{name}]}' 2>/dev/null)" || resume_fail "issue tak terbaca (GraphQL dan REST gagal)"
+  raw="$(gh api "repos/$repo/issues?state=open&per_page=100" --paginate --jq '.[]|select(.pull_request==null)|{number,labels:[.labels[]|{name}]}' 2>/dev/null)" || resume_fail "$(msg resume.issues_unreadable)"
   [ -n "$readfail" ] || ij="$(jq -s . <<<"$raw")"
-  raw="$(gh api "repos/$repo/pulls?state=all&per_page=100" --paginate --jq '.[]|{number,state:(if .merged_at then "MERGED" elif .state=="open" then "OPEN" else "CLOSED" end),headRefName:.head.ref}' 2>/dev/null)" || resume_fail "PR tak terbaca (REST gagal)"
+  raw="$(gh api "repos/$repo/pulls?state=all&per_page=100" --paginate --jq '.[]|{number,state:(if .merged_at then "MERGED" elif .state=="open" then "OPEN" else "CLOSED" end),headRefName:.head.ref}' 2>/dev/null)" || resume_fail "$(msg resume.prs_unreadable)"
   [ -n "$readfail" ] || { pj="$(jq -s . <<<"$raw")"; rest=1; }
   fi
 }

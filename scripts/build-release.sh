@@ -3,7 +3,8 @@
 # Pakai: build-release.sh <versi> <folder-keluaran>   -> aicrew-<versi>.zip, aicrew-<versi>.tar.gz, SHA256SUMS
 # Tidak memakai export-ignore di .gitattributes: direktori plugin Anthropic menolak repo yang memuat atribut itu.
 set -eu
-v="${1:?pakai: build-release.sh <versi> <folder-keluaran>}"; out="${2:?folder-keluaran}"
+source "$(dirname "$0")/lib/msg.sh"
+v="${1:?$(msg buildrel.usage)}"; out="${2:?$(msg buildrel.out_dir)}"
 mkdir -p "$out"; out="$(cd "$out" && pwd)"
 tmp="$(mktemp -d)"; trap 'rm -r "$tmp"' EXIT
 git archive --format=tar --prefix="aicrew-$v/" HEAD | tar -x -C "$tmp"

@@ -12,8 +12,8 @@
 # Tidak pernah kandidat: cabang bawaan dan integrasi, cabang yang head atau base PR terbuka, cabang ter-checkout di worktree yang tidak ikut dihapus,
 # worktree kotor/terkunci/terlepas/di ~/orca/workspaces/. Hanya git dan REST (gh api), tanpa GraphQL. GitHub saja (backend lain: keluar 0).
 set -u
-here="$(dirname "$0")"; source "$here/ghx.sh"
-usage() { echo "pakai: cleanup.sh [--apply] [--no-fetch] [--only orkestrator] [--issue <n>] | --after-merge --issue <n>" >&2; exit 64; }
+here="$(dirname "$0")"; source "$here/ghx.sh"; source "$here/lib/msg.sh"
+usage() { echo "$(msg cleanup.usage)" >&2; exit 64; }
 only=""; issue=""; fetch=1; apply=0; aftermerge=0; count=0
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -27,7 +27,7 @@ while [ $# -gt 0 ]; do
   esac; shift
 done
 [ "$aftermerge" = 0 ] || [ -n "$issue" ] || usage
-top="$(git rev-parse --show-toplevel 2>/dev/null)" || { echo "cleanup: bukan repo git" >&2; exit 64; }; cd "$top"
+top="$(git rev-parse --show-toplevel 2>/dev/null)" || { echo "$(msg cleanup.not_git_repo)" >&2; exit 64; }; cd "$top"
 tab="$(printf '\t')"; T="$(mktemp -d)"; trap 'rm -rf "$T"' EXIT; reponame="${top##*/}"
 
 wf="$(bash "$here/workflow.sh" 2>/dev/null)"
@@ -41,16 +41,16 @@ if [ "$aftermerge" = 1 ]; then
   fi
 fi
 bk="$(sed -n 's/^[- ]*Backend: *\([A-Za-z]*\).*/\1/p' <<<"$wf" | head -1)"
-[ -z "$bk" ] || [ "$bk" = github ] || { echo "cleanup: tidak didukung (bukan GitHub: $bk)" >&2; exit 0; }
+[ -z "$bk" ] || [ "$bk" = github ] || { echo "$(msg cleanup.unsupported_backend "$bk")" >&2; exit 0; }
 repo=""; owner=""; havegh=0
-if [ "$count" = 0 ]; then repo="$(ghx_repo)" || { echo "cleanup: repo tak dapat ditentukan" >&2; exit 1; }; owner="${repo%%/*}"; command -v gh >/dev/null 2>&1 && havegh=1; fi
-[ "$fetch" = 0 ] || git fetch -q --prune origin 2>/dev/null || echo "cleanup: git fetch gagal; bukti bisa basi" >&2
+if [ "$count" = 0 ]; then repo="$(ghx_repo)" || { echo "$(msg cleanup.repo_unknown)" >&2; exit 1; }; owner="${repo%%/*}"; command -v gh >/dev/null 2>&1 && havegh=1; fi
+[ "$fetch" = 0 ] || git fetch -q --prune origin 2>/dev/null || echo "$(msg cleanup.fetch_failed)" >&2
 
 def="$(git symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null)"; def="${def#origin/}"
 [ -n "$def" ] || [ "$count" = 1 ] || def="$(gh api "repos/$repo" 2>/dev/null | jq -r '.default_branch // empty' 2>/dev/null)"
 if [ -z "$def" ]; then   # tanpa cabang bawaan, main bisa terbaca "ter-merge" ke cabang lain dan jadi kandidat: fail-closed
   [ "$count" = 0 ] || { echo 0; exit 0; }
-  echo "cleanup: cabang bawaan tak dapat ditentukan (origin/HEAD kosong dan REST gagal); perbaiki: git remote set-head origin -a" >&2; exit 1
+  echo "$(msg cleanup.default_branch_unknown)" >&2; exit 1
 fi
 integ="$(sed -n 's/^[- ]*.*Integration branch: *\([A-Za-z0-9._\/-]*\).*/\1/p' <<<"$wf" | head -1 | sed 's/[.,;:]*$//')"
 git show-ref --verify --quiet "refs/remotes/origin/${integ:-_}" || integ=""
@@ -148,6 +148,6 @@ while IFS="$tab" read -r n tip ev r; do
 done < "$T/rem"
 if [ "$count" = 1 ]; then awk -F'\t' '$1 ~ /^cabang-/ && $4=="leluhur" && ($5=="hapus"||$5=="lewati:pr-tak-terbaca"||$5=="lewati:checkout"){print $2}' "$T/out" | sort -u | wc -l | tr -d ' '; exit 0; fi
 cat "$T/out"
-mode="mode laporan"; [ "$apply" = 0 ] || mode="apply"
-echo "cleanup: $(grep -c "${tab}\(hapus\|dihapus\)\$" "$T/out") $([ "$apply" = 1 ] && echo dihapus || echo kandidat hapus), $(grep -c "${tab}lewati:" "$T/out") dilewati ($mode)" >&2
+mode="$(msg cleanup.mode_report)"; [ "$apply" = 0 ] || mode="apply"
+echo "$(msg cleanup.summary "$(grep -c "${tab}\(hapus\|dihapus\)\$" "$T/out")" "$([ "$apply" = 1 ] && msg cleanup.deleted || msg cleanup.delete_candidates)" "$(grep -c "${tab}lewati:" "$T/out")" "$mode")" >&2
 exit "$fails"
