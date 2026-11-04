@@ -7,6 +7,7 @@
 # Keluaran: "overlap: <berkas> #a #b -> beri #b 'Blocked by #a' (atau pisahkan kepemilikan berkas itu)". Exit 0 tanpa overlap, 1 ada overlap, 2 masukan tak terbaca.
 set -u
 here="$(cd "$(dirname "$0")" && pwd)"
+source "$here/lib/msg.sh"
 src=""; [ "${1:-}" != --json ] || src="${2:--}"
 if [ -n "$src" ]; then if [ "$src" = - ]; then data="$(cat)"; else data="$(cat "$src")" || exit 2; fi
 else source "$here/ghx.sh"; data="$(ghx_issues open - 200 number,body,labels)" || exit 2; fi
@@ -26,7 +27,7 @@ out="$(jq -r '
   | ([$I[]|select(.t|index($p))|.n]|sort) as $ns
   | range(0; $ns|length) as $i | range($i+1; $ns|length) as $j | $ns[$i] as $a | $ns[$j] as $b
   | select((($a|clos($B))|index($b)|not) and (($b|clos($B))|index($a)|not))
-  | "overlap: \($p) #\($a) #\($b) -> beri #\($b) '"'"'Blocked by #\($a)'"'"' (atau pisahkan kepemilikan berkas itu)"
-' <<<"$data" 2>/dev/null)" || { echo "file-overlap: masukan tidak dapat diurai" >&2; exit 2; }
+  | "'"$(msg overlap.line '\($p)' '\($a)' '\($b)' '\($b)' '\($a)')"'"
+' <<<"$data" 2>/dev/null)" || { echo "$(msg overlap.unparseable)" >&2; exit 2; }
 [ -z "$out" ] || { printf '%s\n' "$out"; exit 1; }
 exit 0

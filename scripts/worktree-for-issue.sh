@@ -8,8 +8,9 @@
 #   continue = cabang issue-N punya commit sendiri (lokal atau origin) -> dilanjutkan dari commit itu; create = baru dari origin/<basis>.
 #   exit 1 = ada worktree/cabang BERSUFIKS dengan kerja belum aman (tidak membuat apa pun); exit 2 = origin/<basis> atau git worktree gagal.
 set -u
-n="${1:-}"; [[ "$n" =~ ^[0-9]+$ ]] || { echo "pakai: worktree-for-issue.sh <issue-number> [--ensure <path> <basis>]" >&2; exit 64; }
-ens=0; if [ "${2:-}" = --ensure ]; then ens=1; epath="${3:-}"; ebase="${4:-}"; [ -n "$epath" ] && [ -n "$ebase" ] || { echo "pakai: ... --ensure <path> <basis>" >&2; exit 64; }; fi
+source "$(dirname "$0")/lib/msg.sh"
+n="${1:-}"; [[ "$n" =~ ^[0-9]+$ ]] || { echo "$(msg wtissue.usage)" >&2; exit 64; }
+ens=0; if [ "${2:-}" = --ensure ]; then ens=1; epath="${3:-}"; ebase="${4:-}"; [ -n "$epath" ] && [ -n "$ebase" ] || { echo "$(msg wtissue.usage_ensure)" >&2; exit 64; }; fi
 canon="issue-$n"
 rx="^issue-$n(-[A-Za-z0-9._-]+)?\$"; bad=0; seen=" "; cpath=""
 state() { # <cabang> <path|-> -> clean | uncommitted | unpushed
@@ -21,7 +22,7 @@ report() { # <jenis> <cabang> <path>
   local st; st="$(state "$2" "$3")"
   [ "$ens" = 1 ] && [ "$2" = "$canon" ] && { printf '%s\t%s\t%s\t%s\n' "$1" "$2" "$3" "$st"; [ "$1" = worktree ] && cpath="$3"; return; }   # kanonik dilanjutkan, bukan ditolak
   printf '%s\t%s\t%s\t%s\n' "$1" "$2" "$3" "$st"
-  [ "$st" = clean ] || { echo "worktree-for-issue: issue-$n punya kerja $st di $2 ($3); lanjutkan di sana, jangan buat worktree baru di sampingnya" >&2; bad=1; }
+  [ "$st" = clean ] || { echo "$(msg wtissue.unsafe_work "$n" "$st" "$2" "$3")" >&2; bad=1; }
 }
 while IFS=$'\t' read -r p b; do
   [[ "$b" =~ $rx ]] || continue
@@ -35,7 +36,7 @@ done < <(git for-each-ref --format='%(refname:short)' refs/heads)
 printf 'canonical\tissue-%s\n' "$n"
 [ "$ens" = 1 ] || exit "$bad"
 [ "$bad" = 0 ] || exit 1
-git rev-parse -q --verify "origin/$ebase" >/dev/null || { echo "worktree-for-issue: origin/$ebase tidak ada" >&2; exit 2; }
+git rev-parse -q --verify "origin/$ebase" >/dev/null || { echo "$(msg wtissue.base_missing "$ebase")" >&2; exit 2; }
 anc() { git merge-base --is-ancestor "$1" "origin/$ebase"; }   # tanpa commit sendiri = leluhur basis
 done_() { printf 'ensure\t%s\t%s\n' "$1" "$2"; exit 0; }
 if [ -n "$cpath" ]; then

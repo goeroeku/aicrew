@@ -2868,7 +2868,7 @@ ok "autonomy (#116): helper mencabut setelah tenggat terlewati" "$([ -e "$AU/.ai
 aset="$(sed -n '/^AUTONOMY_ALLOW=(/,/^)/p' "$root/scripts/autonomy.sh")"
 ok "autonomy (#116): himpunan tanpa docker, gh api, push, admin" "$(grep -ciE 'docker|gh api|push|--admin' <<<"$aset")|$(grep -o 'Bash(' <<<"$aset" | wc -l | tr -d ' ')" '0|6'
 ok "autonomy (#116): template menolak agen menjalankan on/_expire dan menyunting status" "$(jq -r '.permissions.deny[]' "$root/templates/autopilot-permissions.json" | grep -cE 'autonomy\.sh \*on|autonomy\.sh _expire|autonomy\.json|--exec|rebase -x|--admin')" 12
-ok "autonomy (#116): tak ada skrip lain yang memanggil 'autonomy.sh on'" "$(grep -rl 'autonomy\.sh on' "$root/scripts" | grep -vc 'autonomy.sh$')" 0
+ok "autonomy (#116): tak ada skrip lain yang memanggil 'autonomy.sh on'" "$(grep -rl 'autonomy\.sh on' "$root/scripts" | grep -vcE 'autonomy\.sh$|/lib/msg/')" 0
 grep -q 'autonomy.sh' "$root/README.md"; ok "autonomy (#116): README menjelaskan perintah" $? 0
 
 # 3c-31b. autonomy.sh: perbaikan review keamanan (#116)
@@ -3108,5 +3108,22 @@ ok "msg (#64): setiap kunci yang dipakai skrip mana pun ada di en.sh dan id.sh, 
 for f in autopilot autostart owner-actions budget notify blocked-mark blocked-note; do
   ok "msg (#64): $f.sh tanpa pesan Indonesia tersisa di echo/printf/log/note/die" "$(awk '{l=$0; sub(/^[ \t]*#.*/,"",l); sub(/[ \t]+# .*$/,"",l); print l}' "$root/scripts/$f.sh" | grep -E '(echo|printf|log|note|die) +"' | grep -v '\$(msg ' | grep -ciE '\b(yang|dan|tidak|belum|dengan|untuk|sudah|harus|gagal|ditolak|butuh)\b')" 0
 done
+
+# 3c-41. pesan kelompok rilis (cleanup, release-report, release-notes, resume, worktree-for-issue, autonomy, awaiting-release, build-release, check-version, file-overlap, integrated) dari katalog (#64 tahap D)
+CLD="$tmp/cld"; rm -rf "$CLD"; mkdir -p "$CLD"; git init -q "$CLD"
+for l in en id; do out="$(cd "$CLD" && AICREW_LANG=$l bash "$root/scripts/worktree-for-issue.sh" abc 2>&1)"; rc=$?
+  case $l in en) ok "wtissue msg (#64): en usage berbahasa Inggris" "$rc|$(grep -c '^usage: worktree-for-issue.sh' <<<"$out")" '64|1' ;; id) ok "wtissue msg (#64): id usage persis pesan lama" "$rc|$(grep -c '^pakai: worktree-for-issue.sh' <<<"$out")" '64|1' ;; esac; done
+for l in en id; do out="$(cd "$CLD" && AICREW_LANG=$l bash "$root/scripts/autonomy.sh" bogus 2>&1)"; rc=$?
+  case $l in en) ok "autonomy msg (#64): en usage" "$rc|$(grep -c '^usage: autonomy.sh' <<<"$out")" '64|1' ;; id) ok "autonomy msg (#64): id usage persis pesan lama" "$rc|$(grep -c '^pakai: autonomy.sh' <<<"$out")" '64|1' ;; esac; done
+allused="$(grep -ho 'msg [a-z]*\.[a-z0-9_]*' "$root"/scripts/*.sh | sed 's/msg //' | sort -u)"
+mkk() { grep -oE '^    [a-z]+\.[a-z0-9_]+\)' "$1" | tr -d ' )' | sort; }
+ok "msg (#64): setiap kunci yang dipakai (kelompok rilis termasuk) ada di kedua katalog dan kuncinya sama" "$(comm -23 <(printf '%s\n' "$allused") <(mkk "$root/scripts/lib/msg/en.sh") | wc -l | tr -d ' ')|$(comm -23 <(printf '%s\n' "$allused") <(mkk "$root/scripts/lib/msg/id.sh") | wc -l | tr -d ' ')|$(diff <(mkk "$root/scripts/lib/msg/en.sh") <(mkk "$root/scripts/lib/msg/id.sh") | wc -l | tr -d ' ')" '0|0|0'
+for f in cleanup release-report release-notes resume worktree-for-issue autonomy awaiting-release build-release check-version file-overlap integrated; do
+  ok "msg (#64): $f.sh memakai katalog" "$(grep -c 'lib/msg.sh' "$root/scripts/$f.sh")" 1
+  ok "msg (#64): $f.sh tanpa pesan Indonesia tersisa di echo/printf/die/warn" "$(awk '{l=$0; sub(/^[ \t]*#.*/,"",l); sub(/[ \t]+# .*$/,"",l); print l}' "$root/scripts/$f.sh" | grep -E '(echo|printf|die|warn) +"' | grep -v '\$(msg ' | grep -ciE '\b(yang|dan|tidak|belum|dengan|untuk|sudah|harus|ditolak|butuh|pakai)\b')" 0
+done
+cvv="v$(jq -r .version "$root/.claude-plugin/plugin.json")"
+for l in en id; do ok "checkver msg (#64): $l -> awalan mesin 'ok:' tetap literal" "$(cd "$root" && AICREW_LANG=$l bash scripts/check-version.sh "$cvv" 2>&1 | grep -c '^ok: ')" 1; done
+ok "checkver msg (#64): en versi tak cocok -> 'GAGAL: tag v0.0.0 != plugin.json version', id -> teks lama berbeda" "$(cd "$root" && AICREW_LANG=en bash scripts/check-version.sh v0.0.0 2>&1 | grep -c '^GAGAL: tag v0.0.0 != plugin.json version')|$(cd "$root" && AICREW_LANG=id bash scripts/check-version.sh v0.0.0 2>&1 | grep -c 'plugin.json version')" '1|0'
 
 [ "$fails" = 0 ] && echo "SEMUA LULUS" || { echo "$fails GAGAL"; exit 1; }
