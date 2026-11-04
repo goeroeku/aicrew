@@ -3082,4 +3082,17 @@ used="$(grep -o 'msg gate\.[a-z0-9_]*' "$root/scripts/pr-merge-check.sh" | sed '
 ok "gate msg (#64): setiap kunci gate yang dipakai ada di en.sh dan id.sh" "$(comm -23 <(printf '%s\n' "$used") <(mk_keys "$root/scripts/lib/msg/en.sh") | wc -l | tr -d ' ')|$(comm -23 <(printf '%s\n' "$used") <(mk_keys "$root/scripts/lib/msg/id.sh") | wc -l | tr -d ' ')" '0|0'
 ok "gate msg (#64): tak ada pesan Indonesia tersisa di echo/fail gerbang selain kontrak mesin" "$(awk '{l=$0; sub(/^[ \t]*#.*/,"",l); print l}' "$root/scripts/pr-merge-check.sh" | grep -E '^[^#]*(fail|echo) +"' | grep -vE 'GAGAL: \$|ok: \$|PERINGATAN: \$|fail\(\)|PERINGATAN: cve|\$\(msg ' | grep -ciE '\b(yang|dan|tidak|belum|dengan|untuk|ditolak|butuh)\b')" 0
 
+# 3c-39. kehabisan sumber daya dan crash (#71): teks terkunci, kontrak vonis perf tidak berubah
+grep -q '^## Abuse cases and limits' templates/PRD.md && grep -q 'Max size' templates/PRD.md && grep -q 'Behavior at the limit' templates/PRD.md; ok "limits (#71): PRD memuat bagian Abuse cases and limits dengan kolom batas" $? 0
+for k in 'ReDoS' 'decompression bombs' 'trust boundary' 'input exactly at the limit passes' 'Abuse cases and limits' 'do not invent limits silently'; do grep -qF -- "$k" skills/breakdown/SKILL.md; ok "limits (#71): breakdown memuat '$k'" $? 0; done
+for k in 'load target is not local' 'Stub external services' '`timeout`' 'budget source: agent' 'Local numbers do not replace measurement on real hardware' 'Remove its data and processes' 'disposable LOCAL test stack'; do grep -qF -- "$k" agents/perf.md; ok "limits (#71): perf memuat '$k'" $? 0; done
+ls_n="$(grep -n '^   *`Load smoke: tool=\|^7\. Add one line before the four verdict lines' agents/perf.md | head -1 | cut -d: -f1)"; vt_n="$(grep -n '^`Laporan perf: lulus` or' agents/perf.md | head -1 | cut -d: -f1)"
+ok "limits (#71): aturan baris Load smoke muncul sebelum token vonis perf" "$([ -n "$ls_n" ] && [ -n "$vt_n" ] && [ "$ls_n" -lt "$vt_n" ] && echo ya)" ya
+ok "limits (#71): token vonis perf utuh (empat baris persis)" "$(grep -cE '^`Laporan perf: lulus` or `Laporan perf: gagal`$|^`Angka sebelum/sesudah: <numbers>`|^`Tuning: <config=value, reason, rollback>`|^`Commit: <PR head sha>`$' agents/perf.md)" 4
+ok "limits (#71): perf tetap tanpa Edit/Write" "$(sed -n '1,6p' agents/perf.md | grep -c 'Edit\|Write')" 0
+for k in 'Resource exhaustion checklist' 'Crash artifact hygiene' '`core.*`' '`*.hprof`' 'ulimit -c 0' 'Database dumps are out of scope'; do grep -qF -- "$k" agents/security.md; ok "limits (#71): security memuat '$k'" $? 0; done
+grep -q '^## Daftar periksa rilis' templates/WORKFLOW.md && grep -q '^- aicrew-perf: .*Load smoke' templates/WORKFLOW.md && grep -q '^- aicrew-security: no crash dumps' templates/WORKFLOW.md; ok "limits (#71): daftar periksa rilis memuat Load smoke dan artefak crash (butir satu baris, judul utuh)" $? 0
+rrw="$tmp/rrw"; rm -rf "$rrw"; mkdir -p "$rrw/docs"; sed -n '/^## Daftar periksa rilis/,/^## [^D]/p' "$root/templates/WORKFLOW.md" | sed '$d' > "$rrw/docs/WORKFLOW.md"
+ok "limits (#71): butir baru terbaca sebagai item daftar (awalan '- ' di bawah judul yang sama)" "$(grep -c '^- ' "$rrw/docs/WORKFLOW.md")" "$(grep -c '^- ' "$rrw/docs/WORKFLOW.md")"
+
 [ "$fails" = 0 ] && echo "SEMUA LULUS" || { echo "$fails GAGAL"; exit 1; }
