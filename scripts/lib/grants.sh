@@ -2,6 +2,7 @@
 # aicrew grants: izin sementara terstruktur di docs/WORKFLOW.md (#61). Di-source oleh pr-merge-check.sh (--auto). Gagal tertutup: apa pun yang tak jelas = bukan izin.
 #   grant_epoch <ISO8601 dengan zona>                       -> epoch detik UTC; exit 1 bila format/rentang tidak sah
 #   grant_allows <risk> <cabang> <teks-WORKFLOW> <now-epoch> [cabang bawaan (spasi)]  -> exit 0 + mencetak baris izin yang berlaku; selain itu exit 1
+# Juga: - Grant: scope=ci-local; branch=<cabang>; expires=...; note=...  (grant_allows ci-local <cabang> ...)
 # Format (bagian "## Temporary grants", kolom 0): - Grant: scope=merge; risk=L2; branch=<cabang>; expires=YYYY-MM-DDTHH:MM:SS(Z|+HH:MM); note=<teks, terakhir, tanpa ';'>
 # Waktu "sekarang" hanya lewat parameter (tidak pernah dari lingkungan). Maksimum 7 hari ke depan. Cabang bawaan tidak boleh diberi izin. Perbandingan cabang persis (bukan pola).
 grant_epoch() {
@@ -58,7 +59,9 @@ grant_parse() {
     case "$k" in scope) scope="$v" ;; risk) risk="$v" ;; branch) branch="$v" ;; expires) exp="$v" ;; note) note=1 ;;
       *) echo "PERINGATAN: kunci izin tak dikenal '$k' (baris tidak berlaku): $1" >&2; return 1 ;; esac
   done
-  [ "$scope" = merge ] && [ "$risk" = L2 ] || { echo "PERINGATAN: hanya scope=merge dan risk=L2 didukung: $1" >&2; return 1; }
+  if [ "$scope" = merge ] && [ "$risk" = L2 ]; then :
+  elif [ "$scope" = ci-local ] && [ -z "$risk" ]; then risk=ci-local   # CI tak dapat mulai (#83): suite lokal menggantikan CI; hanya dibaca gerbang bila CI terklasifikasi infrastruktur
+  else echo "PERINGATAN: hanya scope=merge+risk=L2 atau scope=ci-local (tanpa risk) didukung: $1" >&2; return 1; fi
   [[ "$branch" =~ ^[A-Za-z0-9._/-]+$ ]] || { echo "PERINGATAN: branch tidak sah: $1" >&2; return 1; }
   ep="$(grant_epoch "$exp")" || { echo "PERINGATAN: expires tidak sah (butuh YYYY-MM-DDTHH:MM:SS dengan Z atau +HH:MM): $1" >&2; return 1; }
   printf '%s\t%s\t%s\n' "$risk" "$branch" "$ep"

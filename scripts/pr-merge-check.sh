@@ -106,6 +106,7 @@ else
       runs_open="$(gh api "repos/$acr/actions/runs?head_sha=$head&per_page=100" --jq '[.workflow_runs[]|select(.status!="completed")]|length')" || fail "workflow run untuk head $head tak terbaca (REST)"
       [[ "$runs_open" =~ ^[0-9]+$ ]] || fail "jumlah workflow run belum selesai untuk head $head tak terbaca"
       [ "$runs_open" = 0 ] || fail "CI belum selesai untuk head $head ($runs_open workflow run masih berjalan); tunggu lalu ulangi"
+      ci_infra=""
       if [ "$(jq '.check_runs|length' <<<"$crj" 2>/dev/null || echo x)" = 0 ]; then
         wfn="$(gh api "repos/$acr/actions/workflows" --jq '.total_count')" || fail "daftar workflow tak terbaca (CI belum dapat dipastikan)"
         [[ "$wfn" =~ ^[0-9]+$ ]] || fail "total workflow tak terbaca (CI belum dapat dipastikan)"
@@ -116,7 +117,7 @@ else
           none) jq -e 'all(.check_runs[]; .conclusion | IN("success","skipped","neutral"))' <<<"$crj" >/dev/null 2>&1 || fail "CI untuk head $head punya check dengan hasil yang belum dapat dianggap hijau (mis. action_required atau stale)"
                 jq -e 'any(.check_runs[]; .conclusion=="success")' <<<"$crj" >/dev/null 2>&1 || fail "CI untuk head $head tidak punya check yang berhasil (semua dilewati atau netral)" ;;
           pending) fail "CI belum selesai untuk head $head; tunggu lalu ulangi" ;;
-          infrastructure) fail "CI tidak dapat mulai (infrastruktur, bukan kegagalan kode): $(sed -n 2p <<<"$cv"); perbaiki akun/runner lalu ulangi" ;;
+          infrastructure) ci_infra="CI tidak dapat mulai (infrastruktur, bukan kegagalan kode): $(sed -n 2p <<<"$cv")" ;;   # diputuskan setelah verdict_ok terdefinisi (#83)
           code) fail "CI gagal untuk head $head" ;;
           *) fail "klasifikasi CI untuk head $head tak dikenal" ;;
         esac
@@ -179,6 +180,16 @@ Owner approval (scope: test-change <path>[, <path>...]): <text> (Commit: <sha>)"
     done < <(jq -c "$trusted_cmts" <<<"$comments")
     return 1
   }
+  # CI tak dapat mulai (infrastruktur): hanya izin ci-local sah di WORKFLOW.md cabang tujuan DAN vonis 'Laporan ci-lokal: lulus' untuk head yang menggantikan CI (#83).
+  # Kegagalan kode, CI belum selesai, atau campuran tidak pernah digantikan (sudah ditolak di atas).
+  if [ -n "${ci_infra:-}" ]; then
+    dflt2="$(gh api "repos/$acr" 2>/dev/null | jq -r '.default_branch // empty' 2>/dev/null)"
+    [ -n "$dflt2" ] || fail "$ci_infra; cabang bawaan tak terbaca (izin ci-local tidak dievaluasi)"
+    wfc="$(gh api -H 'Accept: application/vnd.github.raw' "repos/$acr/contents/docs/WORKFLOW.md?ref=refs/heads/$dst" 2>/dev/null)" || fail "$ci_infra; docs/WORKFLOW.md tak terbaca di $dst (izin ci-local tidak dievaluasi)"
+    cg="$(grant_allows ci-local "$dst" "$wfc" "$(date -u +%s)" "main master $dflt2")" && verdict_ok "Laporan ci-lokal:" 0 ||
+      fail "$ci_infra; perbaiki akun/runner lalu ulangi, atau owner menulis izin '- Grant: scope=ci-local; branch=$dst; expires=...' di WORKFLOW.md $dst DAN komentar 'Laporan ci-lokal: lulus Commit: <sha head>' (suite penuh lokal untuk head ini)"
+    echo "PERINGATAN: CI digantikan suite lokal untuk head $head (izin: ${cg#- Grant: }); CI tidak membuktikan hasil ini"
+  fi
   if grep -qix needs-security <<<"$labels" && ! verdict_ok "Laporan security:" 0; then
     fail "needs-security: butuh komentar 'Laporan security: lulus' dengan 'Commit: <sha head>' dari aicrew-security, ditulis oleh OWNER/MEMBER/COLLABORATOR (dua baris, atau satu baris: 'Laporan security: lulus Commit: <sha head>'; huruf besar/kecil bebas)"
   fi

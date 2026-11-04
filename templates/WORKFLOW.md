@@ -86,7 +86,7 @@ Diisi saat kickoff. "tidak diketahui" = belum diukur; `aicrew-perf` tidak boleh 
 ## Temporary grants
 Izin sementara dari owner untuk gerbang `pr-merge-check.sh --auto`. Hanya satu jenis: `scope=merge; risk=L2`. Tulis hanya sebagai owner; teks bebas "izin sementara" tidak berlaku.
 Bentuk satu baris (kolom 0, di bagian ini saja): `- Grant: scope=merge; risk=L2; branch=<cabang integrasi>; expires=<YYYY-MM-DDTHH:MM:SS+07:00 atau Z>; note=<teks, terakhir, tanpa titik koma>`.
-Maksimum 7 hari dari saat dibaca; cabang bawaan tidak boleh; PR yang menyentuh berkas ini tidak di-merge otomatis. Contoh tidak sah (sengaja, tidak berlaku):
+Jenis kedua, `- Grant: scope=ci-local; branch=<cabang>; expires=<waktu>; note=<teks>` (tanpa `risk`), mengizinkan suite penuh lokal menggantikan CI HANYA saat CI terklasifikasi infrastruktur (billing/tanpa runner, `ci-classify.sh`); kegagalan kode tidak pernah digantikan. Gerbang juga menuntut komentar `Laporan ci-lokal: lulus` + `Commit: <sha head>` (+ `Perintah:` dan `Hasil:`) dari OWNER/MEMBER/COLLABORATOR. Maksimum 7 hari dari saat dibaca; cabang bawaan tidak boleh; PR yang menyentuh berkas ini tidak di-merge otomatis. Contoh tidak sah (sengaja, tidak berlaku):
 `- Grant: scope=merge; risk=L2; branch=integration; expires=EXAMPLE`
 
 ## Batas

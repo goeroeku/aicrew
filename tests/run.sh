@@ -2925,4 +2925,35 @@ for i in $(seq 1 10); do [ -e "$AU/.aicrew/autonomy.json" ] || break; sleep 1; d
 ok "autonomy (#116): kunci terpegang -> grant tetap, helper mengulang dan mencabut setelah kunci lepas" "$held|$([ -e "$AU/.aicrew/autonomy.json" ] && echo ada || echo tidak)" '[7]|tidak'
 ok "autonomy (#116): template menolak git rebase --exec/-x dan gh pr merge --admin" "$(jq -r '.permissions.deny[]' "$root/templates/autopilot-permissions.json" | grep -cE 'rebase \* --exec|rebase -x|merge \* --admin')" 6
 
+# 3c-32. izin ci-local: suite lokal menggantikan CI hanya saat CI terklasifikasi infrastruktur (#83)
+CIE="$(date -u -v+2H +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -d '+2 hours' +%Y-%m-%dT%H:%M:%SZ)"; CIO="$(date -u -v-2H +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -d '-2 hours' +%Y-%m-%dT%H:%M:%SZ)"
+CIINF='{"name":"tests","status":"completed","conclusion":"failure","started_at":"2026-01-01T00:00:00Z","output":{"summary":"The job was not started because recent account payments have failed or your spending limit needs to be increased."}}'
+cig() { printf '## Temporary grants\n- Grant: %s\n' "$1"; }
+CIOK="$(cig "scope=ci-local; branch=integrasi; expires=$CIE; note=ci down")"
+CIV='Laporan ci-lokal: lulus Commit: abc1234'
+out="$(tg CHECKRUNS="$CIINF" WFTEXT="$CIOK" COMM2="$CIV")"; rc=$?
+ok "ci-local (#83): infrastruktur + izin sah + vonis ci-lokal -> lulus dengan peringatan" "$rc|$(grep -c 'CI digantikan suite lokal' <<<"$out")" '0|1'
+out="$(tg CHECKRUNS="$CIINF" WFTEXT="$CIOK")"; rc=$?
+ok "ci-local (#83): izin sah tanpa vonis ci-lokal -> ditolak, pesan menyebut Laporan ci-lokal" "$rc|$(grep -c 'Laporan ci-lokal' <<<"$out")" '1|1'
+out="$(tg CHECKRUNS="$CIINF" COMM2="$CIV")"; rc=$?
+ok "ci-local (#83): vonis tanpa izin di WORKFLOW -> ditolak (infrastruktur, bukan vonis kode)" "$rc|$(grep -c 'infrastruktur' <<<"$out")|$(grep -c 'CI gagal untuk head' <<<"$out")" '1|1|0'
+tg CHECKRUNS="$CIINF" WFTEXT="$(cig "scope=ci-local; branch=integrasi; expires=$CIO; note=x")" COMM2="$CIV" >/dev/null; ok "ci-local (#83): izin kedaluwarsa -> ditolak" $? 1
+tg CHECKRUNS="$CIINF" WFTEXT="$(cig "scope=ci-local; branch=lain; expires=$CIE; note=x")" COMM2="$CIV" >/dev/null; ok "ci-local (#83): izin untuk cabang lain -> ditolak" $? 1
+tg CHECKRUNS="$CIINF" WFTEXT="$(cig "scope=ci-local; risk=L2; branch=integrasi; expires=$CIE; note=x")" COMM2="$CIV" >/dev/null; ok "ci-local (#83): ci-local dengan risk=L2 tidak sah -> ditolak" $? 1
+tg CHECKRUNS="$CIINF" WFTEXT="$(cig "scope=merge; risk=L2; branch=integrasi; expires=$CIE; note=x")" COMM2="$CIV" >/dev/null; ok "ci-local (#83): izin merge L2 tidak menggantikan CI" $? 1
+tg CHECKRUNS="$CIINF" WF_FAIL=1 WFTEXT="$CIOK" COMM2="$CIV" >/dev/null; ok "ci-local (#83): WORKFLOW tak terbaca -> gagal tertutup" $? 1
+tg CHECKRUNS="$CIINF" WFTEXT="$CIOK" COMM2='Laporan ci-lokal: gagal Commit: abc1234' >/dev/null; ok "ci-local (#83): vonis ci-lokal gagal -> ditolak" $? 1
+tg CHECKRUNS="$CIINF" WFTEXT="$CIOK" COMM2='Laporan ci-lokal: lulus Commit: 1111111' >/dev/null; ok "ci-local (#83): vonis untuk commit lain -> ditolak" $? 1
+tg CHECKRUNS="$CIINF" WFTEXT="$CIOK" COMM2="$CIV" ASSOC2=NONE >/dev/null; ok "ci-local (#83): vonis dari non-kolaborator -> ditolak" $? 1
+out="$(tg CHECKRUNS='{"name":"tests","status":"completed","conclusion":"failure","started_at":"2026-01-01T00:00:00Z"}' WFTEXT="$CIOK" COMM2="$CIV")"; rc=$?
+ok "ci-local (#83): kegagalan KODE tidak pernah digantikan" "$rc|$(grep -c 'CI gagal' <<<"$out")" '1|1'
+tg CHECKRUNS='{"name":"tests","status":"in_progress","conclusion":null,"started_at":"2026-01-01T00:00:00Z"}' WFTEXT="$CIOK" COMM2="$CIV" >/dev/null; ok "ci-local (#83): CI belum selesai tidak digantikan" $? 1
+tg CHECKRUNS="$CIINF
+"'{"name":"lint","status":"completed","conclusion":"failure","started_at":"2026-01-01T00:00:00Z"}' WFTEXT="$CIOK" COMM2="$CIV" >/dev/null; ok "ci-local (#83): campuran infrastruktur + kode tidak digantikan" $? 1
+tg CHECKRUNS='{"name":"tests","status":"completed","conclusion":"success","started_at":"2026-01-01T00:00:00Z"}' WFTEXT="$CIOK" COMM2="$CIV" 2>&1 | grep -c 'CI digantikan' | { read -r n; ok "ci-local (#83): CI hijau -> tidak ada peringatan penggantian" "$n" 0; }
+gu() { ( . "$root/scripts/lib/grants.sh"; grant_allows "$1" "$2" "$3" "$(date -u +%s)" "main master" >/dev/null; echo $? ); }
+ok "ci-local (#83): grant_allows ci-local menerima baris ci-local, menolak cabang bawaan" "$(gu ci-local integrasi "$CIOK")|$(gu ci-local main "$(cig "scope=ci-local; branch=main; expires=$CIE; note=x")")" '0|1'
+ok "ci-local (#83): grant_allows L2 tidak menerima baris ci-local" "$(gu L2 integrasi "$CIOK")" 1
+grep -q 'scope=ci-local' "$root/templates/WORKFLOW.md" && grep -q 'ci-lokal' "$root/skills/orchestrate/SKILL.md" && grep -q 'ci-local' "$root/README.md"; ok "ci-local (#83): template WORKFLOW, SKILL, README menjelaskan" $? 0
+
 [ "$fails" = 0 ] && echo "SEMUA LULUS" || { echo "$fails GAGAL"; exit 1; }
