@@ -2993,4 +2993,31 @@ rr_f() { (cd "$RR/repo" && RR="$RR" RR_FAIL=1 GH_REPO=o/r PATH="$RR/bin:$PATH" b
 out="$(rr_f)"; rc=$?
 ok "resume (#139): GraphQL dan REST gagal -> exit 1 (bukan sukses kosong); pesan hanya dengan AICREW_VERBOSE" "$rc|$(grep -c . <<<"$out")|$(AICREW_VERBOSE=1 rr_f | grep -c 'issue tak terbaca')" '1|0|1'
 
+# 3c-34. SKILL: blokir izin menghentikan hanya PR itu (#142); helper autonomy.sh selamat dari SIGHUP (#143)
+grep -q 'hentikan HANYA PR ini' "$root/skills/orchestrate/SKILL.md"; ok "SKILL (#142): langkah konflik/izin ditolak menghentikan hanya PR itu" $? 0
+grep -q 'a permission block never ends the whole round' "$root/skills/orchestrate/SKILL.md"; ok "SKILL (#142): blokir izin tidak mengakhiri seluruh putaran" $? 0
+HU="$tmp/hup"; rm -rf "$HU"; mkdir -p "$HU/docs" "$HU/.claude"; git init -q "$HU"; printf '3. Integration branch: feature-x. Issue.\n' > "$HU/docs/WORKFLOW.md"
+hp="$(python3 - "$HU" "$root" "$(date -u -v+2H +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -d '+2 hours' +%Y-%m-%dT%H:%M:%SZ)" <<'PY'
+import os, signal, subprocess, sys, time, json
+hu, root, until = sys.argv[1:4]
+pid = os.fork()
+if pid == 0:
+    os.setsid()
+    os.chdir(hu)
+    os.execvp("bash", ["bash", root + "/scripts/autonomy.sh", "on", until])
+time.sleep(3)
+try:
+    os.killpg(pid, signal.SIGHUP)   # seperti sesi/terminal pemanggil yang berakhir
+except ProcessLookupError:
+    pass
+time.sleep(1)
+try:
+    print(json.load(open(hu + "/.aicrew/autonomy.json"))["helper_pid"])
+except Exception:
+    print(0)
+PY
+)"; hp="$(tail -1 <<<"$hp")"
+ok "autonomy (#143): helper tetap hidup setelah SIGHUP ke grup proses pemanggil" "$(kill -0 "$hp" 2>/dev/null && echo hidup || echo mati)" hidup
+(cd "$HU" && bash "$root/scripts/autonomy.sh" off >/dev/null 2>&1); kill "$hp" 2>/dev/null
+
 [ "$fails" = 0 ] && echo "SEMUA LULUS" || { echo "$fails GAGAL"; exit 1; }

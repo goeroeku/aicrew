@@ -137,7 +137,9 @@ case "$cmd" in
     done < <(jq -c '.files[]' "$sf")
     cs="$(wf_add "$gline")" || fail "gagal menulis $wf"
     jedit "$sf" --argjson cs "$([ "$cs" = created ] && echo true || echo false)" '.workflow.created_section = $cs' || fail "gagal menulis $sf"
-    bash "$here/autonomy.sh" _expire "$top" </dev/null >/dev/null 2>&1 &
+    # nohup: tanpa ini SIGHUP saat perintah pemanggil/sesi berakhir mematikan helper dan grant tidak pernah kedaluwarsa (#143)
+    if command -v nohup >/dev/null 2>&1; then nohup bash "$here/autonomy.sh" _expire "$top" </dev/null >/dev/null 2>&1 &
+    else bash "$here/autonomy.sh" _expire "$top" </dev/null >/dev/null 2>&1 & fi
     hp=$!; disown "$hp" 2>/dev/null
     jedit "$sf" --argjson hp "$hp" '.helper_pid = $hp' || { kill "$hp" 2>/dev/null; fail "gagal menulis $sf"; }
     echo "PERINGATAN: Grant risk=L2 ditambahkan ke docs/WORKFLOW.md (pengecualian sementara #61 untuk 'L2 selalu owner' pada cabang $branch sampai $until_arg)."
