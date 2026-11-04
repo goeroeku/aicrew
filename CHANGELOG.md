@@ -4,6 +4,48 @@ All notable changes to aiCrew are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Entries before 0.11.0 were reconstructed from tags, merged pull requests and commit history.
 
+## [1.5.0] - 2026-11-04
+
+### Added
+
+- Codex delegation helpers: a probe, an issue-embedded prompt builder, and an empty-diff check that triggers a fallback to a Claude subagent within the round. (#127)
+- A blocked issue is marked once (`blocked-mark.sh`) and the orchestrator continues with other ready issues; when everything left is blocked the autopilot waits for the owner (exit 3) and lists the blockers instead of stopping as stuck. (#128)
+- `blocked-note.sh` posts a one-time `blocked-by-permission:` note with the rule to add, and preflight warns about label names that differ from `label.sh`. (#129)
+- `owner-hold` label and `Owner approval (scope: test-change ...)` comments: the autopilot never works held issues and the merge gate refuses automatic merges of held issues and of PRs that change existing test files without a scoped owner approval. (#130)
+- `worktree-for-issue.sh <n> --ensure <path> <basis>` enforces one canonical branch per issue and continues from the first attempt's commits. (#135)
+- `autonomy.sh on|off|status` turns timed temporary authorization on and off with one command (fixed allow set, expiry helper, grant line in WORKFLOW.md). (#136)
+- A `scope=ci-local` temporary grant lets a trusted local full-suite verdict replace CI, only while CI cannot start (infrastructure). (#137)
+
+### Changed
+
+- The merge gate reads through REST so a green PR can still be merged while the GraphQL budget is exhausted, and it names the reset time when REST is exhausted too. (#122)
+- The autopilot no longer spends rounds on a PR whose CI cannot start (billing, no runner): it writes one owner-action line and waits for the owner. (#123)
+- The auto-merge gate refuses a PR that is behind the target branch or whose CI is not green for its head, so the merged result is what CI has tested. (#125)
+- The auto-merge gate refuses a PR when an owner or collaborator comment arrived after the last QA/security/perf verdict, until the PR author acknowledges it with `Decision applied:`. (#126)
+- the autopilot status and owner summary now name the command behind a `blocked-by-permission:` comment instead of showing `-`. (#131)
+- the automatic merge gate no longer asks for an owner approval when a test file only gains lines; edits, deletions, renames, binary and mode-only changes still need one. (#133)
+- the automatic merge gate now refuses a PR that closes an issue with an unchecked `owner only` criterion; use `Refs #N` instead. (#134)
+
+### Fixed
+
+- `cleanup.sh` ignores untracked agent scratch files, and `resume.sh` falls back to REST when GraphQL is exhausted. (#140)
+- A permission block now stops only that PR (SKILL), and the autonomy expiry helper survives a hangup (nohup). (#144)
+
+### Security
+
+- The permission template denies direct pushes to main and master (the issue-branch push stays allowed). (#124)
+
+### Behavior changes
+
+- the merge gate keeps working while the GraphQL budget is exhausted (it warns and checks all `#N` in the PR body), and names the REST reset time when REST is exhausted. (#122)
+- after re-running `install-permissions.sh`, an agent can no longer push directly to main or master. (#124)
+- `--auto` refuses non-documentation PRs that are behind the target or whose CI is not green for the head; update the branch and wait for CI before merging. (#125)
+- `--auto` refuses a PR when a trusted comment on the PR or a linked issue is newer than the last verdict for the head and no `Decision applied:` from the PR author follows it. (#126)
+- `--auto` now refuses PRs that modify existing test files unless an owner approval comment on the PR names them. (#130)
+- `--auto` accepts PRs that only append lines to existing test files without an `Owner approval (scope: test-change ...)` comment. (#133)
+- `--auto` refuses `Closes #N` when issue N has an unchecked checklist line marked owner only. (#134)
+- `--auto` accepts a PR whose CI cannot start when a valid `scope=ci-local` grant and a trusted `Laporan ci-lokal: lulus` comment exist for the head; code failures are never replaced. (#137)
+
 ## [1.4.0] - 2026-11-03
 
 ### Added
