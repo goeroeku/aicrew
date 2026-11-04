@@ -2,6 +2,7 @@
 # Tes deterministik aicrew, tanpa jaringan dan tanpa kerangka. Pakai: bash tests/run.sh  (exit 1 bila ada yang gagal)
 cd "$(dirname "$0")/.." || exit 1
 export GIT_AUTHOR_NAME=aicrew-test GIT_AUTHOR_EMAIL=t@example.com GIT_COMMITTER_NAME=aicrew-test GIT_COMMITTER_EMAIL=t@example.com
+export AICREW_LANG=id   # pesan skrip lama diuji dalam bahasa Indonesia (#64); bawaan Inggris diuji di bagian 3c-35
 root="$PWD"; tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT; fails=0
 ok() { if [ "$2" = "$3" ]; then echo "ok    $1"; else echo "GAGAL $1 (dapat '$2', harap '$3')"; fails=$((fails+1)); fi; }
 
@@ -3020,5 +3021,31 @@ PY
 )"; hp="$(tail -1 <<<"$hp")"
 ok "autonomy (#143): helper tetap hidup setelah SIGHUP ke grup proses pemanggil" "$(kill -0 "$hp" 2>/dev/null && echo hidup || echo mati)" hidup
 (cd "$HU" && bash "$root/scripts/autonomy.sh" off >/dev/null 2>&1); kill "$hp" 2>/dev/null
+
+# 3c-35. katalog pesan msg.sh (#64 tahap C)
+ML() { (cd "${MLD:-$root}" && env -u AICREW_LANG -u AICREW_ENV_FILE "$@" bash -c '. "$0/scripts/lib/msg.sh"; msg "${@}"' "$root" "$MK1" "${MA[@]}" 2>&1); }
+mg() { local d="${MLD:-$root}"; ( cd "$d" && env -u AICREW_LANG -u AICREW_ENV_FILE "${ENVV[@]}" bash -c '. "$0/scripts/lib/msg.sh"; msg "$@"' "$root" "$@" ); }
+mgl() { local d="${MLD:-$root}"; ( cd "$d" && env -u AICREW_LANG -u AICREW_ENV_FILE "${ENVV[@]}" bash -c '. "$0/scripts/lib/msg.sh"; msg_lang' "$root" ); }
+ENVV=(); MLD="$tmp"; ok "msg (#64): tanpa pengaturan -> bahasa en, pesan Inggris" "$(mgl)|$(mg lang.selftest)" 'en|language: English'
+ENVV=(AICREW_LANG=id); ok "msg (#64): AICREW_LANG=id -> pesan Indonesia" "$(mg lang.selftest)" 'bahasa: Indonesia'
+ENVV=(AICREW_LANG=ID); ok "msg (#64): AICREW_LANG huruf besar dikenali" "$(mgl)" id
+ENVV=(AICREW_LANG=xx); ok "msg (#64): nilai tak dikenal -> en" "$(mgl)" en
+ENVV=(AICREW_LANG=id); ok "msg (#64): argumen diteruskan ke printf" "$(mg lang.args A B)" 'dua argumen: A dan B'
+ENVV=(); ok "msg (#64): kunci tak ada di katalog manapun -> mencetak kuncinya" "$(mg no.such.key)" 'no.such.key'
+MLD="$tmp/ml"; rm -rf "$MLD"; mkdir -p "$MLD/docs"; git init -q "$MLD"
+for f in 'Language: id' '- **Language:** id' '3. `Language:` ID' 'language: id'; do printf '%s\n' "$f" > "$MLD/docs/WORKFLOW.md"; ENVV=(); ok "msg (#64): WORKFLOW.md '$f' -> id" "$(mgl)" id; done
+printf 'Artifact language: id\n' > "$MLD/docs/WORKFLOW.md"; ENVV=(); ok "msg (#64): 'Artifact language:' tidak dianggap Language:" "$(mgl)" en
+printf 'Language: id\n' > "$MLD/docs/WORKFLOW.md"; ENVV=(AICREW_LANG=en); ok "msg (#64): env AICREW_LANG menang atas WORKFLOW.md" "$(mgl)" en
+printf 'export AICREW_LANG="id"\n' > "$tmp/ml.env"; ENVV=(AICREW_ENV_FILE="$tmp/ml.env"); rm -f "$MLD/docs/WORKFLOW.md"; ok "msg (#64): AICREW_ENV_FILE dibaca bila env kosong" "$(mgl)" id
+printf 'Language: en\n' > "$MLD/docs/WORKFLOW.md"; ok "msg (#64): berkas env menang atas WORKFLOW.md" "$(mgl)" id
+# jatuh ke en bila kunci hanya ada di en; memakai katalog sementara
+CT="$tmp/ct"; rm -rf "$CT"; mkdir -p "$CT"; cp "$root/scripts/lib/msg/en.sh" "$CT/en.sh"; cp "$root/scripts/lib/msg/id.sh" "$CT/id.sh"
+sed -i.bak 's/    \*) return 1 ;;/    only.en) printf "only in en" ;;\n    *) return 1 ;;/' "$CT/en.sh"; rm -f "$CT/en.sh.bak"
+ENVV=(AICREW_LANG=id AICREW_MSG_DIR="$CT"); MLD="$root"; ok "msg (#64): kunci tak ada di id jatuh ke en" "$(mg only.en)" 'only in en'
+# paritas kunci en.sh dan id.sh
+keys() { grep -oE '^    [a-z0-9._-]+\)' "$1" | tr -d ' )' | sort; }
+ok "msg (#64): en.sh dan id.sh punya kunci yang sama" "$(keys "$root/scripts/lib/msg/en.sh" | paste -sd, -)" "$(keys "$root/scripts/lib/msg/id.sh" | paste -sd, -)"
+grep -q "scripts/lib/msg.sh" "$root/README.md" && grep -q "AICREW_LANG" "$root/README.md"; ok "msg (#64): README menjelaskan pilihan bahasa" $? 0
+ok "msg (#64): sintaks msg.sh dan katalog" "$(bash -n "$root/scripts/lib/msg.sh" && bash -n "$root/scripts/lib/msg/en.sh" && bash -n "$root/scripts/lib/msg/id.sh" && echo ok)" ok
 
 [ "$fails" = 0 ] && echo "SEMUA LULUS" || { echo "$fails GAGAL"; exit 1; }
