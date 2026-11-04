@@ -36,3 +36,15 @@ Yang dimaksud adalah proses yang membuat aplikasi crash atau menghabiskan sumber
 
 ## Keputusan saya (owner menyerahkan desain)
 Teks dan tes saja, tanpa skrip atau perubahan gerbang; `Load smoke:` baris tambahan sebelum vonis, tidak dipaksa gerbang; alat beban dipilih agen per stack; penegakan mesin atas batas per endpoint ditunda (catatan: bisa jadi issue lanjutan bila owner mau).
+
+## Revisi setelah review pembaca (10 temuan; semua ditangani)
+- Cek target beban: agen membaca konfigurasi repo (`.env*`, compose, `DATABASE_URL`, `REDIS_URL`, URL API); host non-loopback atau bukan kontainer yang dijalankan untuk uji = berhenti, `gagal` ("load target is not local"); layanan eksternal di-stub.
+- Beban berbatas: durasi (bawaan 60 s), konkurensi, `timeout`, `nice`, batas memori; tumpukan uji lokal sekali pakai yang dihapus sesudahnya. Peran perf tetap tanpa Edit/Write (tes lama mengunci); "Read-only" dijelaskan sebagai tidak mengubah repo, server, atau produksi, dengan satu pengecualian eksplisit untuk tumpukan uji lokal.
+- Otoritas anggaran: tabel PRD dan `Hardware limits` menang; agen tidak boleh lebih longgar; tanpa batas di PRD agen mengusulkan anggaran konservatif, menandai `budget source: agent`, mencatatnya di `Tuning:`; batas perangkat keras "unknown" = `gagal`.
+- Penegakan: baris `Load smoke:` adalah aturan agen, bukan gerbang (gerbang tetap hanya memeriksa digit `Angka sebelum/sesudah:`); kriteria dan tes mengunci TEKS, bukan perilaku. Dinyatakan jujur di README.
+- Bentuk baris: `Load smoke: tool=<..> budget=<..> p95=<n>ms peak_mem=<n>MB io=<n>/s` atau `Load smoke: n/a (<alasan>)`; teks bebas berpasangan kunci=nilai karena mudah dibaca manusia dan tidak memaksa parser; untuk parser/regex/cache pakai waktu per operasi.
+- Tes urutan: baris contoh `Load smoke: tool=` muncul sebelum baris token `Laporan perf: lulus` di `agents/perf.md`; kalimat "last four lines" tetap benar karena `Load smoke:` ada sebelum empat baris itu.
+- Daftar periksa rilis: butir satu baris berawalan `- ` (agar terbaca `release-report.sh`); proyek yang sudah punya `docs/WORKFLOW.md` tidak ikut berubah (hanya template untuk proyek baru).
+- Tidak dikerjakan: perluasan `baseline-scan.sh` ke kelas input baru (isu lanjutan bila diinginkan), dan penegakan mesin atas batas per endpoint.
+- Higiene crash hanya dari repo/Dockerfile/compose/CI; host produksi tidak diperiksa.
+- Semua teks baru berbahasa Inggris (tes bahasa).

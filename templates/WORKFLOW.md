@@ -63,7 +63,8 @@ Run during the closing stage, before the `integration → main` PR is opened (ke
 - Clean build in a fresh clone
 - Application runs locally; smoke test passes (UI: screenshot read)
 - aicrew-security: auth, input, secrets, dependencies; hardening and audit log for `needs-security`
-- aicrew-perf: I/O budget, default config, load test on the real server (numbers, not estimates)
+- aicrew-perf: I/O budget, default config, latest `Load smoke:` result within budget and Hardware limits filled in (local numbers; measure on the real server before production)
+- aicrew-security: no crash dumps enabled by default in production, none committed or uploaded
 - No secrets in the repo
 - Short runbook: how to run, configure, and roll back
 - Every PRD criterion is checked off with the command and its output

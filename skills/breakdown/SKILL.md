@@ -45,6 +45,7 @@ Do not break down an unapproved PRD; if `Status PRD` is not recorded, ask the ow
 6. Apply `role:*`, `stack:*`, `phase:*` labels (+ `needs-principal` when needed). Issues touching auth/authorization, input at trust
    boundaries, secrets, new dependencies, money, or personal data receive `needs-security`: this tagging is a breakdown decision, not guesswork during execution.
    Issues touching DB write paths, queues/workers/polling, cron, or infra config (Postgres, Redis, container limits) receive `needs-perf` for the same reason.
+   The same holds for unbounded-input classes: request bodies and uploads, archives (decompression bombs), regular expressions on user input (ReDoS), queries without limit or pagination, input-driven loops or recursion, parsers, unbounded caches, connection pools. They receive `needs-perf`, and also `needs-security` when the input crosses a trust boundary (input from outside the process owner: HTTP, user files, webhooks, queues fed by other systems).
    Also apply one risk label per issue: `risk:L0` (docs, tests, refactor with no behavioral effect), `risk:L1` (normal behavior, default when in doubt between L0/L1),
    `risk:L2` (auth, money, personal data, migration, infra, or hard to reverse). L2 is never auto-merged (`pr-merge-check.sh --auto` rejects it) and should also carry `needs-principal`/`needs-security` when relevant.
    Issues that read another repo/directory (discovery) must include the "Security" section from `templates/ISSUE.md` verbatim.
@@ -66,6 +67,7 @@ Leads read journeys, agents work on small issues. The hierarchy is: Journey (epi
 - **Ongoing projects**: creating an epic does not edit existing issues: existing issues are only referenced from the epic (other changes to existing issues go only through audit 2c with owner approval; those labeled in-progress or with an assignee are skipped).
   Issues that do not fit any journey are collected in the `[J0] Unassigned` epic, not forced into a journey.
 - NFRs (`N-ID`) labeled `needs-security`/`needs-perf` follow the normal labeling rules in step 6.
+- Limits: every endpoint or job in the PRD `Abuse cases and limits` table feeds the acceptance criteria of the issue that implements it. For the unbounded-input classes the criteria must test the limit: input exactly at the limit passes, input above it is rejected or throttled without a crash. A PRD without that table: propose one from the requirements and ask for owner approval, as for Journeys; do not invent limits silently.
 - Epics are not work: the orchestrator, autopilot, resume, and release report skip them. The owner closes an epic when all its children are done.
 
 ## Final report

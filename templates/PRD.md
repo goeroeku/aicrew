@@ -29,6 +29,12 @@ One requirement may serve more than one journey.
 |---|---|---|---|
 | N1 | {{login responds in < 1 s}} | {{load test / measurement}} | {{needs-perf / needs-security}} |
 
+## Abuse cases and limits
+Every endpoint or job that accepts outside input has one row. "None" needs a reason. Issues in the unbounded-input classes test these limits in their acceptance criteria.
+| Endpoint/job | Max size | Max time | Max rate | Max memory | Behavior at the limit |
+|---|---|---|---|---|---|
+| {{POST /upload}} | {{10 MB}} | {{5 s}} | {{10/min per user}} | {{256 MB}} | {{reject with 413, no crash}} |
+
 ## Constraints
 Stack, performance, security/authorization, data, cost, deadline: {{...}}
 
