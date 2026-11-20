@@ -3431,18 +3431,34 @@ LSI create --title x --label 'a/b' >/dev/null 2>&1; r1=$?; LSI comment abc --bod
 ok "issue.sh (#159): label tak valid, nomor non-angka, tanpa judul, perintah asing, isu tak ada -> ditolak" "$([ $r1 != 0 ] && echo y)|$([ $r2 != 0 ] && echo y)|$r3|$r4|$([ $r5 != 0 ] && echo y)" 'y|y|64|64|y'
 # deteksi mode dari WORKFLOW.md (akar checkout utama), tanpa env
 mkdir -p "$LS/docs"; echo "- Quota mode: local. Mode mandiri." > "$LS/docs/WORKFLOW.md"
-m1="$(cd "$LS" && env -u AICREW_QUOTA_MODE bash -c 'source "$1/scripts/ghx.sh"; ghx_local && echo local || echo bukan' _ "$root")"
-echo "- Quota mode: local-never" > "$LS/docs/WORKFLOW.md"; m2="$(cd "$LS" && env -u AICREW_QUOTA_MODE bash -c 'source "$1/scripts/ghx.sh"; ghx_local && echo local || echo bukan' _ "$root")"
-echo "- Quota mode: auto" > "$LS/docs/WORKFLOW.md"; m3="$(cd "$LS" && env -u AICREW_QUOTA_MODE bash -c 'source "$1/scripts/ghx.sh"; ghx_local && echo local || echo bukan' _ "$root")"
-(cd "$LS" && env -u AICREW_QUOTA_MODE bash "$root/scripts/issue.sh" list >/dev/null 2>&1); r6=$?
+m1="$(cd "$LS" && env -u AICREW_QUOTA_MODE -u _GHX_LOCAL_MEMO bash -c 'source "$1/scripts/ghx.sh"; ghx_local && echo local || echo bukan' _ "$root")"
+echo "- Quota mode: local-never" > "$LS/docs/WORKFLOW.md"; m2="$(cd "$LS" && env -u AICREW_QUOTA_MODE -u _GHX_LOCAL_MEMO bash -c 'source "$1/scripts/ghx.sh"; ghx_local && echo local || echo bukan' _ "$root")"
+echo "- Quota mode: auto" > "$LS/docs/WORKFLOW.md"; m3="$(cd "$LS" && env -u AICREW_QUOTA_MODE -u _GHX_LOCAL_MEMO bash -c 'source "$1/scripts/ghx.sh"; ghx_local && echo local || echo bukan' _ "$root")"
+(cd "$LS" && env -u AICREW_QUOTA_MODE -u _GHX_LOCAL_MEMO bash "$root/scripts/issue.sh" list >/dev/null 2>&1); r6=$?
 ok "ghx_local (#159): WORKFLOW 'Quota mode: local' -> lokal; 'local-never' dan 'auto' -> bukan; issue.sh di luar mode lokal exit 2" "$m1|$m2|$m3|$r6" 'local|bukan|bukan|2'
 rm -f "$LS/docs/WORKFLOW.md"
+# flag tanpa nilai tidak boleh menggantung; label peka huruf besar-kecil seperti GitHub; --parent divalidasi sebelum membuat; '-' bukan label
+hang() { ( "$@" >/dev/null 2>&1 ) & local p=$! i=0; while kill -0 "$p" 2>/dev/null && [ "$i" -lt 50 ]; do sleep 0.1; i=$((i+1)); done; if kill -0 "$p" 2>/dev/null; then kill -9 "$p" 2>/dev/null; echo 124; return; fi; wait "$p"; echo $?; }   # macOS tanpa timeout(1)
+h1="$(cd "$LS" && hang env AICREW_QUOTA_MODE=local bash "$root/scripts/issue.sh" comment 1 --body)"
+h2="$(cd "$LS" && hang env AICREW_QUOTA_MODE=local bash "$root/scripts/issue.sh" create --title)"
+ok "issue.sh (#159): flag tanpa nilai tidak menggantung (exit 64, bukan timeout 124)" "$h1|$h2" '64|64'
+LSI label 1 --add Bug >/dev/null; LSI label 1 --remove BUG >/dev/null
+cnt_before="$(LSI list | jq length)"; LSI create --title y --parent 9999 >/dev/null 2>&1; pr1=$?
+ok "issue.sh (#159): label tanpa peka huruf (Bug/BUG mencabut bug), --parent tak ada ditolak tanpa membuat isu, label '-' ditolak" "$(LSI view 1 | jq -r '[.labels[].name|ascii_downcase]|index("bug")')|$([ $pr1 != 0 ] && echo ditolak)|$([ "$(LSI list | jq length)" = "$cnt_before" ] && echo tanpa-yatim)|$(LSI label 1 --add - >/dev/null 2>&1; echo $?)" 'null|ditolak|tanpa-yatim|1'
+# kunci yatim (pid mati) diambil alih; penomoran tidak menimpa isu lama bila next rusak
+mkdir -p "$LS/.aicrew/issues/.lock"; echo 99999999 > "$LS/.aicrew/issues/.lock/pid"; echo 1 > "$LS/.aicrew/issues/next"
+nn="$(LSI create --title yatim)"
+ok "localstore (#159): kunci yatim (pid mati) diambil alih dan next yang rusak (menunjuk isu yang sudah ada) tidak menimpa isu lama" "$([ "$nn" -gt 15 ] && echo baru)|$(LSI view 1 | jq -r .title)" 'baru|Satu'
+# blocked-mark/blocked-list di mode lokal tanpa gh
+: > "$LS/ghcalls"
+( cd "$LS" && env PATH="$LS/bin:$PATH" AICREW_QUOTA_MODE=local bash "$root/scripts/blocked-mark.sh" 1 "alasan uji" >/dev/null 2>&1 ); bm=$?
+ok "blocked-mark/blocked-list (#159): mode lokal: label blocked + komentar lewat store, blocked-list membaca alasan, tanpa panggilan gh" "$bm|$(LSI view 1 | jq -r '[.labels[].name]|index("blocked")|type')|$(cd "$LS" && env PATH="$LS/bin:$PATH" AICREW_QUOTA_MODE=local bash "$root/scripts/blocked-list.sh")|$(wc -l < "$LS/ghcalls" | tr -d ' ')" "0|number|#1	alasan uji|0"
 # ghx di mode lokal: tanpa satu pun panggilan gh
 LSG() { ( cd "$LS" && env PATH="$LS/bin:$PATH" AICREW_QUOTA_MODE=local bash -c 'source "$1/scripts/ghx.sh"; shift; "$@"' _ "$root" "$@" ); }
 : > "$LS/ghcalls"
 LSG ghx_label_add 1 baru >/dev/null; LSG ghx_label_remove 1 bug >/dev/null; LSG ghx_comment 1 "komentar ghx" >/dev/null; LSG ghx_issue_set_body 2 "badan baru" >/dev/null; LSG ghx_issue_close 2 "tutup" >/dev/null
-ok "ghx (#159): mode lokal: label/komentar/badan/penutupan lewat store, tanpa panggilan gh" "$(LSI view 1 | jq -r '[.labels[].name]|sort|join(",")')|$(LSI view 1 | jq -r '.comments[-1].body')|$(LSG ghx_issue_body 2)|$(LSI view 2 | jq -r .state)|$(wc -l < "$LS/ghcalls" | tr -d ' ')" 'baru,risk:L1|komentar ghx|badan baru|CLOSED|0'
-ok "ghx_issues (#159): mode lokal mengembalikan larik bentuk gh dari store; label filter bekerja" "$(LSG ghx_issues open - 100 number,labels | jq -r '[.[].number]|join(",")')|$(LSG ghx_issues all baru 100 number | jq length)" '1,3,4,5,6,7,8,9,10,11,12,13,14,15|1'
+ok "ghx (#159): mode lokal: label/komentar/badan/penutupan lewat store, tanpa panggilan gh" "$(LSI view 1 | jq -r '[.labels[].name]|sort|join(",")')|$(LSI view 1 | jq -r '.comments[-1].body')|$(LSG ghx_issue_body 2)|$(LSI view 2 | jq -r .state)|$(wc -l < "$LS/ghcalls" | tr -d ' ')" 'baru,blocked,risk:L1|komentar ghx|badan baru|CLOSED|0'
+ok "ghx_issues (#159): mode lokal mengembalikan larik bentuk gh dari store; label filter bekerja" "$(LSG ghx_issues open - 100 number,labels | jq -r '[.[].number]|join(",")')|$(LSG ghx_issues all baru 100 number | jq length)" '1,3,4,5,6,7,8,9,10,11,12,13,14,15,16|1'
 (cd "$LS" && env AICREW_QUOTA_MODE=local bash -c 'source "$1/scripts/ghx.sh"; ghx_require_github "board.sh"' _ "$root" >/dev/null 2>&1); r7=$?
 ok "ghx_require_github (#159): mode lokal -> exit 2 dengan pesan; msg backend.local_unsupported ada di en dan id" "$r7|$(AICREW_LANG=en bash -c '. "$1/scripts/lib/msg.sh"; msg backend.local_unsupported board.sh' _ "$root" | grep -c 'not available')|$(AICREW_LANG=id bash -c '. "$1/scripts/lib/msg.sh"; msg backend.local_only' _ "$root" | grep -c 'Quota mode: local')" '2|1|1'
 

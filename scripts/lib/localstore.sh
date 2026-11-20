@@ -9,23 +9,28 @@ _ls_dir() {
   if [ -z "$d" ]; then g="$(git rev-parse --git-common-dir 2>/dev/null)" && root="$(cd "$g/.." && pwd)" || return 1; d="$root/.aicrew/issues"; fi
   mkdir -p "$d" 2>/dev/null || return 1; printf '%s' "$d"
 }
-_ls_lock() {   # <dir>: kunci mkdir; kunci yatim lebih tua dari 1 menit diambil alih
-  local d="$1" i=0
+_ls_lock() {   # <dir>: kunci mkdir berisi pid; kunci yatim (pid mati atau > 2 menit) diambil alih dengan `mv` atomik: hanya satu penunggu yang menang
+  local d="$1" i=0 p
   while ! mkdir "$d/.lock" 2>/dev/null; do
     i=$((i+1))
-    if [ "$i" -gt 200 ]; then
-      [ -n "$(find "$d/.lock" -maxdepth 0 -mmin +1 2>/dev/null)" ] || return 1
-      rmdir "$d/.lock" 2>/dev/null; i=0; continue
+    if [ "$i" -ge 20 ]; then
+      p="$(cat "$d/.lock/pid" 2>/dev/null)"
+      if { [ -n "$p" ] && ! kill -0 "$p" 2>/dev/null; } || [ -n "$(find "$d/.lock" -maxdepth 0 -mmin +2 2>/dev/null)" ]; then
+        mv "$d/.lock" "$d/.lock.stale.$$.$RANDOM" 2>/dev/null && rm -rf "$d"/.lock.stale.* 2>/dev/null
+        i=0; continue
+      fi
     fi
+    [ "$i" -le 400 ] || return 1
     sleep 0.05
   done
+  echo $$ > "$d/.lock/pid" 2>/dev/null; return 0
 }
-_ls_unlock() { rmdir "$1/.lock" 2>/dev/null; return 0; }
+_ls_unlock() { rm -rf "$1/.lock" 2>/dev/null; return 0; }   # berisi berkas pid: rmdir saja tidak cukup
 _ls_write() {   # <berkas> <json>: atomik
   local f="$1" t; t="$(mktemp "$1.XXXXXX")" || return 1
   printf '%s\n' "$2" > "$t" && mv "$t" "$f" || { rm -f "$t"; return 1; }
 }
-_ls_label_ok() { [[ "$1" =~ ^[A-Za-z0-9._:\ -]+$ ]]; }
+_ls_label_ok() { [[ "$1" =~ ^[A-Za-z0-9._:\ -]+$ ]] && [ "$1" != - ]; }
 _ls_num_ok() { [[ "$1" =~ ^[0-9]+$ ]]; }
 _ls_now() { date -u +%Y-%m-%dT%H:%M:%SZ; }
 
@@ -35,9 +40,12 @@ ls_create() {
   for l in "$@"; do _ls_label_ok "$l" || { echo "localstore: label tak valid: $l" >&2; return 1; }; labs="$(jq -c --arg l "$l" '. + [$l] | unique' <<<"$labs")"; done
   _ls_lock "$d" || { echo "localstore: tidak dapat mengunci $d" >&2; return 1; }
   n="$(cat "$d/next" 2>/dev/null)"
-  _ls_num_ok "$n" || n=$(( $(ls "$d" 2>/dev/null | sed -n 's/^\([0-9][0-9]*\)\.json$/\1/p' | sort -n | tail -1) + 1 ))
+  _ls_num_ok "$n" || n=0
+  local mx; mx="$(ls "$d" 2>/dev/null | sed -n 's/^\([0-9][0-9]*\)\.json$/\1/p' | sort -n | tail -1)"   # nunca sobrescreve: next menor que o maior existente = usa maior+1
+  [ "$((10#${n:-0}))" -gt "$((10#${mx:-0}))" ] || n=$(( 10#${mx:-0} + 1 ))
+  n=$((10#$n))
   j="$(jq -nc --argjson n "$n" --arg t "$title" --arg b "$body" --argjson l "$labs" --arg now "$(_ls_now)" '{number:$n,title:$t,body:$b,state:"open",labels:$l,created:$now,updated:$now}')" || { _ls_unlock "$d"; return 1; }
-  _ls_write "$d/$n.json" "$j" && printf '%s\n' "$((n+1))" > "$d/next"; local rc=$?
+  _ls_write "$d/$n.json" "$j" && _ls_write "$d/next" "$((n+1))"; local rc=$?
   _ls_unlock "$d"; [ "$rc" = 0 ] && echo "$n"; return "$rc"
 }
 _ls_edit() {   # <n> <filtro jq> [--arg k v ...]: aplica ao registro sob kunci
@@ -47,8 +55,9 @@ _ls_edit() {   # <n> <filtro jq> [--arg k v ...]: aplica ao registro sob kunci
   cur="$(cat "$d/$n.json")"; new="$(jq -c "$@" "$f | .updated=\"$(_ls_now)\"" <<<"$cur")" && _ls_write "$d/$n.json" "$new" || rc=1
   _ls_unlock "$d"; return "$rc"
 }
-ls_label_add() { _ls_label_ok "$2" || { echo "localstore: label tak valid: $2" >&2; return 1; }; _ls_edit "$1" '.labels = ((.labels + [$l]) | unique)' --arg l "$2"; }
-ls_label_remove() { _ls_edit "$1" '.labels = (.labels - [$l])' --arg l "$2"; }
+# GitHub memperlakukan nama label tanpa peka huruf besar-kecil: tambah/cabut/filter juga begitu
+ls_label_add() { _ls_label_ok "$2" || { echo "localstore: label tak valid: $2" >&2; return 1; }; _ls_edit "$1" 'if any(.labels[]?; ascii_downcase == ($l|ascii_downcase)) then . else .labels = ((.labels // []) + [$l]) end' --arg l "$2"; }
+ls_label_remove() { _ls_edit "$1" '.labels = ((.labels // []) | map(select(ascii_downcase != ($l|ascii_downcase))))' --arg l "$2"; }
 ls_set_body() { _ls_edit "$1" '.body = $b' --arg b "$2"; }
 ls_set_parent() { _ls_num_ok "$2" || return 1; _ls_edit "$1" '.parent = ($p|tonumber)' --arg p "$2"; }
 ls_reopen() { _ls_edit "$1" '.state = "open"'; }
@@ -63,14 +72,14 @@ ls_close() {   # <n> [komentar]
   [ -z "${2:-}" ] || ls_comment "$1" "$2" || return 1
   _ls_edit "$1" '.state = "closed"'
 }
-ls_body() { local d; d="$(_ls_dir)" || return 1; jq -r '.body // ""' "$d/$1.json" 2>/dev/null; }
-ls_comments() { local d; d="$(_ls_dir)" || return 1; [ -s "$d/$1.comments.jsonl" ] && jq -sc . "$d/$1.comments.jsonl" || echo '[]'; }
+ls_body() { local d; _ls_num_ok "$1" || return 1; d="$(_ls_dir)" || return 1; jq -r '.body // ""' "$d/$1.json" 2>/dev/null; }
+ls_comments() { local d; _ls_num_ok "$1" || return 1; d="$(_ls_dir)" || return 1; [ -s "$d/$1.comments.jsonl" ] && jq -sc . "$d/$1.comments.jsonl" || echo '[]'; }
 _ls_shape='map({number,title,body:(.body // ""),state:(.state|ascii_upcase),labels:((.labels // [])|map({name:.})),parent:(.parent // null)})'
 # ls_list <open|closed|all> <label|-> <batas>
 ls_list() {
   local d f; d="$(_ls_dir)" || return 1
   for f in "$d"/[0-9]*.json; do [ -f "$f" ] && cat "$f"; done | jq -sc --arg s "$1" --arg l "${2:--}" --argjson n "${3:-1000}" \
-    "[.[]|select(\$s==\"all\" or .state==\$s)|select(\$l==\"-\" or ((.labels // [])|index(\$l)))]|sort_by(.number)|.[:\$n]|$_ls_shape"
+    "[.[]|select(\$s==\"all\" or .state==\$s)|select(\$l==\"-\" or any((.labels // [])[]; ascii_downcase == (\$l|ascii_downcase)))]|sort_by(.number)|.[:\$n]|$_ls_shape"
 }
 ls_view() {   # <n> -> um objeto com comentarios
   local d; _ls_num_ok "$1" || return 1; d="$(_ls_dir)" || return 1; [ -f "$d/$1.json" ] || return 1

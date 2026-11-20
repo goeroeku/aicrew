@@ -8,14 +8,16 @@ source "$(dirname "$0")/ghx.sh"
 n="${1:-}"; shift || true; reason="$*"
 case "$n" in ''|*[!0-9]*) echo "$(msg blocked.mark_usage)" >&2; exit 64 ;; esac
 [ -n "$reason" ] || { echo "$(msg blocked.mark_usage)" >&2; exit 64; }
-rc=0; labels="$(ghx_gql gh issue view "$n" --json labels -q '.labels[].name')" || rc=$?
+rc=0
+if ghx_local; then labels="$(ls_view "$n" 2>/dev/null | jq -r '.labels[].name')" || rc=1; [ -n "$(ls_view "$n" 2>/dev/null)" ] || rc=1
+else labels="$(ghx_gql gh issue view "$n" --json labels -q '.labels[].name')" || rc=$?; fi
 if [ "$rc" = 75 ]; then rc=0; labels="$(gh api "repos/$(ghx_repo)/issues/$n" --jq '.labels[].name')" || rc=$?; fi
 if [ "$rc" != 0 ]; then   # tak terbaca; bila kuota GitHub habis, antre kedua penanda (sinkron memeriksa idempoten) alih-alih gagal (#159)
   if ghx_queue label_add n="$n" label=blocked 2>/dev/null && ghx_queue comment n="$n" body="blocked: $reason" 2>/dev/null; then echo "$(msg blocked.marked "$n")"; exit 0; fi
   echo "$(msg blocked.cannot_read "$n")" >&2; exit 1
 fi
 if printf '%s\n' "$labels" | grep -qx blocked; then echo "$(msg blocked.already "$n")"; exit 0; fi
-gh label create blocked --color B60205 --description "$(msg blocked.label_desc)" >/dev/null 2>&1 || true
+ghx_local || gh label create blocked --color B60205 --description "$(msg blocked.label_desc)" >/dev/null 2>&1 || true
 ghx_label_add "$n" blocked >/dev/null || exit 1
 ghx_comment "$n" "blocked: $reason" >/dev/null || exit 1
 echo "$(msg blocked.marked "$n")"

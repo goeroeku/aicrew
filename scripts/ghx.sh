@@ -30,6 +30,7 @@ ghx_local() {
   fi
   [ "$_GHX_LOCAL_MEMO" = 1 ]
 }
+ghx_local >/dev/null 2>&1; export _GHX_LOCAL_MEMO   # dihitung sekali saat di-source dan diwariskan ke skrip anak (perubahan WORKFLOW.md berlaku setelah autopilot dimulai ulang)
 ghx_require_github() {   # <nama-skrip>: keluar bila mode local (skrip yang tidak punya padanan lokal)
   ghx_local || return 0
   echo "$(msg backend.local_unsupported "$1" 2>/dev/null || echo "$1: not available in Quota mode: local")" >&2; exit 2
