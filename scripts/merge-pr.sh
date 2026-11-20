@@ -9,8 +9,9 @@ here="$(cd "$(dirname "$0")" && pwd)"
 source "$here/lib/msg.sh"; source "$here/ghx.sh"
 pr="${1:-}"; dst="${2:-}"; shift 2 2>/dev/null || true; br=""
 while [ $# -gt 0 ]; do case "$1" in --branch) br="${2:-}"; shift 2 ;; *) echo "usage: merge-pr.sh <pr> <dst-branch> [--branch issue-N]" >&2; exit 64 ;; esac; done
-[[ "$pr" =~ ^[0-9]+$ ]] && [ -n "$dst" ] || { echo "usage: merge-pr.sh <pr> <dst-branch> [--branch issue-N]" >&2; exit 64; }
-out="$(bash "$here/pr-merge-check.sh" "$pr" "$dst" --auto 2>&1)"; rc=$?
+[[ "$pr" =~ ^[0-9]+$ ]] && [[ "$dst" =~ ^[A-Za-z0-9._][A-Za-z0-9._/-]*$ ]] || { echo "usage: merge-pr.sh <pr> <dst-branch> [--branch issue-N]" >&2; exit 64; }
+qf="$(mktemp "${TMPDIR:-/tmp}/aicrew-quota.XXXXXX")"; trap 'rm -f "$qf" "$qf.last"' EXIT; : > "$qf"
+out="$(AICREW_GATE_QUOTA_FILE="$qf" bash "$here/pr-merge-check.sh" "$pr" "$dst" --auto 2>&1)"; rc=$?
 printf '%s\n' "$out"
 if [ "$rc" = 0 ]; then
   sha="$(grep -E '^ok:' <<<"$out" | grep -Eo '[0-9a-f]{40}' | head -1)"
@@ -22,7 +23,8 @@ fi
 # probe langsung: header respons GraphQL dan `gh api rate_limit` (REST core; tidak memakai kuota)
 gh_h="$(_ghx_probe)"; g_rem="$(_ghx_hdr "$gh_h" x-ratelimit-remaining)"; g_rst="$(_ghx_hdr "$gh_h" x-ratelimit-reset)"
 r_rem="$(gh api rate_limit --jq '.resources.core.remaining' 2>/dev/null)"; r_rst="$(gh api rate_limit --jq '.resources.core.reset' 2>/dev/null)"
-if [ "$g_rem" = 0 ] && [ "$r_rem" = 0 ] && grep -Eq 'Penyebab: batas (GraphQL|REST) GitHub habis' <<<"$out"; then   # probe langsung DAN penolakan gerbang memang karena kuota (bukan alasan lain)
+# jalur lokal hanya bila: probe langsung (bukan berkas status/env) membuktikan keduanya habis DAN gerbang berhenti karena panggilan gh TERAKHIR-nya gagal oleh batas kuota (bukan owner-hold, CI merah, dst.)
+if [ "$g_rem" = 0 ] && [ "$r_rem" = 0 ] && [ "$(cat "$qf" 2>/dev/null)" = limit ]; then
   [ -n "$br" ] || { echo "GAGAL: $(msg mergepr.need_branch)"; exit 1; }
   echo "$(msg mergepr.local_path)"
   export GHX_PERSIST=1

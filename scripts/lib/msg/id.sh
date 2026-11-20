@@ -145,6 +145,11 @@ msg_id() {
     mergepr.no_sha) printf 'gerbang lolos tetapi sha head tidak terbaca dari keluarannya' ;;
     mergepr.need_branch) printf 'kuota GitHub habis; jalur lokal butuh --branch issue-<n>' ;;
     mergepr.local_path) printf 'kuota GitHub (GraphQL dan REST) habis: memakai jalur merge lokal (hanya L0/L1, gagal tertutup)' ;;
+    local.mode_forbidden) printf 'Quota mode '\''%s'\'' melarang jalur merge lokal (hanya auto atau local yang mengizinkan); tunggu reset kuota GitHub' "$@" ;;
+    local.pr_unknown) printf 'PR #%s tidak ada di cache PR lokal yang segar (10 menit); label dan head-nya tak dapat diverifikasi (menunggu)' "$@" ;;
+    local.pr_mismatch) printf 'PR #%s bukan PR terbuka, non-draft, satu repositori, dengan head sama dengan ujung %s saat ini (menunggu)' "$@" ;;
+    local.odd_filename) printf 'nama berkas yang berubah perlu dikutip (karakter tak lazim); butuh gerbang GitHub (menunggu)' ;;
+    local.test_config) printf 'konfigurasi tes/build/CI berubah (%s); butuh gerbang GitHub (menunggu)' "$@" ;;
     autopilot.quota_wait) printf 'putaran %s: kuota GitHub habis (GraphQL dan REST); menunggu %s detik sampai reset, iterasi tidak terpakai' "$1" "$2" ;;
     autopilot.gh_down_stop) printf 'autopilot: gh tidak terbaca 5 kali beruntun; berhenti (bukan keadaan issue), periksa jaringan dan login gh' ;;
     autopilot.all_done) printf 'autopilot: semua issue selesai (putaran %s)' "$@" ;;

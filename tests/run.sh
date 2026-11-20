@@ -3319,11 +3319,14 @@ LMmk() {   # fixture: origin bare + klon; cabang issue-5 (variasi lewat LM_*); c
   rm -rf "$LM"; mkdir -p "$LM/backend/cache"; git init -q --bare "$LM/origin.git"; git -C "$LM/origin.git" symbolic-ref HEAD refs/heads/main
   git clone -q "$LM/origin.git" "$LM/w" 2>/dev/null
   ( cd "$LM/w" && git checkout -q -b main && mkdir -p docs tests && { echo "- Test command: sh check.sh"; [ -z "${LM_WF_EXTRA:-}" ] || echo "$LM_WF_EXTRA"; } > docs/WORKFLOW.md \
-      && echo 'test -f ok.txt' > check.sh && echo base > a.txt && echo x > tests/t.sh && git add -A && git commit -qm base && git push -q origin main && git remote set-head origin main >/dev/null 2>&1
+      && echo 'test -f ok.txt' > check.sh && echo base > a.txt && echo x > tests/t.sh && echo x > tests/é.sh && git add -A && git commit -qm base && git push -q origin main && git remote set-head origin main >/dev/null 2>&1
     git checkout -q -b issue-5 && echo f > feat.txt; [ -n "${LM_NOOK:-}" ] || echo ok > ok.txt; eval "${LM_BRANCH_CMD:-:}"
     git add -A && git commit -qm feat && git push -q origin issue-5 && git checkout -q main ) >/dev/null 2>&1
-  jq -n --arg l "${LM_LABELS:-risk:L1}" --arg b "${LM_BODY:-x}" '[{number:5,labels:($l|split(",")|map({name:.})),body:$b}]' > "$LM/backend/cache/lst-issues-open--.json"
-  [ -z "${LM_STALE:-}" ] || touch -t 202001010000 "$LM/backend/cache/lst-issues-open--.json"
+  jq -n --arg l "${LM_LABELS:-risk:L1}" --arg b "${LM_BODY:-x}" '[{number:5,labels:($l|split(",")|map({name:.})),body:$b}]' > "$LM/backend/cache/lst-issues-open--1.json"
+  jq -n --arg l "${LM_PRLABELS:-}" --arg h "$(git -C "$LM/origin.git" rev-parse issue-5)" --arg br "${LM_PRBR:-issue-5}" --arg st "${LM_PRSTATE:-OPEN}" \
+    '[{number:9,state:$st,headRefName:$br,headRefOid:$h,isDraft:false,isCrossRepository:false,labels:($l|split(",")|map(select(length>0)|{name:.}))}]' > "$LM/backend/cache/lst-prs-all-1.json"
+  [ -z "${LM_NOPR:-}" ] || rm -f "$LM/backend/cache/lst-prs-all-1.json"
+  [ -z "${LM_STALE:-}" ] || touch -t 202001010000 "$LM/backend/cache/lst-issues-open--1.json"
 }
 LMo() { git -C "$LM/origin.git" rev-parse main; }
 LMR() { ( cd "$LM/w" && env AICREW_BACKEND_DIR="$LM/backend" AICREW_NOTIFY=none "$@" ); }
@@ -3336,8 +3339,8 @@ ok "merge lokal (#159): jejak bukti .aicrew/evidence/<head>.json berisi rc 0 dan
 LMmk; b0="$(LMo)"; LM_NOOK=1 LMmk; b0="$(LMo)"; LMgo; rc=$?
 ok "merge lokal (#159): tes gagal pada hasil merge -> exit 1, origin tidak berubah" "$rc|$([ "$(LMo)" = "$b0" ] && echo sama)" '1|sama'
 # syarat yang butuh GitHub: menunggu, origin tidak berubah
-for v in 'LM_LABELS=risk:L2' 'LM_LABELS=risk:L1,owner-hold' 'LM_LABELS=risk:L1,needs-security' 'LM_LABELS=bug' 'LM_STALE=1' 'LM_BODY=- [ ] owner only' \
-         'LM_BRANCH_CMD=echo x >> docs/WORKFLOW.md' 'LM_BRANCH_CMD=echo {} > package-lock.json' 'LM_BRANCH_CMD=echo y > tests/t.sh' 'LM_WF_EXTRA=- Quota mode: github'; do
+for v in 'LM_LABELS=risk:L2' 'LM_PRLABELS=owner-hold' 'LM_PRLABELS=risk:L2' 'LM_NOPR=1' 'LM_PRBR=issue-6' 'LM_PRSTATE=CLOSED' 'LM_LABELS=risk:L1,owner-hold' 'LM_LABELS=risk:L1,needs-security' 'LM_LABELS=bug' 'LM_STALE=1' 'LM_BODY=- [ ] owner only' \
+         'LM_BRANCH_CMD=echo x >> docs/WORKFLOW.md' 'LM_BRANCH_CMD=echo {} > package-lock.json' 'LM_BRANCH_CMD=echo y > tests/t.sh' 'LM_BRANCH_CMD=echo exit 0 >> tests/t.sh' 'LM_BRANCH_CMD=echo x > Makefile' 'LM_BRANCH_CMD=echo {} > pyproject.toml' 'LM_BRANCH_CMD=echo y > tests/é.sh' 'LM_WF_EXTRA=- Quota mode: github' 'LM_WF_EXTRA=- Quota mode: bebas'; do
   ( export "$v"; LMmk; b0="$(LMo)"; LMgo; rc=$?; echo "$rc|$([ "$(LMo)" = "$b0" ] && echo sama)" ) > "$LM.out" 2>/dev/null
   ok "merge lokal (#159): ditolak dan origin tidak berubah ($v)" "$(cat "$LM.out")" '1|sama'
 done
@@ -3369,6 +3372,21 @@ LMmk; b0="$(LMo)"; (cd "$LM/w" && env PATH="$LM.bin:$PATH" GH_REPO=o/r LM_RREM=1
 ok "merge-pr (#159): REST belum habis -> tidak ada jalur lokal, exit 1, origin tidak berubah" "$rc|$([ "$(LMo)" = "$b0" ] && echo sama)" '1|sama'
 LMmk; b0="$(LMo)"; (cd "$LM/w" && env PATH="$LM.bin:$PATH" GH_REPO=o/r AICREW_BACKEND_DIR="$LM/backend" bash "$root/scripts/merge-pr.sh" 9 main >/dev/null 2>&1); rc=$?
 ok "merge-pr (#159): kuota habis tanpa --branch -> exit 1, origin tidak berubah" "$rc|$([ "$(LMo)" = "$b0" ] && echo sama)" '1|sama'
+# gerbang menolak BUKAN karena kuota (owner-hold) walau probe langsung menunjukkan kuota habis -> tidak ada jalur lokal (agen tak bisa memaksa jalur lokal dengan membakar kuota)
+mkdir -p "$LM.bin3"
+cat > "$LM.bin3/gh" <<'LMEOF3'
+#!/bin/sh
+case "$*" in
+  "api graphql -i"*) printf 'HTTP/2.0 403 Forbidden\r\nX-Ratelimit-Remaining: 0\r\nX-Ratelimit-Reset: 9999999999\r\n\r\n{}\n'; exit 1 ;;
+  "api rate_limit --jq .resources.core.remaining") echo 0; exit 0 ;;
+  "api rate_limit --jq .resources.core.reset") echo 9999999999; exit 0 ;;
+esac
+exec "$PMB_GH" "$@"
+LMEOF3
+chmod +x "$LM.bin3/gh"
+a40x="$(printf 'a%.0s' $(seq 1 40))"
+LMmk; b0="$(LMo)"; mout="$(cd "$LM/w" && env PMB_GH="$tmp/pmb/gh" BASE=main BODY="Closes #1" HEAD="$a40x" ISSL=owner-hold PATH="$LM.bin3:$tmp/pmb:$PATH" GH_REPO=o/r AICREW_BACKEND_DIR="$LM/backend" bash "$root/scripts/merge-pr.sh" 9 main --branch issue-5 2>&1)"; rc=$?
+ok "merge-pr (#159): gerbang menolak karena owner-hold (bukan kuota) walau kuota 0 -> tanpa jalur lokal, exit 1, origin tidak berubah" "$rc|$([ "$(LMo)" = "$b0" ] && echo sama)|$(grep -c 'jalur merge lokal' <<<"$mout")" '1|sama|0'
 # gerbang lolos (tingkat 1-2) -> gh pr merge dengan --merge dan --match-head-commit (sha 40 heks dari keluaran gerbang)
 mkdir -p "$LM.bin2"; : > "$LM.bin2/log"
 cat > "$LM.bin2/gh" <<'LMEOF2'
@@ -3382,6 +3400,8 @@ env LMLOG="$LM.bin2/log" PMB_GH="$tmp/pmb/gh" BASE=main BODY="Closes #1" HEAD="$
 ok "merge-pr (#159): gerbang lolos -> 'gh pr merge 9 --merge --match-head-commit <sha 40 heks>'" "$(cat "$LM.bin2/log")" "pr merge 9 --merge --match-head-commit $a40"
 # cache daftar: hasil GraphQL ditulis ke cache (status bertahan) dan dibaca ghx_cached_issue; umur dibatasi
 GQreset; GQR ghx_issues open - 5 number,labels >/dev/null 2>&1
-ok "ghx (#159): hasil GraphQL ditulis ke cache daftar; ghx_cached_issue membacanya, basi -> exit 1" "$([ -s "$GQ/backend/cache/lst-issues-open--.json" ] && echo ada)|$(GQR ghx_cached_issue 1 | jq -r .number)|$(touch -t 202001010000 "$GQ/backend/cache/lst-issues-open--.json"; GQR ghx_cached_issue 1 >/dev/null; echo $?)" 'ada|1|1'
+ok "ghx (#159): hasil GraphQL ditulis ke cache daftar (berkas ada dan memuat isu 1)" "$(ls "$GQ/backend/cache"/lst-issues-open--*.json >/dev/null 2>&1 && echo ada)|$(jq -r '.[0].number' "$GQ/backend/cache"/lst-issues-open--*.json | head -1)" 'ada|1'
+echo '[{"number":1,"labels":[{"name":"risk:L1"}],"body":"b"}]' > "$GQ/backend/cache/lst-issues-open--9.json"
+ok "ghx_cached_issue (#159): catatan segar dengan label+body dibaca; basi -> exit 1" "$(GQR ghx_cached_issue 1 | jq -r '.labels[0].name')|$(touch -t 202001010000 "$GQ/backend/cache"/lst-issues-*.json; GQR ghx_cached_issue 1 >/dev/null; echo $?)" 'risk:L1|1'
 
 [ "$fails" = 0 ] && echo "SEMUA LULUS" || { echo "$fails GAGAL"; exit 1; }

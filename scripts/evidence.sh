@@ -8,7 +8,7 @@ set -u
 here="$(cd "$(dirname "$0")" && pwd)"
 source "$here/lib/msg.sh"
 [ "${1:-}" = run ] && dst="${2:-}" && head="${3:-}" || { echo "usage: evidence.sh run <dst-branch> <head-sha>" >&2; exit 64; }
-[[ "$dst" =~ ^[A-Za-z0-9._/-]+$ ]] && [[ "$head" =~ ^[0-9a-f]{7,40}$ ]] || { echo "$(msg evidence.bad_args)" >&2; exit 64; }
+[[ "$dst" =~ ^[A-Za-z0-9._][A-Za-z0-9._/-]*$ ]] && [[ "$head" =~ ^[0-9a-f]{7,40}$ ]] || { echo "$(msg evidence.bad_args)" >&2; exit 64; }
 g="$(git rev-parse --git-common-dir 2>/dev/null)" && root="$(cd "$g/.." && pwd)" || { echo "$(msg evidence.no_repo)" >&2; exit 2; }
 git fetch -q origin "$dst" 2>/dev/null || { echo "$(msg evidence.fetch_failed "$dst")" >&2; exit 2; }
 git cat-file -e "$head^{commit}" 2>/dev/null || { echo "$(msg evidence.no_head "$head")" >&2; exit 2; }
@@ -25,7 +25,8 @@ if ! git -C "$wt" -c user.name=aicrew -c user.email=aicrew@localhost merge -q --
 fi
 msha="$(git -C "$wt" rev-parse HEAD)"
 started="$(date +%s)"; rc=0
-( cd "$wt" && AICREW_EVIDENCE=1 bash -c "$cmd" ) >"$log" 2>&1 || rc=$?
+# tes menjalankan kode PR yang belum ditinjau: token dan agen SSH tidak diteruskan (credential di ~/.config/gh tetap terjangkau; ini pagar kecelakaan, bukan sandbox)
+( cd "$wt" && env -u GH_TOKEN -u GITHUB_TOKEN -u GH_ENTERPRISE_TOKEN -u SSH_AUTH_SOCK -u GIT_ASKPASS AICREW_EVIDENCE=1 bash -c "$cmd" ) >"$log" 2>&1 || rc=$?
 finished="$(date +%s)"
 ed="$root/.aicrew/evidence"; mkdir -p "$ed" 2>/dev/null
 jq -nc --arg head "$head" --arg merge "$msha" --arg base "$base" --arg dst "$dst" --arg cmd "$cmd" --argjson rc "$rc" --arg out "$(shasum < "$log" | cut -d' ' -f1)" \

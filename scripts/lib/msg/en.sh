@@ -145,6 +145,11 @@ msg_en() {
     mergepr.no_sha) printf 'the gate passed but no head sha could be read from its output' ;;
     mergepr.need_branch) printf 'GitHub quota is exhausted; the local path needs --branch issue-<n>' ;;
     mergepr.local_path) printf 'GitHub quota (GraphQL and REST) is exhausted: using the local merge path (L0/L1 only, fail-closed)' ;;
+    local.mode_forbidden) printf 'Quota mode '\''%s'\'' forbids the local merge path (only auto or local allow it); wait for the GitHub quota reset' "$@" ;;
+    local.pr_unknown) printf 'PR #%s is not in a fresh local PR cache (10 minutes); its labels and head cannot be verified (waiting)' "$@" ;;
+    local.pr_mismatch) printf 'PR #%s is not an open, non-draft, same-repository PR whose head is the current tip of %s (waiting)' "$@" ;;
+    local.odd_filename) printf 'a changed file name needs quoting (unusual characters); it needs the GitHub gate (waiting)' ;;
+    local.test_config) printf 'test/build/CI configuration changed (%s); it needs the GitHub gate (waiting)' "$@" ;;
     autopilot.quota_wait) printf 'round %s: GitHub quota exhausted (GraphQL and REST); waiting %s s for reset, no iteration used' "$1" "$2" ;;
     autopilot.gh_down_stop) printf 'autopilot: gh unreadable 5 times in a row; stopping (not an issue state), check network and gh auth' ;;
     autopilot.all_done) printf 'autopilot: all issues done (round %s)' "$@" ;;
