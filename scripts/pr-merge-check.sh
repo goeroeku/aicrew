@@ -13,10 +13,12 @@ source "$(dirname "$0")/ghx.sh"  # ghx_repo, ghx_gql, ghx_explain_limit; semua b
 source "$(dirname "$0")/lib/msg.sh"
 # gh >= 2.10x mencetak blok "hint: ... gh event listen" di stderr pada `gh api .../pulls/N`; buang blok itu supaya vonis gerbang tidak tenggelam (#161). Galat lain tetap utuh.
 gh() { local ef rc=0; ef="$(mktemp "${TMPDIR:-/tmp}/pmc.err.XXXXXX")"; command gh "$@" 2>"$ef" || rc=$?
+  # merge-pr.sh (#159 tahap 3): catat apakah panggilan gh TERAKHIR gagal karena batas kuota; fail() memakainya. Tanpa AICREW_GATE_QUOTA_FILE tidak ada efek.
+  if [ -n "${AICREW_GATE_QUOTA_FILE:-}" ]; then if [ "$rc" != 0 ] && grep -qiE 'rate limit|RATE_LIMIT|graphql_rate_limit|unknown owner type' "$ef"; then echo limit > "$AICREW_GATE_QUOTA_FILE.last"; else echo ok > "$AICREW_GATE_QUOTA_FILE.last"; fi; fi
   awk '/^hint: if you need to wait for this pull request/{skip=1;next} skip&&/^[ \t]/{next} {skip=0;print}' "$ef" >&2; rm -f "$ef"; return "$rc"; }
 export -f gh   # skrip bash anak (workflow.sh, baseline-scan, cve-check) memanggil gh juga; fungsi yang diekspor ikut menyaring hint-nya
 pr="${1:?pr}"; dst="${2:?cabang-tujuan}"
-fail() { echo "GAGAL: $*"; ghx_explain_limit; ghx_explain_rest_limit; exit 1; }  # fail-closed; bila penyebabnya batas GraphQL, jelaskan dan beri jam reset
+fail() { if [ -n "${AICREW_GATE_QUOTA_FILE:-}" ] && [ "$(cat "$AICREW_GATE_QUOTA_FILE.last" 2>/dev/null)" = limit ]; then echo limit > "$AICREW_GATE_QUOTA_FILE"; fi; echo "GAGAL: $*"; ghx_explain_limit; ghx_explain_rest_limit; exit 1; }  # fail-closed; bila penyebabnya batas GraphQL, jelaskan dan beri jam reset
 cr="$(ghx_repo)" && [ -n "$cr" ] || fail "$(msg gate.repo_unknown)"
 prj="$(gh api "repos/$cr/pulls/$pr")" && jq -e 'type=="object"' <<<"$prj" >/dev/null 2>&1 || fail "$(msg gate.pr_unreadable "$pr")"
 if [ "${3:-}" = "--after" ]; then

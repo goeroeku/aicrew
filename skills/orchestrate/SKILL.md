@@ -94,6 +94,7 @@ still remain → report the blockers and stop.
    `needs-perf` issues → `aicrew-perf` after `aicrew-qa`. Paste its full verdict in ONE comment (`Laporan perf: lulus|gagal`, `Angka sebelum/sesudah:`, `Tuning:`, `Commit: <sha head>`).
    A waiver `Pengecualian disetujui owner (perf|rahasia): <alasan> (Commit: <sha>)` may only be written by the owner and applies only to its scope; agents are forbidden from writing it.
    ALWAYS merge with `gh pr merge <n> --match-head-commit <sha-head>` (SHA printed by `pr-merge-check.sh`), so a follow-up push after the check cannot get merged without a report.
+   Prefer the single entry point `bash ${CLAUDE_PLUGIN_ROOT}/scripts/merge-pr.sh <n> <cabang-tujuan> --branch issue-<n>`: it runs the gate and the same `gh pr merge --match-head-commit`; only when a live probe proves both GitHub API limits (GraphQL and REST) are exhausted does it use the local path (`local-merge.sh`: L0/L1 only, runs `Test command:` itself on the merge result, waits for anything that needs GitHub proof). Exit ≠ 0 = do not merge; report it as-is.
 6. Passes → `budget.sh reset <n>`, open PR/MR, post the evidence comment (format in `WORKFLOW.md`), label In Review.
    PR body: one keyword per issue, one per line (`Closes #4` ⏎ `Closes #5`). `Closes #4, #5` only closes #4.
    Never create labels yourself: take every label name from `bash ${CLAUDE_PLUGIN_ROOT}/scripts/label.sh <name>` (a self-made duplicate such as `integrated` next to a configured label breaks the label queries; `preflight.sh` warns about it).
