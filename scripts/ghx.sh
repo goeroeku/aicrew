@@ -148,11 +148,33 @@ ghx_owner_base() { case "$(gh api "users/$1" -q .type)" in Organization) echo "o
 # --- operasi issue. Jalur GraphQL = panggilan gh yang sama persis seperti sebelum ada pustaka ini; batas -> REST sekali.
 # Catatan set -e: jangan tulis `ghx_gql ...; rc=$?` (kode 75 menghentikan skrip); pakai `|| rc=$?`.
 
+# cache daftar issue (hanya status bertahan): hasil GraphQL maupun REST ditulis ke .aicrew/backend/cache/lst-issues-<status>-<label>.json; gerbang lokal membacanya
+# (ghx_cached_issue, umur dibatasi) saat kuota habis. Berkas ini dapat ditulis agen (batas yang sama dengan bukti lokal): umur maksimum 10 menit mengecilkan risikonya.
+_ghx_cache_list() {   # <kunci> <json>
+  ghx_persist || return 0; local d k t; d="$(_ghx_dir)" || return 0; k="$(printf '%s' "$1" | tr -c 'A-Za-z0-9._-' '_')"; t="$d/cache/lst-$k.json.tmp.$$"
+  printf '%s\n' "$2" > "$t" 2>/dev/null && mv "$t" "$d/cache/lst-$k.json" || rm -f "$t"; return 0
+}
+# ghx_cached_issue <n> [umur-maks-detik=600]: catatan issue {number,labels,body,...} dari cache segar; exit 1 bila tak ada atau basi
+ghx_cached_issue() {
+  ghx_persist || return 1; local d f r mins; d="$(_ghx_dir)" || return 1; mins=$(( ${2:-600} / 60 )); [ "$mins" -ge 1 ] || mins=1
+  while IFS= read -r f; do
+    r="$(jq -c --argjson n "$1" '[.[]?|select(.number==$n)]|.[0] // empty' "$f" 2>/dev/null)"
+    [ -z "$r" ] || { printf '%s\n' "$r"; return 0; }
+  done < <(find "$d/cache" -maxdepth 1 -name 'lst-issues-*.json' -mmin "-$mins" 2>/dev/null)
+  return 1
+}
+
 # ghx_issues <open|closed|all> <label|-> <batas> <json-fields>  -> larik JSON {number,title,body,labels,state(HURUF BESAR)} bila REST
 ghx_issues() {
   local s="$1" l="$2" n="$3" f="$4" rc=0 repo page=1 acc='[]' pg q a=(--state "$1")
   [ "$l" = - ] || a+=(--label "$l"); a+=(--limit "$n" --json "$f")
-  ghx_gql gh issue list "${a[@]}" || rc=$?; [ "$rc" = 75 ] || return "$rc"
+  if ghx_persist; then   # status bertahan: tangkap hasil agar dapat disimpan ke cache daftar (dipakai gerbang lokal)
+    local gout; gout="$(ghx_gql gh issue list "${a[@]}")" || rc=$?
+    if [ "$rc" = 0 ]; then _ghx_cache_list "issues-$s-$l" "$gout"; printf '%s\n' "$gout"; return 0; fi
+    [ "$rc" = 75 ] || { [ -z "$gout" ] || printf '%s\n' "$gout"; return "$rc"; }
+  else
+    ghx_gql gh issue list "${a[@]}" || rc=$?; [ "$rc" = 75 ] || return "$rc"
+  fi
   repo="$(ghx_repo)" || return 1
   while :; do   # REST per halaman 100; entri bergaris pull_request dibuang; berhenti saat batas terkumpul
     q="repos/$repo/issues?state=$s&per_page=100&page=$page"; [ "$l" = - ] || q="$q&labels=$l"
@@ -161,7 +183,8 @@ ghx_issues() {
     [ "$(jq length <<<"$pg")" -ge 100 ] && [ "$(jq length <<<"$acc")" -lt "$n" ] || break
     page=$((page+1))
   done
-  jq -c --argjson n "$n" '.[:$n]|map({number,title,body:(.body // ""),labels:(.labels // []),state:(.state|ascii_upcase)})' <<<"$acc"
+  acc="$(jq -c --argjson n "$n" '.[:$n]|map({number,title,body:(.body // ""),labels:(.labels // []),state:(.state|ascii_upcase)})' <<<"$acc")" || return 1
+  _ghx_cache_list "issues-$s-$l" "$acc"; printf '%s\n' "$acc"
 }
 
 # ghx_prs <open|closed|all> <batas> <json-fields>  -> larik JSON bentuk `gh pr list`; REST: number,title,state(OPEN|MERGED|CLOSED),mergedAt,headRefOid,headRefName,isDraft,isCrossRepository
