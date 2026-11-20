@@ -15,8 +15,8 @@ case "$mode" in
     files="$(bash "$here/scheduled-workflow.sh" "$pr")" || cant "$(msg awaitrel.pr_files_unreadable "$pr")"
     [ -n "$files" ] || { echo "$(msg awaitrel.no_sched_workflow "$pr")"; exit 0; }
     body="$marker"$'\n'"$(msg awaitrel.comment_intro "$pr")"$'\n'"$(sed 's/^/- /' <<<"$files")"
-    gh api -X POST "repos/$repo/issues/$issue/comments" -f body="$body" >/dev/null || cant "$(msg awaitrel.comment_write_failed)"
-    gh api -X POST "repos/$repo/issues/$issue/labels" -f "labels[]=$(bash "$here/label.sh" waiting)" >/dev/null || cant "$(msg awaitrel.label_apply_failed)"
+    ghx_rest_write comment n="$issue" body="$body" -- gh api -X POST "repos/$repo/issues/$issue/comments" -f body="$body" || cant "$(msg awaitrel.comment_write_failed)"
+    wl="$(bash "$here/label.sh" waiting)"; ghx_rest_write label_add n="$issue" label="$wl" -- gh api -X POST "repos/$repo/issues/$issue/labels" -f "labels[]=$wl" || cant "$(msg awaitrel.label_apply_failed)"
     echo "$(msg awaitrel.marked "$issue")" ;;
   --check|--cek)
     cj="$(gh api "repos/$repo/issues/$issue/comments" --paginate)" || cant "$(msg awaitrel.comments_unreadable "$issue")"
