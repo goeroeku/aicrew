@@ -11,10 +11,12 @@
 set -u
 act() { printf '%s\t%s\t%s\t%s\n' "$1" "$2" "$3" "$4"; }   # alias-usang: argumen ke-4 adalah nama lama aksi
 source "$(dirname "$0")/ghx.sh"
-source "$(dirname "$0")/lib/msg.sh"
+source "$(dirname "$0")/lib/msg.sh"; source "$(dirname "$0")/ghx.sh"
 # GraphQL (gh issue list / gh pr list) habis: jalur REST (gh api) dengan bentuk data sama; gagal keduanya = galat, bukan "tidak ada issue" (#113)
 rest=0; pj="[]"; readfail=""
 resume_fail() { readfail=1; [ -t 2 ] || [ -n "${AICREW_VERBOSE:-}" ] && echo "resume: $1" >&2; ij="[]"; }   # sem: bisu bila stderr bukan terminal (keluaran TSV dibaca mesin), kecuali AICREW_VERBOSE
+if ghx_local; then ij="$(ghx_issues open - 200 x)"; pj="$(ghx_prs all 200 x)"; rest=1   # Quota mode: local: isu dan PR dari store/cabang
+else
 ij="$(gh issue list --state open --limit 200 --json number,labels 2>/dev/null)" || {
   repo="$(ghx_repo 2>/dev/null)"; [ -n "$repo" ] || resume_fail "$(msg resume.issues_repo_unknown)"
   if [ -z "$readfail" ]; then
@@ -24,6 +26,7 @@ ij="$(gh issue list --state open --limit 200 --json number,labels 2>/dev/null)" 
   [ -n "$readfail" ] || { pj="$(jq -s . <<<"$raw")"; rest=1; }
   fi
 }
+fi
 for n in $(jq -r '.[] | select(.labels|map(.name)|((index("in-progress") or index("in-review")) and (index("epic")|not))) | .number' <<<"$ij"); do
   pr=-; st=-
   if [ "$rest" = 1 ]; then   # OPEN diutamakan atas MERGED, sama dengan jalur GraphQL (#78)
@@ -43,7 +46,7 @@ for n in $(jq -r '.[] | select(.labels|map(.name)|((index("in-progress") or inde
 done
 # issue yang menunggu rilis ke cabang bawaan (REST; PR dikecualikan)
 source "$(dirname "$0")/ghx.sh"
-if repo="$(ghx_repo 2>/dev/null)" && [ -n "$repo" ]; then
+if ! ghx_local && repo="$(ghx_repo 2>/dev/null)" && [ -n "$repo" ]; then
   for wl in $(bash "$(dirname "$0")/label.sh" waiting --all); do
     gh api "repos/$repo/issues?state=open&labels=$wl&per_page=100" 2>/dev/null \
       | jq -r '.[]|select(.pull_request==null)|"\(.number)\tcheck-release\tmenunggu rilis ke cabang bawaan\tperiksa-rilis"' 2>/dev/null || true   # alias-usang

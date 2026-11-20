@@ -3525,4 +3525,35 @@ ok "owner-local.sh (#159): approve tanpa TTY -> exit 3 dan tidak ada log persetu
 ok "autopilot-permissions (#159): agen dilarang approve, membaca kunci pemilik, dan menulis owner.log" "$(grep -c 'owner-local.sh \*approve\*\|~/.config/aicrew\|owner.log' "$root/templates/autopilot-permissions.json")" 5
 ok "owner-local.sh (#159): status dan list: sah untuk sha kepala sesudah ol_record" "$(SMok; SMR bash "$root/scripts/owner-local.sh" status 1 >/dev/null; echo $?)|$(SMR bash "$root/scripts/owner-local.sh" list | awk -F'\t' '{print $5}')" '0|sah'
 
+# 3w. mode lokal penuh, tahap 4C (#159): skrip yang punya padanan lokal, penanda skrip khusus GitHub, teks skill/README
+SMmk
+rcs=""; for sc in board board-init epic-link release-report release-notes cve-audit scheduled-workflow awaiting-release; do SMR bash "$root/scripts/$sc.sh" x y z >/dev/null 2>&1; rcs="$rcs$?"; done
+ok "mode lokal (#159): skrip khusus GitHub (board, board-init, epic-link, release-report, release-notes, cve-audit, scheduled-workflow, awaiting-release) keluar 2" "$rcs" 22222222
+SMR bash "$root/scripts/board.sh" x y z 2>&1 | grep -q 'Quota mode: local'; ok "mode lokal (#159): pesan skrip khusus GitHub menyebut Quota mode: local" $? 0
+# integrated.sh: belum merged -> 1; sesudah merge lokal -> 0 dan label integrated dipasang, in-progress dilepas
+SMR bash "$root/scripts/issue.sh" label 1 --add in-progress >/dev/null; SMR bash "$root/scripts/integrated.sh" 1 1 >/dev/null 2>&1; i1=$?
+# resume.sh: PR terbuka -> continue-pr; isu in-progress tanpa cabang -> requeue
+SMR bash "$root/scripts/issue.sh" create --title "Tanpa cabang" --label in-progress >/dev/null
+rs="$(SMR bash "$root/scripts/resume.sh" 2>/dev/null | awk -F'\t' '{print $1":"$2}' | sort | paste -sd, -)"
+ok "resume.sh (#159): mode lokal: PR terbuka -> continue-pr, isu tanpa cabang -> requeue" "$rs" '1:continue-pr,2:requeue'
+# owner-actions.sh: needs-principal terdaftar, tanpa gh
+SMR bash "$root/scripts/issue.sh" label 2 --add needs-principal >/dev/null; oa="$(SMR bash "$root/scripts/owner-actions.sh" "$SM/.aicrew" 2>&1)"
+ok "owner-actions.sh (#159): mode lokal: isu needs-principal masuk ringkasan, exit 0" "$?|$(grep -c '#2' "$SM/.aicrew/owner-actions.md")" '0|1'
+# blocked-note: komentar sekali (idempoten); codex-prompt dari store; cleanup dilewati; preflight lokal
+SMR bash "$root/scripts/blocked-note.sh" 1 "go test ./..." >/dev/null 2>&1; SMR bash "$root/scripts/blocked-note.sh" 1 "go test ./..." >/dev/null 2>&1
+ok "blocked-note.sh (#159): mode lokal: komentar 'blocked-by-permission:' sekali saja (idempoten)" "$(SMR bash "$root/scripts/issue.sh" view 1 | jq -r '[.comments[]|select(.body|startswith("blocked-by-permission:"))]|length')" 1
+SMR env AICREW_LOCAL_AUTHOR=owner bash "$root/scripts/issue.sh" comment 1 --body "catatan pemilik" >/dev/null; SMR env AICREW_LOCAL_AUTHOR=agent bash "$root/scripts/issue.sh" comment 1 --body "catatan agen" >/dev/null
+cp_out="$(SMR bash "$root/scripts/codex-prompt.sh" 1 2>&1)"
+ok "codex-prompt.sh (#159): mode lokal: judul, badan, dan hanya komentar pemilik dari store" "$(grep -c 'Feature' <<<"$cp_out")|$(grep -c 'catatan pemilik' <<<"$cp_out")|$(grep -c 'catatan agen' <<<"$cp_out")" '1|1|0'
+cl="$(SMR bash "$root/scripts/cleanup.sh" 2>&1)"; ok "cleanup.sh (#159): mode lokal dilewati dengan pesan, exit 0" "$?|$(grep -c 'Quota mode: local' <<<"$cl")" '0|1'
+pf="$(SMR bash "$root/scripts/preflight.sh" 2>&1)"
+ok "preflight.sh (#159): mode lokal memeriksa openssl, Test command, dan mode ter-commit (tanpa pemeriksaan gh)" "$(grep -c 'Quota mode: local (tanpa GitHub' <<<"$pf")|$(grep -c 'Test command: ada' <<<"$pf")|$(grep -c 'tercatat di WORKFLOW.md' <<<"$pf")|$(grep -c 'gh login\|gh belum login\|gh tidak terpasang' <<<"$pf")" '1|1|1|0'
+# merge lokal lalu integrated.sh -> 0, label integrated, in-progress lepas
+SMR bash "$root/scripts/merge-pr.sh" 1 main --branch issue-1 >/dev/null 2>&1; m1=$?; SMR bash "$root/scripts/integrated.sh" 1 1 >/dev/null 2>&1; i2=$?
+ok "integrated.sh (#159): mode lokal: belum merged -> 1; sesudah merge lokal -> 0, label integrated dipasang dan in-progress dilepas" "$i1|$m1|$i2|$(SMR bash "$root/scripts/issue.sh" view 1 | jq -r '[.labels[].name]|(index("integrated")!=null)|tostring')|$(SMR bash "$root/scripts/issue.sh" view 1 | jq -r '[.labels[].name]|(index("in-progress")==null)|tostring')" '1|0|0|true|true'
+# teks: kickoff/breakdown/orchestrate/agen/template/README
+t1=0; for f in skills/kickoff/SKILL.md skills/breakdown/SKILL.md skills/orchestrate/SKILL.md agents/senior-coder.md agents/qa.md README.md; do grep -q 'Quota mode: local' "$root/$f" || t1=$((t1+1)); done
+ok "teks (#159 4C): kickoff, breakdown, orchestrate, senior-coder, qa, README menjelaskan Quota mode: local" "$t1" 0
+ok "teks (#159 4C): template WORKFLOW memuat 'auto | github | local'; orchestrate menyebut merge-pr.sh dan owner-local.sh approve; kickoff meminta Test command" "$(grep -c 'auto | github | local' "$root/templates/WORKFLOW.md")|$(grep -c 'owner-local.sh approve' "$root/skills/orchestrate/SKILL.md")|$(grep -c 'Test command:' "$root/skills/kickoff/SKILL.md")" '1|1|1'
+
 [ "$fails" = 0 ] && echo "SEMUA LULUS" || { echo "$fails GAGAL"; exit 1; }

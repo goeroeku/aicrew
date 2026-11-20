@@ -74,3 +74,6 @@ Leads read journeys, agents work on small issues. The hierarchy is: Journey (epi
 Issue count, per wave, those with `needs-principal`, and assumptions made. Max 12 lines.
 End with a suggestion: run `/aicrew:orchestrate` in a **new session** (all context is already in files),
 so the discussion context is not re-read on every execution call.
+
+## Quota mode: local
+When `docs/WORKFLOW.md` says `Quota mode: local`, create the issues with `bash ${CLAUDE_PLUGIN_ROOT}/scripts/issue.sh create --title <title> --body-file <file> --label risk:L1 [--label <role label>] [--parent <n>]` (prints the issue number) instead of `gh issue create` or the API; labels, comments and closing go through `issue.sh label|comment|close`. Blocking relations and the `Expected to touch` lines stay in the issue body as usual; an epic is an issue labelled `epic` with a checklist. Do not call `epic-link.sh` or the board scripts in this mode.

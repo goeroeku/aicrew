@@ -3,6 +3,7 @@
 # Exit 1 bila backend yang diminta tidak siap (tak terpasang / belum login / bukan repo git).
 backend="${1:-}"; rc=0
 source "$(dirname "$0")/ghx.sh"
+ghx_local && [ -z "$backend" -o "$backend" = github ] && backend=local   # Quota mode: local: tanpa pemeriksaan gh/remote
 have() { command -v "$1" >/dev/null 2>&1; }
 say() { printf '%-6s %s\n' "$1" "$2"; }
 
@@ -86,6 +87,12 @@ case "$backend" in
     fi
     gh auth status 2>&1 | grep -qE "Token scopes:.*'project'" && say ok "gh scope project (kanban)" \
       || say info "gh tanpa scope 'project' (hanya untuk sinkron kanban): ! gh auth refresh -h github.com -s project -c" ;;
+  local)
+    say ok "Quota mode: local (tanpa GitHub; isu di .aicrew/issues)"
+    have openssl && say ok "openssl (persetujuan pemilik lokal)" || { say GAGAL "openssl tidak ada: owner-local.sh tidak dapat menandatangani persetujuan"; rc=1; }
+    root="$(cd "$(git rev-parse --git-common-dir)/.." 2>/dev/null && pwd)"
+    git show "HEAD:docs/WORKFLOW.md" 2>/dev/null | grep -qE '^[- ]*Test command: *[^ {]' && say ok "Test command: ada (dibutuhkan merge lokal)" || say AWAS "docs/WORKFLOW.md (ter-commit) tanpa 'Test command:': merge lokal menolak sampai diisi"
+    git show "HEAD:docs/WORKFLOW.md" 2>/dev/null | grep -qE '^[- ]*Quota mode: *local' && say ok "Quota mode: local tercatat di WORKFLOW.md ter-commit" || say AWAS "Quota mode: local belum ter-commit di docs/WORKFLOW.md (merge-pr.sh memakai jalur lokal hanya dari yang ter-commit)" ;;
   gitlab)
     if ! have glab; then say GAGAL "glab tidak terpasang"; rc=1
     elif glab auth status >/dev/null 2>&1; then say ok "glab login"

@@ -5,7 +5,7 @@ Created by `aicrew:kickoff`. Project-specific decisions; overrides aicrew defaul
 ## Owner decisions
 - Profile: {{light | standard | full}}
 - Backend: {{github | gitlab}} — repo: {{owner/name}}
-- Quota mode: {{auto | github}}. Default: auto. `auto` = the autopilot works through a GitHub quota outage (queued writes are synced after the reset; L0/L1 PRs can merge locally with `merge-pr.sh`); `github` = never use the local path, wait for the reset.
+- Quota mode: {{auto | github | local}}. Default: auto. `auto` = the autopilot works through a GitHub quota outage (queued writes are synced after the reset; L0/L1 PRs can merge locally with `merge-pr.sh`); `github` = never use the local path, wait for the reset; `local` = no GitHub at all (issues in `.aicrew/issues`, branch `issue-<n>` is the PR, local fast-forward merges, owner approvals via `owner-local.sh`). Commit this file: the merge scripts read it from the committed branch.
 - Test command: {{command that runs the full test suite}}. Read from the target branch by the local merge path (`evidence.sh`); without it local merges wait for GitHub.
 - Active roles: {{list}}
 - PRD: {{docs/PRD.md}} — PRD status: {{approved | not yet}}

@@ -7,6 +7,7 @@
 # Exit: 0 SIAP, 1 BELUM SIAP, 64 argumen/cabang tidak diketahui.
 set -u
 here="$(cd "$(dirname "$0")" && pwd)"; source "$here/lib/msg.sh"; L_INT="$(bash "$here/label.sh" integrated --json)"; L_AUTO="$(bash "$here/label.sh" auto --json)"
+source "$here/ghx.sh"; ghx_require_github release-report.sh
 integ=""; testcmd=""; out=""; base=main; open_pr=0; dry=0; versi=""; wf=docs/WORKFLOW.md
 while [ $# -gt 0 ]; do case "$1" in
   --integ) integ="$2"; shift 2 ;; --test-cmd) testcmd="$2"; shift 2 ;; --out) out="$2"; shift 2 ;; --base) base="$2"; shift 2 ;;

@@ -5,6 +5,7 @@
 # "Ada" berarti berkas ada di cabang bawaan (bukan isinya sama). REST saja.
 set -u
 here="$(dirname "$0")"; source "$here/ghx.sh"; source "$here/lib/msg.sh"
+ghx_require_github awaiting-release.sh
 marker='<!-- aicrew-menunggu-rilis -->'
 mode="${1:-}"; issue="${2:?issue}"
 cant() { echo "menunggu-rilis: $*" >&2; exit 2; }

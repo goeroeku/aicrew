@@ -5,7 +5,8 @@
 # Berkas berstatus removed dilewati; renamed memakai nama barunya. REST saja.
 # Kode keluar: 0 (daftar boleh kosong), 2 bila daftar berkas atau isi workflow tak terbaca.
 set -u
-here="$(dirname "$0")"; source "$here/ghx.sh"
+here="$(dirname "$0")"; source "$here/ghx.sh"; source "$here/lib/msg.sh"
+ghx_require_github scheduled-workflow.sh
 pr="${1:?pr}"; head="${2:-}"
 repo="$(ghx_repo)" || exit 2
 fj="$(gh api "repos/$repo/pulls/$pr/files" --paginate)" || exit 2

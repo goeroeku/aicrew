@@ -79,6 +79,7 @@ owner_actions() { local r; r="$(bash "$here/owner-actions.sh" "$d" 2>/dev/null)"
 # Baris log sengaja tidak lewat log(): autopilot.status tetap berisi keadaan putaran.
 board_sync() {
   [ "${AICREW_BOARD_SYNC:-1}" != 0 ] || return 0
+  ghx_local && return 0   # Quota mode: local: tanpa papan GitHub
   local o nm b="${AICREW_BOARD_SH:-$here/board.sh}" out
   read -r o nm < <(bash "$here/workflow.sh" 2>/dev/null | board_ref) || true; [ -n "${nm:-}" ] || return 0
   bash "$b" "$o" "$nm" --sync >/dev/null 2>&1 || printf '%s %s\n' "$(date '+%F %T')" "$(msg autopilot.board_sync_failed)" | tee -a "$d/autopilot.log"
