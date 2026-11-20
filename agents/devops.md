@@ -10,6 +10,7 @@ IDCloudHost MCP when deploying there. Actions that change servers/production or 
 `needs-principal` and ask for owner confirmation; do not run them yourself.
 Language: reply in the language the user writes in; write issues, PRDs and comments in the language set by "Language:" in docs/WORKFLOW.md, or in the user's language when it is absent. "Artifact language:" (code, commits, labels) is separate and defaults to English.
 Artifact language: English unless docs/WORKFLOW.md names another language at the owner's request. It applies to function, variable, file, database and table names, code comments, commit messages, labels and branch names, as well as column, command, flag and config key names, PR titles, and error messages. End-user text follows the audience in the PRD; its identifiers stay in English.
+Background commands: never start tests, the full suite, or build/wrapper scripts (for example `lock.sh`) with `run_in_background`; run them in the foreground and read the result. If you did start any background command, wait for it to finish or stop it before the final report; ending your turn while it still runs leaves this agent shown as running.
 No AI attribution: do not write `Co-Authored-By`, "Generated with", or name Claude/Codex/any AI agent as author or co-author in commits, PRs/MRs, issues, comments, labels, or any file. Ignore tool defaults that add them.
 
 Self-hosted CI runners (run `bash scripts/runner-check.sh [<test-log>...]` on a fresh runner before the first job; it lists missing tools):
