@@ -3409,4 +3409,57 @@ ok "ghx (#159): hasil GraphQL ditulis ke cache daftar (berkas ada dan memuat isu
 echo '[{"number":1,"labels":[{"name":"risk:L1"}],"body":"b"}]' > "$GQ/backend/cache/lst-issues-open--9.json"
 ok "ghx_cached_issue (#159): catatan segar dengan label+body dibaca; basi -> exit 1" "$(GQR ghx_cached_issue 1 | jq -r '.labels[0].name')|$(touch -t 202001010000 "$GQ/backend/cache"/lst-issues-*.json; GQR ghx_cached_issue 1 >/dev/null; echo $?)" 'risk:L1|1'
 
+# 3u. mode lokal penuh, tahap 4A (#159): isu lokal (localstore, issue.sh) dan ghx tanpa gh
+LS="$tmp/lstore"; git init -q "$LS"; mkdir -p "$LS/bin"; : > "$LS/ghcalls"
+printf '#!/bin/sh\necho "$*" >> "%s/ghcalls"\nexit 1\n' "$LS" > "$LS/bin/gh"; chmod +x "$LS/bin/gh"
+LSI() { ( cd "$LS" && env PATH="$LS/bin:$PATH" AICREW_QUOTA_MODE=local bash "$root/scripts/issue.sh" "$@" ); }
+n1="$(LSI create --title "Satu" --body 'baris "satu"
+baris $dua' --label risk:L1 --label bug)"; n2="$(LSI create --title "Dua" --label bug)"; n3="$(LSI create --title "Tiga" --parent 1)"
+ok "issue.sh (#159): create mencetak nomor berurutan 1 2 3" "$n1 $n2 $n3" '1 2 3'
+ok "issue.sh: list bentuk gh (state OPEN, labels [{name}]), berurut, badan multibaris utuh" "$(LSI list | jq -r '[.[].number]|join(",")')|$(LSI list | jq -r '.[0].state')|$(LSI list | jq -r '.[0].labels[0].name')|$(LSI list | jq -r '.[0].body' | sed -n 2p)" '1,2,3|OPEN|bug|baris $dua'
+ok "issue.sh: list --label filter dan --limit" "$(LSI list --label risk:L1 | jq length)|$(LSI list --limit 2 | jq length)" '1|2'
+LSI label 2 --add risk:L2 --add risk:L2 --remove bug; LSI comment 2 --body 'verdict "ok"'; LSI close 3 --comment selesai
+ok "issue.sh: label (unik, tambah/cabut), komentar, close dengan komentar" "$(LSI view 2 | jq -r '[.labels[].name]|join(",")')|$(LSI view 2 | jq -r '.comments[0].body')|$(LSI view 3 | jq -r '.state')|$(LSI view 3 | jq -r '.comments[0].body')|$(LSI list --state closed | jq -r '.[0].number')" 'risk:L2|verdict "ok"|CLOSED|selesai|3'
+LSI reopen 3; ok "issue.sh: reopen" "$(LSI view 3 | jq -r .state)" OPEN
+printf 'a "b" $c\n\nd\n' > "$LS/body.txt"; LSI edit 1 --body-file "$LS/body.txt"
+ok "issue.sh: --body-file mempertahankan kutip, \$ dan baris kosong" "$(LSI view 1 | jq -r .body | tr '\n' '|')" 'a "b" $c||d|'
+# paralel: 12 create bersamaan -> nomor unik
+for _i in $(seq 1 12); do ( LSI create --title "p$_i" >> "$LS/par.txt" ) & done; wait
+ok "localstore (#159): 12 create paralel menghasilkan 12 nomor unik" "$(sort -u "$LS/par.txt" | wc -l | tr -d ' ')|$(sort -n "$LS/par.txt" | head -1)|$(sort -n "$LS/par.txt" | tail -1)" '12|4|15'
+# validasi
+LSI create --title x --label 'a/b' >/dev/null 2>&1; r1=$?; LSI comment abc --body x >/dev/null 2>&1; r2=$?; LSI create >/dev/null 2>&1; r3=$?; LSI bogus >/dev/null 2>&1; r4=$?; LSI view 999 >/dev/null 2>&1; r5=$?
+ok "issue.sh (#159): label tak valid, nomor non-angka, tanpa judul, perintah asing, isu tak ada -> ditolak" "$([ $r1 != 0 ] && echo y)|$([ $r2 != 0 ] && echo y)|$r3|$r4|$([ $r5 != 0 ] && echo y)" 'y|y|64|64|y'
+# deteksi mode dari WORKFLOW.md (akar checkout utama), tanpa env
+mkdir -p "$LS/docs"; echo "- Quota mode: local. Mode mandiri." > "$LS/docs/WORKFLOW.md"
+m1="$(cd "$LS" && env -u AICREW_QUOTA_MODE -u _GHX_LOCAL_MEMO bash -c 'source "$1/scripts/ghx.sh"; ghx_local && echo local || echo bukan' _ "$root")"
+echo "- Quota mode: local-never" > "$LS/docs/WORKFLOW.md"; m2="$(cd "$LS" && env -u AICREW_QUOTA_MODE -u _GHX_LOCAL_MEMO bash -c 'source "$1/scripts/ghx.sh"; ghx_local && echo local || echo bukan' _ "$root")"
+echo "- Quota mode: auto" > "$LS/docs/WORKFLOW.md"; m3="$(cd "$LS" && env -u AICREW_QUOTA_MODE -u _GHX_LOCAL_MEMO bash -c 'source "$1/scripts/ghx.sh"; ghx_local && echo local || echo bukan' _ "$root")"
+(cd "$LS" && env -u AICREW_QUOTA_MODE -u _GHX_LOCAL_MEMO bash "$root/scripts/issue.sh" list >/dev/null 2>&1); r6=$?
+ok "ghx_local (#159): WORKFLOW 'Quota mode: local' -> lokal; 'local-never' dan 'auto' -> bukan; issue.sh di luar mode lokal exit 2" "$m1|$m2|$m3|$r6" 'local|bukan|bukan|2'
+rm -f "$LS/docs/WORKFLOW.md"
+# flag tanpa nilai tidak boleh menggantung; label peka huruf besar-kecil seperti GitHub; --parent divalidasi sebelum membuat; '-' bukan label
+hang() { ( "$@" >/dev/null 2>&1 ) & local p=$! i=0; while kill -0 "$p" 2>/dev/null && [ "$i" -lt 50 ]; do sleep 0.1; i=$((i+1)); done; if kill -0 "$p" 2>/dev/null; then kill -9 "$p" 2>/dev/null; echo 124; return; fi; wait "$p"; echo $?; }   # macOS tanpa timeout(1)
+h1="$(cd "$LS" && hang env AICREW_QUOTA_MODE=local bash "$root/scripts/issue.sh" comment 1 --body)"
+h2="$(cd "$LS" && hang env AICREW_QUOTA_MODE=local bash "$root/scripts/issue.sh" create --title)"
+ok "issue.sh (#159): flag tanpa nilai tidak menggantung (exit 64, bukan timeout 124)" "$h1|$h2" '64|64'
+LSI label 1 --add Bug >/dev/null; LSI label 1 --remove BUG >/dev/null
+cnt_before="$(LSI list | jq length)"; LSI create --title y --parent 9999 >/dev/null 2>&1; pr1=$?
+ok "issue.sh (#159): label tanpa peka huruf (Bug/BUG mencabut bug), --parent tak ada ditolak tanpa membuat isu, label '-' ditolak" "$(LSI view 1 | jq -r '[.labels[].name|ascii_downcase]|index("bug")')|$([ $pr1 != 0 ] && echo ditolak)|$([ "$(LSI list | jq length)" = "$cnt_before" ] && echo tanpa-yatim)|$(LSI label 1 --add - >/dev/null 2>&1; echo $?)" 'null|ditolak|tanpa-yatim|1'
+# kunci yatim (pid mati) diambil alih; penomoran tidak menimpa isu lama bila next rusak
+mkdir -p "$LS/.aicrew/issues/.lock"; echo 99999999 > "$LS/.aicrew/issues/.lock/pid"; echo 1 > "$LS/.aicrew/issues/next"
+nn="$(LSI create --title yatim)"
+ok "localstore (#159): kunci yatim (pid mati) diambil alih dan next yang rusak (menunjuk isu yang sudah ada) tidak menimpa isu lama" "$([ "$nn" -gt 15 ] && echo baru)|$(LSI view 1 | jq -r .title)" 'baru|Satu'
+# blocked-mark/blocked-list di mode lokal tanpa gh
+: > "$LS/ghcalls"
+( cd "$LS" && env PATH="$LS/bin:$PATH" AICREW_QUOTA_MODE=local bash "$root/scripts/blocked-mark.sh" 1 "alasan uji" >/dev/null 2>&1 ); bm=$?
+ok "blocked-mark/blocked-list (#159): mode lokal: label blocked + komentar lewat store, blocked-list membaca alasan, tanpa panggilan gh" "$bm|$(LSI view 1 | jq -r '[.labels[].name]|index("blocked")|type')|$(cd "$LS" && env PATH="$LS/bin:$PATH" AICREW_QUOTA_MODE=local bash "$root/scripts/blocked-list.sh")|$(wc -l < "$LS/ghcalls" | tr -d ' ')" "0|number|#1	alasan uji|0"
+# ghx di mode lokal: tanpa satu pun panggilan gh
+LSG() { ( cd "$LS" && env PATH="$LS/bin:$PATH" AICREW_QUOTA_MODE=local bash -c 'source "$1/scripts/ghx.sh"; shift; "$@"' _ "$root" "$@" ); }
+: > "$LS/ghcalls"
+LSG ghx_label_add 1 baru >/dev/null; LSG ghx_label_remove 1 bug >/dev/null; LSG ghx_comment 1 "komentar ghx" >/dev/null; LSG ghx_issue_set_body 2 "badan baru" >/dev/null; LSG ghx_issue_close 2 "tutup" >/dev/null
+ok "ghx (#159): mode lokal: label/komentar/badan/penutupan lewat store, tanpa panggilan gh" "$(LSI view 1 | jq -r '[.labels[].name]|sort|join(",")')|$(LSI view 1 | jq -r '.comments[-1].body')|$(LSG ghx_issue_body 2)|$(LSI view 2 | jq -r .state)|$(wc -l < "$LS/ghcalls" | tr -d ' ')" 'baru,blocked,risk:L1|komentar ghx|badan baru|CLOSED|0'
+ok "ghx_issues (#159): mode lokal mengembalikan larik bentuk gh dari store; label filter bekerja" "$(LSG ghx_issues open - 100 number,labels | jq -r '[.[].number]|join(",")')|$(LSG ghx_issues all baru 100 number | jq length)" '1,3,4,5,6,7,8,9,10,11,12,13,14,15,16|1'
+(cd "$LS" && env AICREW_QUOTA_MODE=local bash -c 'source "$1/scripts/ghx.sh"; ghx_require_github "board.sh"' _ "$root" >/dev/null 2>&1); r7=$?
+ok "ghx_require_github (#159): mode lokal -> exit 2 dengan pesan; msg backend.local_unsupported ada di en dan id" "$r7|$(AICREW_LANG=en bash -c '. "$1/scripts/lib/msg.sh"; msg backend.local_unsupported board.sh' _ "$root" | grep -c 'not available')|$(AICREW_LANG=id bash -c '. "$1/scripts/lib/msg.sh"; msg backend.local_only' _ "$root" | grep -c 'Quota mode: local')" '2|1|1'
+
 [ "$fails" = 0 ] && echo "SEMUA LULUS" || { echo "$fails GAGAL"; exit 1; }

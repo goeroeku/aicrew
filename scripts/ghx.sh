@@ -17,6 +17,25 @@ ghx_in_rest() {
   [ "${GHX_REST:-0}" = 1 ] || [ -s "$GHX_STATE" ]
 }
 
+# --- mode lokal (#159 tahap 4): `Quota mode: local` di docs/WORKFLOW.md (akar checkout utama) atau AICREW_QUOTA_MODE=local -> isu, label, komentar, penutupan dan badan isu hidup di
+# .aicrew/issues (lib/localstore.sh), tanpa gh sama sekali. Skrip yang butuh GitHub keluar dengan backend.local_unsupported (ghx_require_github).
+. "$(dirname "${BASH_SOURCE[0]}")/lib/localstore.sh"
+ghx_local() {
+  [ "${AICREW_QUOTA_MODE:-}" = local ] && return 0
+  local g root v
+  if [ -z "${_GHX_LOCAL_MEMO:-}" ]; then
+    g="$(git rev-parse --git-common-dir 2>/dev/null)" && root="$(cd "$g/.." && pwd)" || root=""
+    v="$([ -z "$root" ] || sed -n 's/^[- ]*Quota mode: *//p' "$root/docs/WORKFLOW.md" 2>/dev/null | head -1 | sed -nE 's/^([A-Za-z]+)([[:space:].,;(]|$).*/\1/p' | tr 'A-Z' 'a-z')"
+    if [ "$v" = local ]; then _GHX_LOCAL_MEMO=1; else _GHX_LOCAL_MEMO=0; fi
+  fi
+  [ "$_GHX_LOCAL_MEMO" = 1 ]
+}
+ghx_local >/dev/null 2>&1 || true; export _GHX_LOCAL_MEMO   # `|| true`: skrip pemanggil boleh memakai set -e   # dihitung sekali saat di-source dan diwariskan ke skrip anak (perubahan WORKFLOW.md berlaku setelah autopilot dimulai ulang)
+ghx_require_github() {   # <nama-skrip>: keluar bila mode local (skrip yang tidak punya padanan lokal)
+  ghx_local || return 0
+  echo "$(msg backend.local_unsupported "$1" 2>/dev/null || echo "$1: not available in Quota mode: local")" >&2; exit 2
+}
+
 # --- jenjang bertahan (#159 tahap 1). Hanya aktif bila GHX_PERSIST=1 (autopilot); gerbang dan skrip lain tidak memakainya, jadi perilaku lama tidak berubah.
 # Status: satu berkas per kunci, <repo>/.aicrew/backend/{graphql,rest}.until berisi epoch kuota pulih; tulis atomik (mktemp + mv), tanpa baca-ubah-tulis, jadi dua penulis tidak saling menghapus.
 # Cache: .aicrew/backend/cache/<hash>: baris 1 = ETag, sisanya = isi; satu berkas = pasangan atomik. Nilai epoch dibatasi sekarang+3700 detik (jendela GitHub 1 jam) agar berkas rusak/dipalsukan tak bisa menunda tanpa batas.
@@ -186,6 +205,7 @@ ghx_cached_pr() {
 
 # ghx_issues <open|closed|all> <label|-> <batas> <json-fields>  -> larik JSON {number,title,body,labels,state(HURUF BESAR)} bila REST
 ghx_issues() {
+  ghx_local && { ls_list "$1" "$2" "$3"; return; }
   local s="$1" l="$2" n="$3" f="$4" rc=0 repo page=1 acc='[]' pg q a=(--state "$1")
   [ "$l" = - ] || a+=(--label "$l"); a+=(--limit "$n" --json "$f")
   if ghx_persist; then   # status bertahan: tangkap hasil agar dapat disimpan ke cache daftar (dipakai gerbang lokal)
@@ -266,10 +286,16 @@ ghx_rest_write() {
 }
 
 ghx_label_add() {   # <n> <label>: tambah label (GraphQL gh issue edit; REST bila batas; antre bila REST habis)
+  ghx_local && { ls_label_add "$1" "$2"; return; }
   local rc=0; ghx_gql gh issue edit "$1" --add-label "$2" >/dev/null || rc=$?; [ "$rc" = 75 ] || return "$rc"
   ghx_rest_write label_add n="$1" label="$2" -- gh api -X POST "repos/$(ghx_repo)/issues/$1/labels" -f "labels[]=$2"
 }
+ghx_label_remove() {   # <n> <label>: cabut label (REST; antre bila REST habis); label yang tak ada bukan galat di mode lokal
+  ghx_local && { ls_label_remove "$1" "$2"; return; }
+  ghx_rest_write label_remove n="$1" label="$2" -- gh api -X DELETE "repos/$(ghx_repo)/issues/$1/labels/$(jq -rn --arg l "$2" '$l|@uri')"
+}
 ghx_comment() {   # <n> <teks>: komentar di isu/PR (GraphQL gh issue comment; REST bila batas; antre bila REST habis)
+  ghx_local && { ls_comment "$1" "$2"; return; }
   local rc=0; ghx_gql gh issue comment "$1" --body "$2" >/dev/null || rc=$?; [ "$rc" = 75 ] || return "$rc"
   ghx_rest_write comment n="$1" body="$2" -- gh api -X POST "repos/$(ghx_repo)/issues/$1/comments" -f body="$2"
 }
@@ -277,16 +303,19 @@ _ghx_close_rest() { local r; r="$(ghx_repo)"; gh api -X POST "repos/$r/issues/$1
   && gh api -X PATCH "repos/$r/issues/$1" -f state=closed -f state_reason=completed >/dev/null; }
 
 ghx_issue_body() {   # <n> -> badan issue ("" bila kosong)
+  ghx_local && { ls_body "$1"; return; }
   local rc=0; ghx_gql gh issue view "$1" --json body -q .body || rc=$?; [ "$rc" = 75 ] || return "$rc"
   gh api "repos/$(ghx_repo)/issues/$1" | jq -r '.body // ""'
 }
 
 ghx_issue_set_body() {   # <n> <teks>; -f body= (bukan interpolasi) agar kutip, $ dan baris baru utuh
+  ghx_local && { ls_set_body "$1" "$2"; return; }
   local rc=0; ghx_gql gh issue edit "$1" --body "$2" >/dev/null || rc=$?; [ "$rc" = 75 ] || return "$rc"
   ghx_rest_write issue_body n="$1" body="$2" -- gh api -X PATCH "repos/$(ghx_repo)/issues/$1" -f body="$2"
 }
 
 ghx_issue_close() {   # <n> <komentar>
+  ghx_local && { ls_close "$1" "$2"; return; }
   local rc=0 r; ghx_gql gh issue close "$1" --comment "$2" >/dev/null || rc=$?; [ "$rc" = 75 ] || return "$rc"
   ghx_rest_write issue_close n="$1" comment="$2" -- _ghx_close_rest "$1" "$2"
 }

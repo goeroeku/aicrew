@@ -151,6 +151,8 @@ msg_id() {
     local.odd_filename) printf 'nama berkas yang berubah perlu dikutip (karakter tak lazim); butuh gerbang GitHub (menunggu)' ;;
     local.test_config) printf 'konfigurasi tes/build/CI berubah (%s); butuh gerbang GitHub (menunggu)' "$@" ;;
     local.default_unknown) printf 'remote tidak melaporkan cabang bawaannya; tujuan tak dapat diverifikasi (menunggu)' ;;
+    backend.local_unsupported) printf '%s: tidak tersedia pada Quota mode: local (butuh GitHub)' "$@" ;;
+    backend.local_only) printf 'issue.sh hanya untuk Quota mode: local (atur di docs/WORKFLOW.md)' ;;
     autopilot.quota_wait) printf 'putaran %s: kuota GitHub habis (GraphQL dan REST); menunggu %s detik sampai reset, iterasi tidak terpakai' "$1" "$2" ;;
     autopilot.gh_down_stop) printf 'autopilot: gh tidak terbaca 5 kali beruntun; berhenti (bukan keadaan issue), periksa jaringan dan login gh' ;;
     autopilot.all_done) printf 'autopilot: semua issue selesai (putaran %s)' "$@" ;;
