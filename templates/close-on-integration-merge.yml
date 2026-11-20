@@ -1,0 +1,28 @@
+# aicrew (#155): GitHub closes issues through "Closes #N" only when a PR merges into the DEFAULT branch. With an integration branch the finished issues stay open
+# and the board drifts. Copy this file to .github/workflows/ and set `branches:` to your integration branch (WORKFLOW.md "Integration branch:").
+# The PR body is UNTRUSTED input: it is passed through the environment only (PR_BODY), never interpolated into a shell command; only digits reach `gh`.
+# Issues that are pull requests, already closed, locked, or labelled epic / needs-principal / owner-hold are left alone (same refusals as scripts/issue-close.sh).
+name: close-issues-on-integration-merge
+on:
+  pull_request:
+    types: [closed]
+    branches: [integration]   # CHANGE ME: your integration branch
+permissions:
+  issues: write
+  pull-requests: read
+jobs:
+  close:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    steps:
+      - name: Close the issues named in the PR body
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          for n in $(printf '%s\n' "$PR_BODY" | grep -Eio '(close[sd]?|fix(e[sd])?|resolve[sd]?):? +#[0-9]+' | grep -Eo '[0-9]+' | sort -un); do
+            j="$(gh api "repos/$GH_REPO/issues/$n")" || continue
+            if jq -e 'has("pull_request") or .state == "closed" or (.locked // false) or ([.labels[]?.name | ascii_downcase] | any(. == "epic" or . == "needs-principal" or . == "owner-hold"))' <<<"$j" >/dev/null; then continue; fi
+            gh api -X PATCH "repos/$GH_REPO/issues/$n" -f state=closed -f state_reason=completed >/dev/null
+          done
