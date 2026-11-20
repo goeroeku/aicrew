@@ -3126,6 +3126,19 @@ cvv="v$(jq -r .version "$root/.claude-plugin/plugin.json")"
 for l in en id; do ok "checkver msg (#64): $l -> awalan mesin 'ok:' tetap literal" "$(cd "$root" && AICREW_LANG=$l bash scripts/check-version.sh "$cvv" 2>&1 | grep -c '^ok: ')" 1; done
 ok "checkver msg (#64): en versi tak cocok -> 'GAGAL: tag v0.0.0 != plugin.json version', id -> teks lama berbeda" "$(cd "$root" && AICREW_LANG=en bash scripts/check-version.sh v0.0.0 2>&1 | grep -c '^GAGAL: tag v0.0.0 != plugin.json version')|$(cd "$root" && AICREW_LANG=id bash scripts/check-version.sh v0.0.0 2>&1 | grep -c 'plugin.json version')" '1|0'
 
+# pr-merge-check (#161): hint 'gh event listen' dari gh (stderr) tidak boleh tampil; baris terakhir keluaran adalah vonis gerbang
+mkdir "$tmp/hintbin"; cat > "$tmp/hintbin/gh" <<'HINTEOF'
+#!/bin/sh
+printf 'hint: if you need to wait for this pull request to be reviewed, merged, or closed before continuing, use this instead of polling:\n    gh event listen --resource x --event y\n  - It prints the first event as a JSON line on stdout and exits.\n' >&2
+exec "$ORIGGH" "$@"
+HINTEOF
+chmod +x "$tmp/hintbin/gh"
+hout="$(ORIGGH="$tmp/pmb/gh" BASE=integrasi BODY="Closes #1" PATH="$tmp/hintbin:$PATH" bash "$root/scripts/pr-merge-check.sh" 9 integrasi 2>&1)"; hrc=$?
+ok "pr-merge (#161): tanpa baris 'hint:' / 'gh event listen' di keluaran gerbang (stdout+stderr)" "$(printf '%s\n' "$hout" | grep -c -E '^hint:|gh event listen|^  - It prints')" 0
+ok "pr-merge (#161): baris terakhir keluaran gerbang adalah vonis 'ok:' dan exit 0" "$(printf '%s\n' "$hout" | tail -1 | cut -c1-3)|$hrc" "ok:|0"
+hout="$(ORIGGH="$tmp/pmb/gh" BASE=main BODY="Closes #1" PATH="$tmp/hintbin:$PATH" bash "$root/scripts/pr-merge-check.sh" 9 integrasi 2>&1)"; hrc=$?
+ok "pr-merge (#161): gagal -> tanpa hint dan baris terakhir 'GAGAL:' dengan exit 1" "$(printf '%s\n' "$hout" | grep -c '^hint:')|$(printf '%s\n' "$hout" | tail -1 | cut -c1-6)|$hrc" "0|GAGAL:|1"
+
 # agen (#160): tidak boleh mengakhiri giliran dengan perintah latar yang masih jalan
 for f in agents/senior-coder.md agents/devops.md; do
   ok "agen (#160): $f melarang run_in_background untuk tes/skrip pembungkus" "$(grep -c 'Background commands: never start tests' "$f")" 1

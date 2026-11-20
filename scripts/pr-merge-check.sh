@@ -10,6 +10,10 @@ GHX_STATE=/dev/null  # gerbang tidak memakai mode cadangan: tanpa berkas status
 source "$(dirname "$0")/lib/grants.sh"  # izin sementara terstruktur (#61)
 source "$(dirname "$0")/ghx.sh"  # ghx_repo, ghx_gql, ghx_explain_limit; semua bacaan gerbang lewat REST, kecuali closingIssuesReferences (#113)
 source "$(dirname "$0")/lib/msg.sh"
+# gh >= 2.10x mencetak blok "hint: ... gh event listen" di stderr pada `gh api .../pulls/N`; buang blok itu supaya vonis gerbang tidak tenggelam (#161). Galat lain tetap utuh.
+gh() { local ef rc=0; ef="$(mktemp "${TMPDIR:-/tmp}/pmc.err.XXXXXX")"; command gh "$@" 2>"$ef" || rc=$?
+  awk '/^hint: if you need to wait for this pull request/{skip=1;next} skip&&/^[ \t]/{next} {skip=0;print}' "$ef" >&2; rm -f "$ef"; return "$rc"; }
+export -f gh   # skrip bash anak (workflow.sh, baseline-scan, cve-check) memanggil gh juga; fungsi yang diekspor ikut menyaring hint-nya
 pr="${1:?pr}"; dst="${2:?cabang-tujuan}"
 fail() { echo "GAGAL: $*"; ghx_explain_limit; ghx_explain_rest_limit; exit 1; }  # fail-closed; bila penyebabnya batas GraphQL, jelaskan dan beri jam reset
 cr="$(ghx_repo)" && [ -n "$cr" ] || fail "$(msg gate.repo_unknown)"
