@@ -12,26 +12,30 @@ export GHX_STATE
 # 0 bila teks galat adalah batas GraphQL ("unknown owner type" adalah gejala batas yang tak menyebut kata itu)
 ghx_is_limit() { grep -qiE 'rate limit|RATE_LIMIT|graphql_rate_limit|unknown owner type' <<<"$1"; }
 
-ghx_in_rest() { [ "${GHX_REST:-0}" = 1 ] || [ -s "$GHX_STATE" ] || { ghx_persist && [ "$(_ghx_state_get graphql)" -gt "$(date +%s)" ]; }; }
+ghx_in_rest() {
+  if ghx_persist && _ghx_dir >/dev/null; then [ "$(_ghx_state_get graphql)" -gt "$(date +%s)" ]; return; fi   # status bertahan: hanya epoch (pulih otomatis sesudah reset)
+  [ "${GHX_REST:-0}" = 1 ] || [ -s "$GHX_STATE" ]
+}
 
 # --- jenjang bertahan (#159 tahap 1). Hanya aktif bila GHX_PERSIST=1 (autopilot); gerbang dan skrip lain tidak memakainya, jadi perilaku lama tidak berubah.
-# Status: <repo>/.aicrew/backend/state.json = {"graphql":{"exhausted_until":<epoch>},"rest":{"exhausted_until":<epoch>}}; cache: .aicrew/backend/cache/<hash>.{body,etag}.
-# Tulis atomik (tulis berkas sementara lalu mv); penulis bersamaan = yang terakhir menang, aman karena nilainya epoch reset yang sama.
+# Status: satu berkas per kunci, <repo>/.aicrew/backend/{graphql,rest}.until berisi epoch kuota pulih; tulis atomik (mktemp + mv), tanpa baca-ubah-tulis, jadi dua penulis tidak saling menghapus.
+# Cache: .aicrew/backend/cache/<hash>: baris 1 = ETag, sisanya = isi; satu berkas = pasangan atomik. Nilai epoch dibatasi sekarang+3700 detik (jendela GitHub 1 jam) agar berkas rusak/dipalsukan tak bisa menunda tanpa batas.
 ghx_persist() { [ "${GHX_PERSIST:-0}" = 1 ]; }
 _ghx_dir() {
+  if [ -n "${_GHX_DIR_MEMO:-}" ]; then printf '%s' "$_GHX_DIR_MEMO"; return 0; fi
   local d="${AICREW_BACKEND_DIR:-}"
   if [ -z "$d" ]; then d="$(git rev-parse --show-toplevel 2>/dev/null)" || return 1; d="$d/.aicrew/backend"; fi
-  mkdir -p "$d/cache" 2>/dev/null || return 1; printf '%s' "$d"
+  mkdir -p "$d/cache" 2>/dev/null || return 1; _GHX_DIR_MEMO="$d"; printf '%s' "$d"
 }
-_ghx_state_get() {   # <graphql|rest> -> epoch exhausted_until (0 bila tidak ada)
-  local d v; ghx_persist && d="$(_ghx_dir)" || { echo 0; return 0; }
-  v="$(jq -r --arg k "$1" '.[$k].exhausted_until // 0' "$d/state.json" 2>/dev/null)" || v=0
-  [[ "$v" =~ ^[0-9]+$ ]] || v=0; echo "$v"
+_ghx_state_get() {   # <graphql|rest> -> epoch kuota pulih (0 bila tidak ada), dibatasi sekarang+3700
+  local d v now; ghx_persist && d="$(_ghx_dir)" || { echo 0; return 0; }
+  v="$(cat "$d/$1.until" 2>/dev/null)"; [[ "$v" =~ ^[0-9]{1,12}$ ]] || v=0
+  now="$(date +%s)"; [ "$v" -le $((now + 3700)) ] || v=$((now + 3700)); echo "$v"
 }
 _ghx_state_set() {   # <graphql|rest> <epoch>
-  local d f t cur; ghx_persist && d="$(_ghx_dir)" || return 0; f="$d/state.json"; t="$f.tmp.$$"
-  cur="$(jq -c . "$f" 2>/dev/null)" || cur=""; [ -n "$cur" ] || cur='{}'
-  jq -c --arg k "$1" --argjson v "$2" '.[$k].exhausted_until=$v' <<<"$cur" > "$t" 2>/dev/null && mv "$t" "$f" || rm -f "$t"
+  local d t; ghx_persist && d="$(_ghx_dir)" || return 0
+  t="$(mktemp "$d/$1.until.XXXXXX" 2>/dev/null)" || return 0
+  printf '%s\n' "$2" > "$t" && mv "$t" "$d/$1.until" || rm -f "$t"
   return 0
 }
 # graphql = normal; rest = GraphQL habis tetapi REST masih ada; local = keduanya habis (tahap 1: pemanggil menunggu sampai reset)
@@ -41,26 +45,27 @@ ghx_tier() {
     if [ "$(_ghx_state_get rest)" -gt "$now" ]; then echo local; else echo rest; fi
   else echo graphql; fi
 }
-# detik menunggu sampai salah satu kuota pulih (terdekat), dibatasi 30..900
+# detik menunggu sampai salah satu kuota pulih (terdekat), dibatasi AICREW_QUOTA_WAIT_MIN (bawaan 30) .. 900
 ghx_wait_seconds() {
   local g r now w m; now="$(date +%s)"; g="$(_ghx_state_get graphql)"; r="$(_ghx_state_get rest)"
   w=$(( (g < r ? g : r) - now )); m="${AICREW_QUOTA_WAIT_MIN:-30}"; [ "$w" -ge "$m" ] || w="$m"; [ "$w" -le 900 ] || w=900; echo "$w"
 }
 # GET REST dengan ETag bila status bertahan aktif (304 tidak memotong kuota); selain itu `gh api <url>` biasa (panggilan lama tak berubah).
-# Galat batas REST menandai rest habis sampai x-ratelimit-reset (atau +60 dtk).
+# REST habis (epoch di masa depan) -> gagal cepat tanpa panggilan. Galat batas REST menandai rest habis sampai x-ratelimit-reset (atau +60 dtk).
+# ETag hanya dipakai bila cache lebih muda dari AICREW_CACHE_MAX_AGE menit (bawaan 10): cache basi/dipalsukan paling lama bertahan segitu.
 _ghx_rest_get() {
-  local u="$1" d k ef out rc=0 st et body hdr rst
+  local u="$1" d k f ef tf out rc=0 st et body etag rst
   if ! ghx_persist || ! d="$(_ghx_dir)"; then gh api "$u"; return; fi
-  k="$(printf '%s' "$u" | shasum | cut -c1-40)"; ef="$(mktemp "${TMPDIR:-/tmp}/ghx.err.XXXXXX")"; et=""
-  [ -s "$d/cache/$k.body" ] && [ -s "$d/cache/$k.etag" ] && et="$(cat "$d/cache/$k.etag")"
+  if [ "$(_ghx_state_get rest)" -gt "$(date +%s)" ]; then echo "ghx: batas REST GitHub habis; menunggu reset" >&2; return 1; fi
+  k="$(printf '%s' "$u" | shasum | cut -c1-40)"; f="$d/cache/$k"; ef="$(mktemp "${TMPDIR:-/tmp}/ghx.err.XXXXXX")"; et=""
+  [ -s "$f" ] && [ -n "$(find "$f" -mmin "-${AICREW_CACHE_MAX_AGE:-10}" 2>/dev/null)" ] && et="$(head -1 "$f")"
   if [ -n "$et" ]; then out="$(gh api -i -H "If-None-Match: $et" "$u" 2>"$ef")" || rc=$?; else out="$(gh api -i "$u" 2>"$ef")" || rc=$?; fi
   st="$(printf '%s\n' "$out" | head -1 | tr -d '\r' | awk '{print $2}')"
-  if [ "$st" = 304 ] && [ -s "$d/cache/$k.body" ]; then rm -f "$ef"; cat "$d/cache/$k.body"; return 0; fi
+  if [ "$st" = 304 ] && [ -n "$et" ]; then rm -f "$ef"; tail -n +2 "$f"; return 0; fi
   if [ "$rc" = 0 ] && [ "$st" = 200 ]; then
     body="$(printf '%s\n' "$out" | awk 'b{print;next} {sub(/\r$/,"")} $0==""{b=1}')"
-    hdr="$(printf '%s\n' "$out" | tr -d '\r' | awk -F': *' 'tolower($1)=="etag"{print $2; exit}')"
-    printf '%s\n' "$body" > "$d/cache/$k.body.tmp.$$" && mv "$d/cache/$k.body.tmp.$$" "$d/cache/$k.body"
-    if [ -n "$hdr" ]; then printf '%s' "$hdr" > "$d/cache/$k.etag"; else rm -f "$d/cache/$k.etag"; fi
+    etag="$(printf '%s\n' "$out" | tr -d '\r' | awk -F': *' 'tolower($1)=="etag"{print $2; exit}')"
+    if [ -n "$etag" ]; then tf="$f.tmp.$$.$RANDOM"; { printf '%s\n' "$etag"; printf '%s\n' "$body"; } > "$tf" && mv "$tf" "$f" || rm -f "$tf"; else rm -f "$f"; fi
     rm -f "$ef"; printf '%s\n' "$body"; return 0
   fi
   if ghx_is_limit "$(cat "$ef") $out"; then
@@ -103,10 +108,11 @@ ghx_explain_rest_limit() {
 }
 
 ghx_enter_rest() {
-  local first=1; [ -s "$GHX_STATE" ] && first=0
+  local first=1 h ep t; [ -s "$GHX_STATE" ] && first=0
   GHX_REST=1; export GHX_REST; echo 1 > "$GHX_STATE"
+  if ghx_persist && _ghx_dir >/dev/null; then first=1; fi   # status bertahan: tiap masuk menulis epoch baru
   [ "$first" = 1 ] || return 0
-  local h ep t; h="$(_ghx_probe)"; ep="$(_ghx_hdr "$h" x-ratelimit-reset)"; t="$(_ghx_fmt "$ep")"
+  h="$(_ghx_probe)"; ep="$(_ghx_hdr "$h" x-ratelimit-reset)"; t="$(_ghx_fmt "$ep")"
   if ghx_persist; then [[ "$ep" =~ ^[0-9]+$ ]] || ep=$(( $(date +%s) + 60 )); _ghx_state_set graphql "$ep"; fi
   echo "mode cadangan REST: batas GraphQL GitHub tercapai${t:+; reset $t UTC}" >&2
 }

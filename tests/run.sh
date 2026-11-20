@@ -3167,7 +3167,7 @@ ok "ghx_wait_seconds (#159): lantai (bisa dikecilkan), batas atas 900, bawaan 30
 GQreset; export GHQ_GQL_LIMIT=1
 GQR ghx_issues open - 5 number >/dev/null 2>&1; GQR ghx_issues open - 5 number >/dev/null 2>&1
 ok "ghx (#159): status batas GraphQL bertahan lintas proses (hanya 1 panggilan 'issue list')" "$(grep -c '^issue list' "$GQ/calls")|$(GQR ghx_tier)" '1|rest'
-ok "ghx (#159): state.json memuat exhausted_until dari header reset" "$(jq -r '.graphql.exhausted_until' "$GQ/backend/state.json")" 9999999999
+ok "ghx (#159): graphql.until memuat epoch reset dari header, dibatasi sekarang+3700 saat dibaca" "$(cat "$GQ/backend/graphql.until")|$([ "$(GQR _ghx_state_get graphql)" -le $(( $(date +%s) + 3700 )) ] && echo terbatas)" '9999999999|terbatas'
 unset GHQ_GQL_LIMIT
 # ETag: panggilan REST kedua mengirim If-None-Match, 304 dilayani dari cache dengan isi sama
 GQreset; GQR _ghx_state_set graphql "$fut"
@@ -3184,10 +3184,16 @@ GQreset; GHQ_REM=100 GQR ghx_probe_floor; f1="$(GQR ghx_tier)"; GQreset; GHQ_REM
 ok "ghx_probe_floor (#159): 100/5000 -> rest; 4000/5000 -> tetap graphql" "$f1|$f2" 'rest|graphql'
 # tanpa GHX_PERSIST perilaku lama: tidak menulis status, REST biasa tanpa -i
 GQreset; (export PATH="$GQ/bin:$PATH" GHQ="$GQ" GH_REPO=o/r AICREW_BACKEND_DIR="$GQ/backend" GHQ_GQL_LIMIT=1 TMPDIR="$GQ"; cd "$GQ"; source "$root/scripts/ghx.sh"; ghx_issues open - 5 number >/dev/null 2>&1)
-ok "ghx (#159): tanpa GHX_PERSIST tidak ada state.json dan tidak ada 'api -i'" "$([ -e "$GQ/backend/state.json" ] && echo ada || echo tidak)|$(grep -c '^api -i' "$GQ/calls")" 'tidak|0'
+ok "ghx (#159): tanpa GHX_PERSIST tidak ada berkas status dan tidak ada 'api -i'" "$([ -e "$GQ/backend/graphql.until" ] && echo ada || echo tidak)|$(grep -c '^api -i' "$GQ/calls")" 'tidak|0'
 ok "pr-merge-check (#159): gerbang melepas GHX_PERSIST (tidak memakai status bertahan)" "$(grep -c '^unset GHX_PERSIST' scripts/pr-merge-check.sh)" 1
+# pulih dalam proses yang sama: epoch lewat -> GraphQL dipakai lagi (tidak terjebak di REST); REST habis -> gagal cepat tanpa panggilan gh
+GQreset; GQR eval 'ghx_enter_rest 2>/dev/null; _ghx_state_set graphql 1; ghx_in_rest && echo masihrest || echo pulih' > "$GQ/pulih.txt"
+ok "ghx (#159): sesudah epoch lewat ghx_in_rest pulih walau proses sudah pernah masuk mode REST" "$(cat "$GQ/pulih.txt")" pulih
+GQreset; GQR _ghx_state_set rest "$fut"; GQR _ghx_state_set graphql "$fut"; : > "$GQ/calls"; GQR ghx_issues open - 5 number >/dev/null 2>&1; rcf=$?
+ok "ghx (#159): REST habis -> gagal cepat, tidak ada panggilan 'api -i'" "$([ "$rcf" != 0 ] && echo gagal)|$(grep -c '^api -i' "$GQ/calls")" 'gagal|0'
+
 # autopilot: GraphQL dan REST habis -> menunggu reset tanpa hitungan gagal; setelah pulih gh benar-benar mati -> exit 6
-rm -rf "$AP3/w/.aicrew"; mkdir -p "$AP3/w/.aicrew/backend"; qn=$(( $(date +%s) + 3 )); printf '{"graphql":{"exhausted_until":%s},"rest":{"exhausted_until":%s}}\n' "$qn" "$qn" > "$AP3/w/.aicrew/backend/state.json"
+rm -rf "$AP3/w/.aicrew"; mkdir -p "$AP3/w/.aicrew/backend"; qn=$(( $(date +%s) + 3 )); echo "$qn" > "$AP3/w/.aicrew/backend/graphql.until"; echo "$qn" > "$AP3/w/.aicrew/backend/rest.until"
 touch "$AP3FX/ghfail"; AP3KEEP=1 AP3ENV="AICREW_QUOTA_WAIT_MIN=1" ap3 "$AP3OPEN" noop --max-rounds 20; rc=$?; rm -f "$AP3FX/ghfail"
 ok "autopilot (#159): kuota habis -> menunggu (log 'kuota GitHub habis'), lalu gh mati terus tetap exit 6 setelah pulih" "$rc|$([ "$(grep -c 'kuota GitHub habis' "$AP3/w/.aicrew/autopilot.log")" -ge 1 ] && echo menunggu)|$(grep -c 'gh tidak terbaca (percobaan' "$AP3/w/.aicrew/autopilot.log")" '6|menunggu|5'
 
