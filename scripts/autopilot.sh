@@ -173,6 +173,7 @@ for ((i=1; i<=max_rounds; i++)); do
   # issue berlabel integrasi ($L_INT, bawaan integrated; nama lama di-integrasi tetap dikenali) sudah selesai (menunggu merge ke main oleh owner): bukan pekerjaan tersisa
   # gh gagal / keluaran tak terurai = keadaan TIDAK diketahui (#75): jangan memutuskan selesai atau menunggu-owner dari data kosong; jeda, coba lagi, berhenti setelah 5 kali beruntun (exit 6)
   ghx_probe_floor   # proaktif: di bawah AICREW_QUOTA_FLOOR persen sisa GraphQL, turun ke REST sebelum habis
+  [ -z "$(find "$d/backend/outbox" -maxdepth 1 -name '*.json' 2>/dev/null | head -1)" ] || bash "$here/backend-sync.sh" >> "$d/autopilot.log" 2>&1 || true   # antrean tulis dari saat kuota habis (#159 tahap 2)
   if ! raw="$(ghx_issues open - 200 number,labels,body)" || ! open="$(jq --argjson ls "$L_INT" '[.[]|select((.labels|map(.name)) as $n|(any($ls[]; . as $x|$n|index($x)) or ($n|index("epic")))|not)]' <<<"$raw")" || [ -z "$open" ]; then   # epic = pengelompokan journey, bukan pekerjaan
     if [ "$(ghx_tier)" = local ]; then   # GraphQL dan REST habis: bukan galat gh. Tunggu reset tanpa memakai iterasi atau hitungan gagal (#162)
       qw="$(ghx_wait_seconds)"; log "$(msg autopilot.quota_wait "$i" "$qw")"; sleep "$qw"; i=$((i-1)); continue

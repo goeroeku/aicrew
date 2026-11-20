@@ -108,6 +108,14 @@ msg_id() {
     autopilot.sent_sigterm) printf 'putaran %s: sesi tidak berakhir; dikirim SIGTERM' "$@" ;;
     autopilot.still_stuck) printf 'autopilot: masih buntu: state unchanged since %s; changed inputs: none; tidak ada putaran dijalankan (ubah issue/PR, WORKFLOW.md atau berkas izin, atau pakai --retry-stuck)' "$@" ;;
     autopilot.gh_unreadable_retry) printf 'putaran %s: gh tidak terbaca (percobaan %s/5): keadaan tidak diketahui, tidak memutuskan selesai atau menunggu' "$@" ;;
+    backend.queued) printf 'diantre untuk GitHub (kuota habis): %s' "$@" ;;
+    backend.queued_dup) printf 'sudah diantre: %s' "$@" ;;
+    backend.sync_still_local) printf 'sinkron: kuota GitHub masih habis; %s tertunda' "$@" ;;
+    backend.sync_no_repo) printf 'sinkron: repositori tak diketahui; tidak ada yang dikirim' "$@" ;;
+    backend.sync_conflict) printf 'konflik sinkron: %s #%s: %s (tindakan pemilik menang; operasi dilewati, lihat .aicrew/backend/conflicts.log)' "$@" ;;
+    backend.sync_bad) printf 'sinkron: operasi %s dipindah ke outbox.bad setelah %s percobaan (%s)' "$@" ;;
+    backend.sync_limit) printf 'sinkron: kuota habis lagi; %s tertunda, dicoba ulang' "$@" ;;
+    backend.sync_summary) printf 'sinkron: %s diterapkan, %s konflik, %s gagal, %s tertunda' "$@" ;;
     autopilot.quota_wait) printf 'putaran %s: kuota GitHub habis (GraphQL dan REST); menunggu %s detik sampai reset, iterasi tidak terpakai' "$1" "$2" ;;
     autopilot.gh_down_stop) printf 'autopilot: gh tidak terbaca 5 kali beruntun; berhenti (bukan keadaan issue), periksa jaringan dan login gh' ;;
     autopilot.all_done) printf 'autopilot: semua issue selesai (putaran %s)' "$@" ;;

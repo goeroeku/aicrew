@@ -24,7 +24,9 @@ ghx_persist() { [ "${GHX_PERSIST:-0}" = 1 ]; }
 _ghx_dir() {
   if [ -n "${_GHX_DIR_MEMO:-}" ]; then printf '%s' "$_GHX_DIR_MEMO"; return 0; fi
   local d="${AICREW_BACKEND_DIR:-}"
-  if [ -z "$d" ]; then d="$(git rev-parse --show-toplevel 2>/dev/null)" || return 1; d="$d/.aicrew/backend"; fi
+  if [ -z "$d" ]; then   # akar checkout utama (bukan worktree): sama dengan .aicrew milik autopilot, jadi antrean dari worktree isu ikut terkuras
+    d="$(git rev-parse --git-common-dir 2>/dev/null)" && d="$(cd "$d/.." 2>/dev/null && pwd)" || return 1; d="$d/.aicrew/backend"
+  fi
   mkdir -p "$d/cache" 2>/dev/null || return 1; _GHX_DIR_MEMO="$d"; printf '%s' "$d"
 }
 _ghx_state_get() {   # <graphql|rest> -> epoch kuota pulih (0 bila tidak ada), dibatasi sekarang+3700
@@ -187,6 +189,43 @@ ghx_has_open_pr() {
   [ "$out" -ge 1 ] 2>/dev/null
 }
 
+# --- outbox (#159 tahap 2): operasi tulis yang tak bisa dikirim karena REST (jalan terakhir) habis diantre sebagai satu berkas per operasi
+# <repo>/.aicrew/backend/outbox/<epoch>-<hash>.json {id,op,args,ts,tries}; backend-sync.sh mengurasnya setelah kuota pulih. Operasi yang sama (op+args) tidak diantre dua kali.
+# ghx_queue <op> [chave=nilai ...]: 0 = diantre; 1 = belum saatnya antre (status bertahan nonaktif atau REST belum habis): pemanggil menangani galat seperti biasa.
+ghx_queue() {
+  ghx_persist || return 1; [ "$(_ghx_state_get rest)" -gt "$(date +%s)" ] || return 1
+  local op="$1" d args='{}' kv h f tmp ts; shift; d="$(_ghx_dir)" || return 1; mkdir -p "$d/outbox" 2>/dev/null || return 1
+  for kv in "$@"; do args="$(jq -c --arg k "${kv%%=*}" --arg v "${kv#*=}" '.[$k]=$v' <<<"$args")"; done
+  h="$(printf '%s %s' "$op" "$args" | shasum | cut -c1-16)"
+  if ls "$d/outbox"/*-"$h".json >/dev/null 2>&1; then echo "$(msg backend.queued_dup "$op" 2>/dev/null || echo "queued: $op")" >&2; return 0; fi
+  ts="$(date +%s)"; f="$d/outbox/$ts-$(printf '%03d' "$(ls "$d/outbox" 2>/dev/null | grep -c "^$ts-")")-$h.json"; tmp="$f.tmp.$$"   # epoch-urut-hash: urutan antre terjaga
+  jq -nc --arg id "$h" --arg op "$op" --argjson a "$args" --argjson ts "$(date +%s)" '{id:$id,op:$op,args:$a,ts:$ts,tries:0}' > "$tmp" 2>/dev/null && mv "$tmp" "$f" || { rm -f "$tmp"; return 1; }
+  echo "$(msg backend.queued "$op" 2>/dev/null || echo "queued: $op")" >&2; return 0
+}
+# ghx_rest_write <op> [chave=nilai ...] -- <perintah gh api ...>: jalankan; REST habis (sudah tercatat, atau galat batas di sini) -> antre operasi dan sukses.
+ghx_rest_write() {
+  local op="$1" kv=() ef rc=0 e; shift
+  while [ $# -gt 0 ] && [ "$1" != -- ]; do kv+=("$1"); shift; done; shift
+  ghx_queue "$op" "${kv[@]}" && return 0
+  ef="$(mktemp "${TMPDIR:-/tmp}/ghx.err.XXXXXX")"; "$@" >/dev/null 2>"$ef" || rc=$?; e="$(cat "$ef")"; rm -f "$ef"
+  if [ "$rc" != 0 ] && ghx_persist && ghx_is_limit "$e"; then
+    _ghx_state_set rest "$(( $(date +%s) + 60 ))"; ghx_queue "$op" "${kv[@]}" && return 0
+  fi
+  [ -z "$e" ] || printf '%s\n' "$e" >&2
+  return "$rc"
+}
+
+ghx_label_add() {   # <n> <label>: tambah label (GraphQL gh issue edit; REST bila batas; antre bila REST habis)
+  local rc=0; ghx_gql gh issue edit "$1" --add-label "$2" >/dev/null || rc=$?; [ "$rc" = 75 ] || return "$rc"
+  ghx_rest_write label_add n="$1" label="$2" -- gh api -X POST "repos/$(ghx_repo)/issues/$1/labels" -f "labels[]=$2"
+}
+ghx_comment() {   # <n> <teks>: komentar di isu/PR (GraphQL gh issue comment; REST bila batas; antre bila REST habis)
+  local rc=0; ghx_gql gh issue comment "$1" --body "$2" >/dev/null || rc=$?; [ "$rc" = 75 ] || return "$rc"
+  ghx_rest_write comment n="$1" body="$2" -- gh api -X POST "repos/$(ghx_repo)/issues/$1/comments" -f body="$2"
+}
+_ghx_close_rest() { local r; r="$(ghx_repo)"; gh api -X POST "repos/$r/issues/$1/comments" -f body="$2" >/dev/null \
+  && gh api -X PATCH "repos/$r/issues/$1" -f state=closed -f state_reason=completed >/dev/null; }
+
 ghx_issue_body() {   # <n> -> badan issue ("" bila kosong)
   local rc=0; ghx_gql gh issue view "$1" --json body -q .body || rc=$?; [ "$rc" = 75 ] || return "$rc"
   gh api "repos/$(ghx_repo)/issues/$1" | jq -r '.body // ""'
@@ -194,13 +233,12 @@ ghx_issue_body() {   # <n> -> badan issue ("" bila kosong)
 
 ghx_issue_set_body() {   # <n> <teks>; -f body= (bukan interpolasi) agar kutip, $ dan baris baru utuh
   local rc=0; ghx_gql gh issue edit "$1" --body "$2" >/dev/null || rc=$?; [ "$rc" = 75 ] || return "$rc"
-  gh api -X PATCH "repos/$(ghx_repo)/issues/$1" -f body="$2" >/dev/null
+  ghx_rest_write issue_body n="$1" body="$2" -- gh api -X PATCH "repos/$(ghx_repo)/issues/$1" -f body="$2"
 }
 
 ghx_issue_close() {   # <n> <komentar>
   local rc=0 r; ghx_gql gh issue close "$1" --comment "$2" >/dev/null || rc=$?; [ "$rc" = 75 ] || return "$rc"
-  r="$(ghx_repo)"; gh api -X POST "repos/$r/issues/$1/comments" -f body="$2" >/dev/null \
-    && gh api -X PATCH "repos/$r/issues/$1" -f state=closed -f state_reason=completed >/dev/null
+  ghx_rest_write issue_close n="$1" comment="$2" -- _ghx_close_rest "$1" "$2"
 }
 
 # --- operasi kartu Project v2. REST: orgs|users/<owner>/projectsV2/<n>. Kode keluar khusus pada jalur REST:
@@ -276,6 +314,7 @@ ghx_card_set() {   # <owner> <num> <item> <id-kolom-Status> <id-opsi>
     [ "$rc" = 0 ] && return 0
   fi
   [ "$rc" = 75 ] || return "$rc"
+  ghx_queue card_set owner="$1" num="$2" item="$3" field="$4" option="$5" && return 0   # REST habis: antre (#159)
   b="$(_ghx_pbase "$1" "$2")" || return 1
   if ! [[ "$fid" =~ ^[0-9]+$ ]]; then fld="$(_ghx_status_field_rest "$1" "$2")" || return $?; fid="$(jq -r .id <<<"$fld")"; fi
   if ! [[ "$item" =~ ^[0-9]+$ ]]; then item="$(_ghx_item_num "$1" "$2" "$item")" || return $?; fi

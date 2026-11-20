@@ -108,6 +108,14 @@ msg_en() {
     autopilot.sent_sigterm) printf 'round %s: session did not exit; sent SIGTERM' "$@" ;;
     autopilot.still_stuck) printf 'autopilot: still stuck: state unchanged since %s; changed inputs: none; no round run (change an issue/PR, WORKFLOW.md or permission files, or pass --retry-stuck)' "$@" ;;
     autopilot.gh_unreadable_retry) printf 'round %s: gh unreadable (attempt %s/5): state unknown, not deciding done or waiting' "$@" ;;
+    backend.queued) printf 'queued for GitHub (quota exhausted): %s' "$@" ;;
+    backend.queued_dup) printf 'already queued: %s' "$@" ;;
+    backend.sync_still_local) printf 'sync: GitHub quota still exhausted; %s pending' "$@" ;;
+    backend.sync_no_repo) printf 'sync: repository unknown; nothing sent' "$@" ;;
+    backend.sync_conflict) printf 'sync conflict: %s #%s: %s (owner action wins; operation skipped, see .aicrew/backend/conflicts.log)' "$@" ;;
+    backend.sync_bad) printf 'sync: operation %s moved to outbox.bad after %s tries (%s)' "$@" ;;
+    backend.sync_limit) printf 'sync: quota exhausted again; %s pending, will retry' "$@" ;;
+    backend.sync_summary) printf 'sync: %s applied, %s conflicts, %s failed, %s pending' "$@" ;;
     autopilot.quota_wait) printf 'round %s: GitHub quota exhausted (GraphQL and REST); waiting %s s for reset, no iteration used' "$1" "$2" ;;
     autopilot.gh_down_stop) printf 'autopilot: gh unreadable 5 times in a row; stopping (not an issue state), check network and gh auth' ;;
     autopilot.all_done) printf 'autopilot: all issues done (round %s)' "$@" ;;

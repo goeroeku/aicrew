@@ -3210,4 +3210,93 @@ rm -rf "$AP3/w/.aicrew"; mkdir -p "$AP3/w/.aicrew/backend"; qn=$(( $(date +%s) +
 touch "$AP3FX/ghfail"; AP3KEEP=1 AP3ENV="AICREW_QUOTA_WAIT_MIN=1" ap3 "$AP3OPEN" noop --max-rounds 20; rc=$?; rm -f "$AP3FX/ghfail"
 ok "autopilot (#159): kuota habis -> menunggu (log 'kuota GitHub habis'), lalu gh mati terus tetap exit 6 setelah pulih" "$rc|$([ "$(grep -c 'kuota GitHub habis' "$AP3/w/.aicrew/autopilot.log")" -ge 1 ] && echo menunggu)|$(grep -c 'gh tidak terbaca (percobaan' "$AP3/w/.aicrew/autopilot.log")" '6|menunggu|5'
 
+# 3r. backend berjenjang, tahap 2 (#159): outbox dan sinkron
+GS="$tmp/gsync"; mkdir -p "$GS/bin"
+cat > "$GS/bin/gh" <<'GSEOF'
+#!/bin/sh
+echo "$*" >> "$GSD/calls"
+if [ -n "${GS_LIMIT:-}" ]; then
+  case "$*" in "api rate_limit"*) echo 9999999999; exit 0 ;; esac
+  echo "gh: API rate limit exceeded for user ID 1. (HTTP 403)" >&2; exit 1
+fi
+[ -n "${GS_500:-}" ] && { echo "gh: HTTP 500 Server Error" >&2; exit 1; }
+meth=GET; url=""; last=""; prev=""
+for a in "$@"; do
+  [ "$prev" = -X ] && meth="$a"
+  case "$a" in repos/*) url="$a" ;; esac
+  prev="$a"; last="$a"
+done
+n="$(printf '%s' "$url" | sed -n 's#^repos/o/r/issues/\([0-9][0-9]*\).*#\1#p')"
+st() { cat "$GSD/issue-$n" 2>/dev/null || echo "open|"; }
+case "$meth $url" in
+  "GET repos/o/r/issues/$n/comments"*)
+    id="$(printf '%s' "$*" | sed -n 's/.*aicrew-op:\([0-9a-f]*\).*/\1/p')"
+    c="$(grep -c "aicrew-op:$id" "$GSD/comments-$n" 2>/dev/null)"; echo "${c:-0}" ;;
+  "GET repos/o/r/issues/$n")
+    s="$(st)"; printf '%s\t%s\n' "${s%%|*}" "${s#*|}" ;;
+  "POST repos/o/r/issues/$n/labels") l="${last#labels[]=}"; s="$(st)"; echo "label_add $n $l" >> "$GSD/ops"; echo "${s%%|*}|${s#*|},$l" | sed 's/|,/|/' > "$GSD/issue-$n" ;;
+  "DELETE repos/o/r/issues/$n/labels/"*) l="${url##*/}"; s="$(st)"; echo "label_remove $n $l" >> "$GSD/ops"; echo "${s%%|*}|$(printf '%s' "${s#*|}" | tr ',' '\n' | grep -vx "$l" | paste -sd, -)" > "$GSD/issue-$n" ;;
+  "POST repos/o/r/issues/$n/comments") echo "comment $n" >> "$GSD/ops"; printf '%s\n' "${last#body=}" >> "$GSD/comments-$n" ;;
+  "PATCH repos/o/r/issues/$n")
+    case "$*" in *state=closed*) echo "close $n" >> "$GSD/ops"; s="$(st)"; echo "closed|${s#*|}" > "$GSD/issue-$n" ;; *) echo "body $n" >> "$GSD/ops" ;; esac ;;
+  *) exit 0 ;;
+esac
+exit 0
+GSEOF
+chmod +x "$GS/bin/gh"
+GSR() { ( export PATH="$GS/bin:$PATH" GSD="$GS" GH_REPO=o/r GHX_PERSIST=1 AICREW_BACKEND_DIR="$GS/backend" AICREW_SYNC_PAUSE=0 AICREW_NOTIFY=none TMPDIR="$GS"; cd "$GS"; "$@" ); }
+GSreset() { rm -rf "$GS/backend" "$GS"/calls "$GS"/ops "$GS"/issue-* "$GS"/comments-*; mkdir -p "$GS/backend"; }
+GSq() { GSR bash -c 'source "$1/scripts/ghx.sh"; shift; ghx_queue "$@"' _ "$root" "$@" 2>/dev/null; }   # antre langsung (REST ditandai habis oleh pemanggil)
+GSsync() { GSR bash "$root/scripts/backend-sync.sh" "$@"; }
+gfut=$(( $(date +%s) + 100 ))
+# antre hanya bila REST habis; duplikat tidak diantre dua kali
+GSreset; GSq label_add n=5 label=blocked; r1=$?
+GSR bash -c 'source "$1/scripts/ghx.sh"; _ghx_state_set rest "$2"' _ "$root" "$gfut"
+GSq label_add n=5 label=blocked; r2=$?; GSq label_add n=5 label=blocked; r3=$?
+ok "outbox (#159): antre hanya bila REST habis (1 -> 0), duplikat tidak diantre dua kali" "$r1|$r2|$r3|$(ls "$GS/backend/outbox" | wc -l | tr -d ' ')" '1|0|0|1'
+# ghx_label_add/ghx_comment saat REST dan GraphQL habis: antre, tanpa panggilan tulis
+GSreset; GSR bash -c 'source "$1/scripts/ghx.sh"; _ghx_state_set rest "$2"; _ghx_state_set graphql "$2"' _ "$root" "$gfut"
+GSR bash -c 'source "$1/scripts/ghx.sh"; ghx_label_add 5 blocked; ghx_comment 5 hello; ghx_issue_close 5 selesai' _ "$root" >/dev/null 2>&1; rcq2=$?
+ok "ghx (#159): label/komentar/penutupan saat kuota habis -> sukses, 3 operasi diantre, tanpa panggilan tulis" "$rcq2|$(ls "$GS/backend/outbox" | wc -l | tr -d ' ')|$(cat "$GS/calls" 2>/dev/null | grep -c 'api -X')" '0|3|0'
+# sinkron: urutan antre, idempoten
+rm -f "$GS/backend/rest.until" "$GS/backend/graphql.until"; GSsync >/dev/null
+ok "sinkron (#159): operasi diterapkan berurutan (label, komentar, komentar+penutupan) dan outbox kosong" "$(paste -sd, "$GS/ops")|$(GSsync --status)" 'label_add 5 blocked,comment 5,comment 5,close 5|0'
+GSR bash -c 'source "$1/scripts/ghx.sh"; _ghx_state_set rest "$2"' _ "$root" "$gfut"
+GSq label_add n=5 label=blocked; GSq comment n=5 body=hello; GSq issue_close n=5 comment=selesai
+rm -f "$GS/backend/rest.until"; before="$(wc -l < "$GS/ops" | tr -d ' ')"; GSsync >/dev/null
+ok "sinkron (#159): idempoten: label sudah ada, komentar bermarka, isu sudah tertutup -> tak ada tulisan baru" "$before|$(wc -l < "$GS/ops" | tr -d ' ')|$(GSsync --status)" '4|4|0'
+# konflik: isu tertutup di GitHub, operasi label -> dilewati dan dicatat
+GSreset; echo "closed|" > "$GS/issue-6"; GSR bash -c 'source "$1/scripts/ghx.sh"; _ghx_state_set rest "$2"' _ "$root" "$gfut"; GSq label_add n=6 label=blocked; rm -f "$GS/backend/rest.until"; GSsync >/dev/null
+ok "sinkron (#159): isu tertutup -> konflik tercatat, tanpa tulisan, outbox kosong" "$(grep -c 'label_add' "$GS/backend/conflicts.log")|$(cat "$GS/ops" 2>/dev/null | wc -l | tr -d ' ')|$(GSsync --status)" '1|0|0'
+# batas muncul lagi saat sinkron: operasi tetap diantre
+GSreset; GSR bash -c 'source "$1/scripts/ghx.sh"; _ghx_state_set rest "$2"' _ "$root" "$gfut"; GSq label_add n=5 label=a; GSq label_add n=5 label=b; rm -f "$GS/backend/rest.until"
+sout="$(GS_LIMIT=1 GSsync 2>&1)"
+ok "sinkron (#159): kuota habis lagi -> operasi tetap tertunda, exit 0, pesan 'kuota habis lagi'" "$(GSsync --status)|$(grep -c 'kuota habis lagi' <<<"$sout")" '2|1'
+# anggaran per panggilan
+GSreset; GSR bash -c 'source "$1/scripts/ghx.sh"; _ghx_state_set rest "$2"' _ "$root" "$gfut"; GSq label_add n=5 label=a; GSq label_add n=5 label=b; GSq label_add n=5 label=c; rm -f "$GS/backend/rest.until"
+AICREW_SYNC_BUDGET=1 GSsync >/dev/null
+ok "sinkron (#159): anggaran AICREW_SYNC_BUDGET=1 -> 1 diterapkan, 2 tertunda" "$(wc -l < "$GS/ops" | tr -d ' ')|$(GSsync --status)" '1|2'
+# klaim yatim (proses sinkron mati) dipulihkan lalu diterapkan
+GSreset; mkdir -p "$GS/backend/outbox"; echo '{"id":"abc","op":"label_add","args":{"n":"5","label":"yatim"},"ts":1,"tries":0}' > "$GS/backend/outbox/1-000-abc.json.work.99999999"
+GSsync >/dev/null
+ok "sinkron (#159): klaim yatim (pid mati) dipulihkan dan diterapkan" "$(cat "$GS/ops" 2>/dev/null)|$(GSsync --status)" 'label_add 5 yatim|0'
+# galat non-batas berulang -> outbox.bad setelah 5 percobaan
+GSreset; GSR bash -c 'source "$1/scripts/ghx.sh"; _ghx_state_set rest "$2"' _ "$root" "$gfut"; GSq label_add n=5 label=x; rm -f "$GS/backend/rest.until"
+for _i in 1 2 3 4 5; do GS_500=1 GSsync >/dev/null 2>&1; done
+ok "sinkron (#159): 5 kegagalan non-batas -> operasi pindah ke outbox.bad" "$(GSsync --status)|$(ls "$GS/backend/outbox.bad" | wc -l | tr -d ' ')" '0|1'
+# blocked-mark: kuota habis -> antre penanda, exit 0; tanpa status bertahan perilaku lama (exit 1)
+GSreset; GSR bash -c 'source "$1/scripts/ghx.sh"; _ghx_state_set rest "$2"; _ghx_state_set graphql "$2"' _ "$root" "$gfut"
+GS_LIMIT=1 GSR bash "$root/scripts/blocked-mark.sh" 5 "tes gagal" >/dev/null 2>&1; bm1=$?
+(export PATH="$GS/bin:$PATH" GSD="$GS" GH_REPO=o/r AICREW_BACKEND_DIR="$GS/backend2" GS_LIMIT=1; unset GHX_PERSIST; bash "$root/scripts/blocked-mark.sh" 5 "tes gagal" >/dev/null 2>&1); bm2=$?
+ok "blocked-mark (#159): kuota habis -> exit 0 dengan 2 operasi diantre; tanpa GHX_PERSIST tetap exit 1" "$bm1|$(ls "$GS/backend/outbox" | wc -l | tr -d ' ')|$bm2" '0|2|1'
+# autopilot menguras outbox di awal putaran (log berisi baris 'sinkron:')
+rm -rf "$AP3/w/.aicrew"; mkdir -p "$AP3/w/.aicrew/backend/outbox"; echo '{"id":"zzz","op":"label_add","args":{"n":"5","label":"x"},"ts":1,"tries":0}' > "$AP3/w/.aicrew/backend/outbox/1-000-zzz.json"
+AP3KEEP=1 ap3 "$AP3OPEN" close >/dev/null; rc=$?
+ok "autopilot (#159): putaran menjalankan backend-sync bila outbox tidak kosong (log 'sinkron:')" "$([ "$(grep -c 'sinkron:' "$AP3/w/.aicrew/autopilot.log")" -ge 1 ] && echo ada)" ada
+
+# direktori backend memakai akar checkout utama: dari worktree isu, antrean tetap di .aicrew checkout utama (#159)
+git init -q "$tmp/wtroot" && git -C "$tmp/wtroot" commit -q --allow-empty -m i && git -C "$tmp/wtroot" worktree add -q "$tmp/wtroot-wt" -b wtb 2>/dev/null
+wd="$(cd "$tmp/wtroot-wt" && GHX_PERSIST=1 bash -c 'source "$1/scripts/ghx.sh"; _ghx_dir' _ "$root")"
+ok "ghx (#159): _ghx_dir di worktree menunjuk ke .aicrew/backend milik checkout utama" "$wd" "$(cd "$tmp/wtroot" && pwd -P)/.aicrew/backend"
+
 [ "$fails" = 0 ] && echo "SEMUA LULUS" || { echo "$fails GAGAL"; exit 1; }
