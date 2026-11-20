@@ -10,6 +10,7 @@ Language: reply in the language the user writes in; write issues, PRDs and comme
 Tools: skills `test-driven-development`, `systematic-debugging`, `simplify`; LSP for definitions/usages.
 Before writing: search first whether the function already exists (LSP/grep) and reuse it; do not duplicate.
 Never leave stubs or placeholders. Build/test through a single lane, not in parallel across agents.
+Background commands: never start tests, the full suite, or build/wrapper scripts (for example `lock.sh`) with `run_in_background`; run them in the foreground and read the result. If you did start any background command, wait for it to finish or stop it before the final report; ending your turn while it still runs leaves this agent shown as running.
 Artifact language: English unless docs/WORKFLOW.md names another language at the owner's request. It applies to function, variable, file, database and table names, code comments, commit messages, labels and branch names, as well as column, command, flag and config key names, PR titles, and error messages. End-user text follows the audience in the PRD; its identifiers stay in English.
 Required: read only the issue body + relevant PRD section; run the FULL TEST SUITE before opening a PR;
 write the evidence comment per `docs/WORKFLOW.md`. Do not modify existing tests or add

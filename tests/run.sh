@@ -3126,4 +3126,10 @@ cvv="v$(jq -r .version "$root/.claude-plugin/plugin.json")"
 for l in en id; do ok "checkver msg (#64): $l -> awalan mesin 'ok:' tetap literal" "$(cd "$root" && AICREW_LANG=$l bash scripts/check-version.sh "$cvv" 2>&1 | grep -c '^ok: ')" 1; done
 ok "checkver msg (#64): en versi tak cocok -> 'GAGAL: tag v0.0.0 != plugin.json version', id -> teks lama berbeda" "$(cd "$root" && AICREW_LANG=en bash scripts/check-version.sh v0.0.0 2>&1 | grep -c '^GAGAL: tag v0.0.0 != plugin.json version')|$(cd "$root" && AICREW_LANG=id bash scripts/check-version.sh v0.0.0 2>&1 | grep -c 'plugin.json version')" '1|0'
 
+# agen (#160): tidak boleh mengakhiri giliran dengan perintah latar yang masih jalan
+for f in agents/senior-coder.md agents/devops.md; do
+  ok "agen (#160): $f melarang run_in_background untuk tes/skrip pembungkus" "$(grep -c 'Background commands: never start tests' "$f")" 1
+  ok "agen (#160): $f mewajibkan menunggu atau menghentikan perintah latar sebelum laporan akhir" "$(grep -c 'wait for it to finish or stop it before the final report' "$f")" 1
+done
+
 [ "$fails" = 0 ] && echo "SEMUA LULUS" || { echo "$fails GAGAL"; exit 1; }
