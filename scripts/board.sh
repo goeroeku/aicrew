@@ -6,6 +6,7 @@
 # Gagal tidak fatal bagi alur: label tetap sumber status; skrip ini hanya cermin kanban (exit != 0 = laporkan, lanjut).
 set -euo pipefail
 source "$(dirname "$0")/ghx.sh"  # cadangan REST saat GraphQL kena batas
+source "$(dirname "$0")/lib/msg.sh"
 ghx_require_github board.sh
 if [ "$#" -lt 3 ] || { [ "$3" != "--sync" ] && [ "$3" != "--sync-cards" ] && [ "$#" -lt 4 ]; }; then
   echo "Pemakaian: board.sh <owner> <proj> <issue> <status> | board.sh <owner> <proj> --sync | board.sh <owner> <proj> --sync-cards [--dry-run]" >&2; exit 64

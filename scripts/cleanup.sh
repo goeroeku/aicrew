@@ -13,7 +13,7 @@
 # worktree kotor/terkunci/terlepas/di ~/orca/workspaces/. Hanya git dan REST (gh api), tanpa GraphQL. GitHub saja (backend lain: keluar 0).
 set -u
 here="$(dirname "$0")"; source "$here/ghx.sh"; source "$here/lib/msg.sh"
-ghx_local && { echo "$(msg cleanup.local_skipped)"; exit 0; }   # Quota mode: local: tak ada PR GitHub untuk dicocokkan; cabang ter-merge lokal tetap urusan pemilik
+if ghx_local; then case "${1:-}" in --count|--hitung) echo 0 ;; *) echo "$(msg cleanup.local_skipped)" ;; esac; exit 0; fi   # Quota mode: local: tak ada PR GitHub untuk dicocokkan; cabang ter-merge lokal tetap urusan pemilik
 usage() { echo "$(msg cleanup.usage)" >&2; exit 64; }
 only=""; issue=""; fetch=1; apply=0; aftermerge=0; count=0
 while [ $# -gt 0 ]; do

@@ -3530,6 +3530,8 @@ SMmk
 rcs=""; for sc in board board-init epic-link release-report release-notes cve-audit scheduled-workflow awaiting-release; do SMR bash "$root/scripts/$sc.sh" x y z >/dev/null 2>&1; rcs="$rcs$?"; done
 ok "mode lokal (#159): skrip khusus GitHub (board, board-init, epic-link, release-report, release-notes, cve-audit, scheduled-workflow, awaiting-release) keluar 2" "$rcs" 22222222
 SMR bash "$root/scripts/board.sh" x y z 2>&1 | grep -q 'Quota mode: local'; ok "mode lokal (#159): pesan skrip khusus GitHub menyebut Quota mode: local" $? 0
+AICREW_LANG=en SMR bash "$root/scripts/board.sh" x y z 2>&1 | grep -q 'not available in Quota mode: local'; ok "mode lokal (#159): pesan board.sh/epic-link.sh lewat katalog (en) bukan cadangan keras" $? 0
+ok "cleanup.sh --count (#159): mode lokal mencetak angka 0 (bukan teks)" "$(SMR bash "$root/scripts/cleanup.sh" --count 2>&1)" 0
 # integrated.sh: belum merged -> 1; sesudah merge lokal -> 0 dan label integrated dipasang, in-progress dilepas
 SMR bash "$root/scripts/issue.sh" label 1 --add in-progress >/dev/null; SMR bash "$root/scripts/integrated.sh" 1 1 >/dev/null 2>&1; i1=$?
 # resume.sh: PR terbuka -> continue-pr; isu in-progress tanpa cabang -> requeue
