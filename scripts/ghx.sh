@@ -193,13 +193,13 @@ ghx_has_open_pr() {
 # <repo>/.aicrew/backend/outbox/<epoch>-<hash>.json {id,op,args,ts,tries}; backend-sync.sh mengurasnya setelah kuota pulih. Operasi yang sama (op+args) tidak diantre dua kali.
 # ghx_queue <op> [chave=nilai ...]: 0 = diantre; 1 = belum saatnya antre (status bertahan nonaktif atau REST belum habis): pemanggil menangani galat seperti biasa.
 ghx_queue() {
-  ghx_persist || return 1; [ "$(_ghx_state_get rest)" -gt "$(date +%s)" ] || return 1
+  ghx_persist || return 1; [ "${GHX_NOQUEUE:-0}" != 1 ] || return 1; [ "$(_ghx_state_get rest)" -gt "$(date +%s)" ] || return 1
   local op="$1" d args='{}' kv h f tmp ts; shift; d="$(_ghx_dir)" || return 1; mkdir -p "$d/outbox" 2>/dev/null || return 1
   for kv in "$@"; do args="$(jq -c --arg k "${kv%%=*}" --arg v "${kv#*=}" '.[$k]=$v' <<<"$args")"; done
   h="$(printf '%s %s' "$op" "$args" | shasum | cut -c1-16)"
   if ls "$d/outbox"/*-"$h".json >/dev/null 2>&1; then echo "$(msg backend.queued_dup "$op" 2>/dev/null || echo "queued: $op")" >&2; return 0; fi
   ts="$(date +%s)"; f="$d/outbox/$ts-$(printf '%03d' "$(ls "$d/outbox" 2>/dev/null | grep -c "^$ts-")")-$h.json"; tmp="$f.tmp.$$"   # epoch-urut-hash: urutan antre terjaga
-  jq -nc --arg id "$h" --arg op "$op" --argjson a "$args" --argjson ts "$(date +%s)" '{id:$id,op:$op,args:$a,ts:$ts,tries:0}' > "$tmp" 2>/dev/null && mv "$tmp" "$f" || { rm -f "$tmp"; return 1; }
+  jq -nc --arg id "$(printf '%s %s %s' "$h" "$ts" "$RANDOM" | shasum | cut -c1-16)" --arg op "$op" --argjson a "$args" --argjson ts "$(date +%s)" '{id:$id,op:$op,args:$a,ts:$ts,tries:0}' > "$tmp" 2>/dev/null && mv "$tmp" "$f" || { rm -f "$tmp"; return 1; }
   echo "$(msg backend.queued "$op" 2>/dev/null || echo "queued: $op")" >&2; return 0
 }
 # ghx_rest_write <op> [chave=nilai ...] -- <perintah gh api ...>: jalankan; REST habis (sudah tercatat, atau galat batas di sini) -> antre operasi dan sukses.

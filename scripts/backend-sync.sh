@@ -7,7 +7,7 @@
 # dicatat di .aicrew/backend/conflicts.log dan notify.sh dipanggil. Anggaran per panggilan: AICREW_SYNC_BUDGET (bawaan 100), jeda AICREW_SYNC_PAUSE (bawaan 1 dtk).
 set -u
 here="$(cd "$(dirname "$0")" && pwd)"
-export GHX_PERSIST=1
+export GHX_PERSIST=1 GHX_NOQUEUE=1   # sinkron tidak boleh mengantre ulang dirinya sendiri
 source "$here/lib/msg.sh"
 source "$here/ghx.sh"
 d="$(_ghx_dir)" || exit 0
@@ -19,7 +19,7 @@ notify() { command -v jq >/dev/null && jq -n --arg m "$*" '{message:$m}' | bash 
 log() { printf '%s %s\n' "$(date '+%F %T')" "$*" >> "$d/sync.log"; }
 
 # pulihkan klaim yatim (proses sinkron mati di tengah): *.json.work.<pid> dengan pid mati kembali jadi *.json
-for w in "$ob"/*.json.work.*; do [ -e "$w" ] || continue
+for w in "$ob"/*.json.work.[0-9]*; do [ -e "$w" ] || continue
   pid="${w##*.}"; kill -0 "$pid" 2>/dev/null || mv "$w" "${w%.work.*}" 2>/dev/null
 done
 
@@ -43,23 +43,34 @@ g() { local out rc=0 e; out="$(gh "$@" 2>"$ef")" || rc=$?
 # aplikasi per operasi -> 0 selesai, 10 konflik (pesan di $conflict), 11 batas, 12 tak ada, 1 gagal lain
 conflict=""
 issue_state() { g api "repos/$repo/issues/$1" --jq '[.state, ([.labels[].name]|join(","))]|@tsv'; }
-marker_present() { local out rc=0; out="$(g api "repos/$repo/issues/$1/comments?per_page=100" --jq "[.[]|select(.body|contains(\"aicrew-op:$2\"))]|length")" || rc=$?
+marker_present() { local out rc=0   # $2 sudah divalidasi hex (apply); semua halaman komentar
+  out="$(g api --paginate "repos/$repo/issues/$1/comments" --jq ".[]|select(.body|contains(\"aicrew-op:$2\"))|.id")" || rc=$?
   [ "$rc" = 0 ] || return $(( rc == 1 ? 2 : rc ))   # 0 ada, 1 tidak ada, 2 gagal membaca, 11/12 seperti g
-  [ "$out" -ge 1 ] 2>/dev/null; }
+  [ -n "$out" ]; }
 apply() { local op="$1" j="$2" id n label body st labs rc=0
-  id="$(jq -r .id <<<"$j")"; n="$(jq -r '.args.n // empty' <<<"$j")"
+  id="$(jq -r '.id // empty' <<<"$j")"; n="$(jq -r '.args.n // empty' <<<"$j")"
+  # berkas outbox dapat ditulis agen: validasi ketat sebelum apa pun masuk URL atau filter (12 = tak valid -> outbox.bad)
+  [[ "$id" =~ ^[0-9a-f]{16}$ ]] || return 12
+  case "$op" in
+    card_set|card_add) for k in owner num item field option; do v="$(jq -r --arg k "$k" '.args[$k] // empty' <<<"$j")"
+      [ "$k" = item ] && [ "$op" = card_add ] && continue; [ "$k" = field ] && [ "$op" = card_add ] && continue; [ "$k" = option ] && [ "$op" = card_add ] && continue
+      [[ "$v" =~ ^[A-Za-z0-9._-]+$ ]] || return 12; done; [[ "$n" =~ ^[0-9]*$ ]] || return 12 ;;
+    label_add|label_remove) [[ "$n" =~ ^[0-9]+$ ]] || return 12
+      label="$(jq -r '.args.label // empty' <<<"$j")"; [[ "$label" =~ ^[A-Za-z0-9._:\ -]+$ ]] || return 12 ;;
+    comment|issue_body|issue_close) [[ "$n" =~ ^[0-9]+$ ]] || return 12 ;;
+  esac
   case "$op" in
     label_add|label_remove|comment|issue_body)
       st="$(issue_state "$n")" || return $?; labs="${st#*$'\t'}"; st="${st%%$'\t'*}"
       [ -n "$st" ] || return 1 ;;
   esac
   case "$op" in
-    label_add) label="$(jq -r .args.label <<<"$j")"
+    label_add)
       case ",$labs," in *",$label,"*) return 0 ;; esac   # sudah ada: selesai, walau isu tertutup
       [ "$st" != closed ] || { conflict="issue #$n closed upstream"; return 10; }
       g api -X POST "repos/$repo/issues/$n/labels" -f "labels[]=$label" >/dev/null ;;
-    label_remove) label="$(jq -r .args.label <<<"$j")"
-      case ",$labs," in *",$label,"*) g api -X DELETE "repos/$repo/issues/$n/labels/$label" >/dev/null ;; *) return 0 ;; esac ;;
+    label_remove)
+      case ",$labs," in *",$label,"*) g api -X DELETE "repos/$repo/issues/$n/labels/$(jq -rn --arg l "$label" '$l|@uri')" >/dev/null ;; *) return 0 ;; esac ;;
     comment) marker_present "$n" "$id" || rc=$?; [ "$rc" = 0 ] && return 0; [ "$rc" = 1 ] || return "$rc"; rc=0
       [ "$st" != closed ] || { conflict="issue #$n closed upstream"; return 10; }
       body="$(jq -r .args.body <<<"$j")"$'\n\n'"<!-- aicrew-op:$id -->"
@@ -94,7 +105,7 @@ while IFS= read -r f; do
     11) mv "$w" "$f"; stopped=1; log "limit during $op"; break ;;
     *) tries=$(( $(jq -r '.tries // 0' <<<"$j") + 1 ))
        if [ "$rc" = 12 ] || [ "$tries" -ge 5 ]; then mv "$w" "$d/outbox.bad/$(basename "$f")"; fail_n=$((fail_n+1)); log "bad $op after $tries tries (rc=$rc)"; notify "$(msg backend.sync_bad "$op" "$tries" "rc=$rc")"
-       else jq -c --argjson t "$tries" '.tries=$t' <<<"$j" > "$w.new" && mv "$w.new" "$f" && rm -f "$w"; fail_n=$((fail_n+1)); fi ;;
+       else jq -c --argjson t "$tries" '.tries=$t' <<<"$j" > "$ob/.tries.$$" && mv "$ob/.tries.$$" "$f" && rm -f "$w"; fail_n=$((fail_n+1)); fi ;;
   esac
   [ "$pause" = 0 ] || sleep "$pause"
 done < <(find "$ob" -maxdepth 1 -name '*.json' 2>/dev/null | sort)

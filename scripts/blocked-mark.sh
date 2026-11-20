@@ -11,7 +11,7 @@ case "$n" in ''|*[!0-9]*) echo "$(msg blocked.mark_usage)" >&2; exit 64 ;; esac
 rc=0; labels="$(ghx_gql gh issue view "$n" --json labels -q '.labels[].name')" || rc=$?
 if [ "$rc" = 75 ]; then rc=0; labels="$(gh api "repos/$(ghx_repo)/issues/$n" --jq '.labels[].name')" || rc=$?; fi
 if [ "$rc" != 0 ]; then   # tak terbaca; bila kuota GitHub habis, antre kedua penanda (sinkron memeriksa idempoten) alih-alih gagal (#159)
-  if ghx_queue label_add n="$n" label=blocked 2>/dev/null; then ghx_queue comment n="$n" body="blocked: $reason" 2>/dev/null; echo "$(msg blocked.marked "$n")"; exit 0; fi
+  if ghx_queue label_add n="$n" label=blocked 2>/dev/null && ghx_queue comment n="$n" body="blocked: $reason" 2>/dev/null; then echo "$(msg blocked.marked "$n")"; exit 0; fi
   echo "$(msg blocked.cannot_read "$n")" >&2; exit 1
 fi
 if printf '%s\n' "$labels" | grep -qx blocked; then echo "$(msg blocked.already "$n")"; exit 0; fi

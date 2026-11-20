@@ -3231,7 +3231,7 @@ st() { cat "$GSD/issue-$n" 2>/dev/null || echo "open|"; }
 case "$meth $url" in
   "GET repos/o/r/issues/$n/comments"*)
     id="$(printf '%s' "$*" | sed -n 's/.*aicrew-op:\([0-9a-f]*\).*/\1/p')"
-    c="$(grep -c "aicrew-op:$id" "$GSD/comments-$n" 2>/dev/null)"; echo "${c:-0}" ;;
+    c="$(grep -c "aicrew-op:$id" "$GSD/comments-$n" 2>/dev/null)"; [ "${c:-0}" -ge 1 ] && echo 1 ;;
   "GET repos/o/r/issues/$n")
     s="$(st)"; printf '%s\t%s\n' "${s%%|*}" "${s#*|}" ;;
   "POST repos/o/r/issues/$n/labels") l="${last#labels[]=}"; s="$(st)"; echo "label_add $n $l" >> "$GSD/ops"; echo "${s%%|*}|${s#*|},$l" | sed 's/|,/|/' > "$GSD/issue-$n" ;;
@@ -3277,7 +3277,7 @@ GSreset; GSR bash -c 'source "$1/scripts/ghx.sh"; _ghx_state_set rest "$2"' _ "$
 AICREW_SYNC_BUDGET=1 GSsync >/dev/null
 ok "sinkron (#159): anggaran AICREW_SYNC_BUDGET=1 -> 1 diterapkan, 2 tertunda" "$(wc -l < "$GS/ops" | tr -d ' ')|$(GSsync --status)" '1|2'
 # klaim yatim (proses sinkron mati) dipulihkan lalu diterapkan
-GSreset; mkdir -p "$GS/backend/outbox"; echo '{"id":"abc","op":"label_add","args":{"n":"5","label":"yatim"},"ts":1,"tries":0}' > "$GS/backend/outbox/1-000-abc.json.work.99999999"
+GSreset; mkdir -p "$GS/backend/outbox"; echo '{"id":"abcdef0123456789","op":"label_add","args":{"n":"5","label":"yatim"},"ts":1,"tries":0}' > "$GS/backend/outbox/1-000-abc.json.work.99999999"
 GSsync >/dev/null
 ok "sinkron (#159): klaim yatim (pid mati) dipulihkan dan diterapkan" "$(cat "$GS/ops" 2>/dev/null)|$(GSsync --status)" 'label_add 5 yatim|0'
 # galat non-batas berulang -> outbox.bad setelah 5 percobaan
@@ -3293,6 +3293,20 @@ ok "blocked-mark (#159): kuota habis -> exit 0 dengan 2 operasi diantre; tanpa G
 rm -rf "$AP3/w/.aicrew"; mkdir -p "$AP3/w/.aicrew/backend/outbox"; echo '{"id":"zzz","op":"label_add","args":{"n":"5","label":"x"},"ts":1,"tries":0}' > "$AP3/w/.aicrew/backend/outbox/1-000-zzz.json"
 AP3KEEP=1 ap3 "$AP3OPEN" close >/dev/null; rc=$?
 ok "autopilot (#159): putaran menjalankan backend-sync bila outbox tidak kosong (log 'sinkron:')" "$([ "$(grep -c 'sinkron:' "$AP3/w/.aicrew/autopilot.log")" -ge 1 ] && echo ada)" ada
+
+# validasi berkas outbox (dapat ditulis agen) dan komentar identik yang sah (#159)
+GSreset; mkdir -p "$GS/backend/outbox"
+echo '{"id":"0123456789abcdef","op":"label_add","args":{"n":"5/../../x","label":"a"},"ts":1,"tries":0}' > "$GS/backend/outbox/1-000-aaaa.json"
+echo '{"id":"0123456789abcdee","op":"label_add","args":{"n":"5","label":"a/b"},"ts":1,"tries":0}' > "$GS/backend/outbox/1-001-bbbb.json"
+echo '{"id":"bad\"id","op":"comment","args":{"n":"5","body":"x"},"ts":1,"tries":0}' > "$GS/backend/outbox/1-002-cccc.json"
+GSsync >/dev/null
+ok "sinkron (#159): n/label/id tak valid di outbox -> semua ke outbox.bad, tanpa panggilan tulis" "$(ls "$GS/backend/outbox.bad" | wc -l | tr -d ' ')|$(cat "$GS/ops" 2>/dev/null | wc -l | tr -d ' ')|$(cat "$GS/calls" 2>/dev/null | grep -c 'api -X')" '3|0|0'
+GSreset; GSR bash -c 'source "$1/scripts/ghx.sh"; _ghx_state_set rest "$2"' _ "$root" "$gfut"; GSq comment n=5 body=sama; rm -f "$GS/backend/rest.until"; GSsync >/dev/null
+GSR bash -c 'source "$1/scripts/ghx.sh"; _ghx_state_set rest "$2"' _ "$root" "$gfut"; GSq comment n=5 body=sama; rm -f "$GS/backend/rest.until"; GSsync >/dev/null
+ok "sinkron (#159): komentar identik yang sah, diantre lagi sesudah yang pertama diterapkan, tetap terkirim (id berbeda)" "$(grep -c '^comment 5' "$GS/ops")" 2
+# sinkron tidak mengantre ulang dirinya sendiri (GHX_NOQUEUE)
+GSreset; GSR bash -c 'source "$1/scripts/ghx.sh"; _ghx_state_set rest "$2"; GHX_NOQUEUE=1 ghx_queue label_add n=5 label=z' _ "$root" "$gfut"; rn=$?
+ok "ghx_queue (#159): GHX_NOQUEUE=1 -> tidak mengantre (exit 1, outbox kosong)" "$rn|$(ls "$GS/backend/outbox" 2>/dev/null | wc -l | tr -d ' ')" '1|0'
 
 # direktori backend memakai akar checkout utama: dari worktree isu, antrean tetap di .aicrew checkout utama (#159)
 git init -q "$tmp/wtroot" && git -C "$tmp/wtroot" commit -q --allow-empty -m i && git -C "$tmp/wtroot" worktree add -q "$tmp/wtroot-wt" -b wtb 2>/dev/null
