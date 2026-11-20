@@ -12,7 +12,77 @@ export GHX_STATE
 # 0 bila teks galat adalah batas GraphQL ("unknown owner type" adalah gejala batas yang tak menyebut kata itu)
 ghx_is_limit() { grep -qiE 'rate limit|RATE_LIMIT|graphql_rate_limit|unknown owner type' <<<"$1"; }
 
-ghx_in_rest() { [ "${GHX_REST:-0}" = 1 ] || [ -s "$GHX_STATE" ]; }
+ghx_in_rest() {
+  if ghx_persist && _ghx_dir >/dev/null; then [ "$(_ghx_state_get graphql)" -gt "$(date +%s)" ]; return; fi   # status bertahan: hanya epoch (pulih otomatis sesudah reset)
+  [ "${GHX_REST:-0}" = 1 ] || [ -s "$GHX_STATE" ]
+}
+
+# --- jenjang bertahan (#159 tahap 1). Hanya aktif bila GHX_PERSIST=1 (autopilot); gerbang dan skrip lain tidak memakainya, jadi perilaku lama tidak berubah.
+# Status: satu berkas per kunci, <repo>/.aicrew/backend/{graphql,rest}.until berisi epoch kuota pulih; tulis atomik (mktemp + mv), tanpa baca-ubah-tulis, jadi dua penulis tidak saling menghapus.
+# Cache: .aicrew/backend/cache/<hash>: baris 1 = ETag, sisanya = isi; satu berkas = pasangan atomik. Nilai epoch dibatasi sekarang+3700 detik (jendela GitHub 1 jam) agar berkas rusak/dipalsukan tak bisa menunda tanpa batas.
+ghx_persist() { [ "${GHX_PERSIST:-0}" = 1 ]; }
+_ghx_dir() {
+  if [ -n "${_GHX_DIR_MEMO:-}" ]; then printf '%s' "$_GHX_DIR_MEMO"; return 0; fi
+  local d="${AICREW_BACKEND_DIR:-}"
+  if [ -z "$d" ]; then d="$(git rev-parse --show-toplevel 2>/dev/null)" || return 1; d="$d/.aicrew/backend"; fi
+  mkdir -p "$d/cache" 2>/dev/null || return 1; _GHX_DIR_MEMO="$d"; printf '%s' "$d"
+}
+_ghx_state_get() {   # <graphql|rest> -> epoch kuota pulih (0 bila tidak ada), dibatasi sekarang+3700
+  local d v now; ghx_persist && d="$(_ghx_dir)" || { echo 0; return 0; }
+  v="$(cat "$d/$1.until" 2>/dev/null)"; [[ "$v" =~ ^[0-9]{1,12}$ ]] || v=0
+  now="$(date +%s)"; [ "$v" -le $((now + 3700)) ] || v=$((now + 3700)); echo "$v"
+}
+_ghx_state_set() {   # <graphql|rest> <epoch>
+  local d t; ghx_persist && d="$(_ghx_dir)" || return 0
+  t="$(mktemp "$d/$1.until.XXXXXX" 2>/dev/null)" || return 0
+  printf '%s\n' "$2" > "$t" && mv "$t" "$d/$1.until" || rm -f "$t"
+  return 0
+}
+# graphql = normal; rest = GraphQL habis tetapi REST masih ada; local = keduanya habis (tahap 1: pemanggil menunggu sampai reset)
+ghx_tier() {
+  local now; now="$(date +%s)"
+  if [ "$(_ghx_state_get graphql)" -gt "$now" ]; then
+    if [ "$(_ghx_state_get rest)" -gt "$now" ]; then echo local; else echo rest; fi
+  else echo graphql; fi
+}
+# detik menunggu sampai salah satu kuota pulih (terdekat), dibatasi AICREW_QUOTA_WAIT_MIN (bawaan 30) .. 900
+ghx_wait_seconds() {
+  local g r now w m; now="$(date +%s)"; g="$(_ghx_state_get graphql)"; r="$(_ghx_state_get rest)"
+  w=$(( (g < r ? g : r) - now )); m="${AICREW_QUOTA_WAIT_MIN:-30}"; [ "$w" -ge "$m" ] || w="$m"; [ "$w" -le 900 ] || w=900; echo "$w"
+}
+# GET REST dengan ETag bila status bertahan aktif (304 tidak memotong kuota); selain itu `gh api <url>` biasa (panggilan lama tak berubah).
+# REST habis (epoch di masa depan) -> gagal cepat tanpa panggilan. Galat batas REST menandai rest habis sampai x-ratelimit-reset (atau +60 dtk).
+# ETag hanya dipakai bila cache lebih muda dari AICREW_CACHE_MAX_AGE menit (bawaan 10): cache basi/dipalsukan paling lama bertahan segitu.
+_ghx_rest_get() {
+  local u="$1" d k f ef tf out rc=0 st et body etag rst
+  if ! ghx_persist || ! d="$(_ghx_dir)"; then gh api "$u"; return; fi
+  if [ "$(_ghx_state_get rest)" -gt "$(date +%s)" ]; then echo "ghx: batas REST GitHub habis; menunggu reset" >&2; return 1; fi
+  k="$(printf '%s' "$u" | shasum | cut -c1-40)"; f="$d/cache/$k"; ef="$(mktemp "${TMPDIR:-/tmp}/ghx.err.XXXXXX")"; et=""
+  [ -s "$f" ] && [ -n "$(find "$f" -mmin "-${AICREW_CACHE_MAX_AGE:-10}" 2>/dev/null)" ] && et="$(head -1 "$f")"
+  if [ -n "$et" ]; then out="$(gh api -i -H "If-None-Match: $et" "$u" 2>"$ef")" || rc=$?; else out="$(gh api -i "$u" 2>"$ef")" || rc=$?; fi
+  st="$(printf '%s\n' "$out" | head -1 | tr -d '\r' | awk '{print $2}')"
+  if [ "$st" = 304 ] && [ -n "$et" ]; then rm -f "$ef"; tail -n +2 "$f"; return 0; fi
+  if [ "$rc" = 0 ] && [ "$st" = 200 ]; then
+    body="$(printf '%s\n' "$out" | awk 'b{print;next} {sub(/\r$/,"")} $0==""{b=1}')"
+    etag="$(printf '%s\n' "$out" | tr -d '\r' | awk -F': *' 'tolower($1)=="etag"{print $2; exit}')"
+    if [ -n "$etag" ]; then tf="$f.tmp.$$.$RANDOM"; { printf '%s\n' "$etag"; printf '%s\n' "$body"; } > "$tf" && mv "$tf" "$f" || rm -f "$tf"; else rm -f "$f"; fi
+    rm -f "$ef"; printf '%s\n' "$body"; return 0
+  fi
+  if ghx_is_limit "$(cat "$ef") $out"; then
+    rst="$(_ghx_hdr "$out" x-ratelimit-reset)"; [[ "$rst" =~ ^[0-9]+$ ]] || rst=$(( $(date +%s) + 60 ))
+    _ghx_state_set rest "$rst"
+  fi
+  cat "$ef" >&2; rm -f "$ef"; [ "$rc" != 0 ] || rc=1; return "$rc"
+}
+# Proaktif: sisa GraphQL di bawah AICREW_QUOTA_FLOOR persen (bawaan 5) -> tandai GraphQL habis sampai reset, supaya sisanya tersedia untuk tindakan penting. 1 poin per panggilan.
+ghx_probe_floor() {
+  ghx_persist || return 0
+  local h rem lim rst fl; h="$(_ghx_probe)"
+  rem="$(_ghx_hdr "$h" x-ratelimit-remaining)"; lim="$(_ghx_hdr "$h" x-ratelimit-limit)"; rst="$(_ghx_hdr "$h" x-ratelimit-reset)"; fl="${AICREW_QUOTA_FLOOR:-5}"
+  [[ "$rem" =~ ^[0-9]+$ && "$lim" =~ ^[0-9]+$ && "$rst" =~ ^[0-9]+$ && "$fl" =~ ^[0-9]+$ ]] || return 0
+  [ $((rem * 100)) -lt $((lim * fl)) ] && _ghx_state_set graphql "$rst"
+  return 0
+}
 
 # header respons GraphQL: batas yang benar ada di sini, BUKAN di `gh api rate_limit` (angkanya bisa menyesatkan)
 _ghx_probe() { gh api graphql -i -f query='{viewer{login}}' 2>/dev/null || true; }
@@ -38,10 +108,12 @@ ghx_explain_rest_limit() {
 }
 
 ghx_enter_rest() {
-  local first=1; [ -s "$GHX_STATE" ] && first=0
+  local first=1 h ep t; [ -s "$GHX_STATE" ] && first=0
   GHX_REST=1; export GHX_REST; echo 1 > "$GHX_STATE"
+  if ghx_persist && _ghx_dir >/dev/null; then first=1; fi   # status bertahan: tiap masuk menulis epoch baru
   [ "$first" = 1 ] || return 0
-  local t; t="$(ghx_reset_time)"
+  h="$(_ghx_probe)"; ep="$(_ghx_hdr "$h" x-ratelimit-reset)"; t="$(_ghx_fmt "$ep")"
+  if ghx_persist; then [[ "$ep" =~ ^[0-9]+$ ]] || ep=$(( $(date +%s) + 60 )); _ghx_state_set graphql "$ep"; fi
   echo "mode cadangan REST: batas GraphQL GitHub tercapai${t:+; reset $t UTC}" >&2
 }
 
@@ -82,12 +154,37 @@ ghx_issues() {
   repo="$(ghx_repo)" || return 1
   while :; do   # REST per halaman 100; entri bergaris pull_request dibuang; berhenti saat batas terkumpul
     q="repos/$repo/issues?state=$s&per_page=100&page=$page"; [ "$l" = - ] || q="$q&labels=$l"
-    pg="$(gh api "$q")" || { echo "ghx: REST juga gagal (GraphQL terblokir); coba lagi setelah reset" >&2; return 1; }
+    pg="$(_ghx_rest_get "$q")" || { echo "ghx: REST juga gagal (GraphQL terblokir); coba lagi setelah reset" >&2; return 1; }
     acc="$({ printf '%s\n' "$acc"; printf '%s\n' "$pg"; } | jq -c -s '.[0] + [.[1][]|select(has("pull_request")|not)]')"  # stdin: halaman bisa >1 MB, argv terbatas
     [ "$(jq length <<<"$pg")" -ge 100 ] && [ "$(jq length <<<"$acc")" -lt "$n" ] || break
     page=$((page+1))
   done
   jq -c --argjson n "$n" '.[:$n]|map({number,title,body:(.body // ""),labels:(.labels // []),state:(.state|ascii_upcase)})' <<<"$acc"
+}
+
+# ghx_prs <open|closed|all> <batas> <json-fields>  -> larik JSON bentuk `gh pr list`; REST: number,title,state(OPEN|MERGED|CLOSED),mergedAt,headRefOid,headRefName,isDraft,isCrossRepository
+ghx_prs() {
+  local s="$1" n="$2" f="$3" rc=0 repo page=1 acc='[]' pg
+  ghx_gql gh pr list --state "$s" --limit "$n" --json "$f" || rc=$?; [ "$rc" = 75 ] || return "$rc"
+  repo="$(ghx_repo)" || return 1
+  while :; do
+    pg="$(_ghx_rest_get "repos/$repo/pulls?state=$s&per_page=100&page=$page")" || { echo "ghx: REST juga gagal (GraphQL terblokir); coba lagi setelah reset" >&2; return 1; }
+    acc="$({ printf '%s\n' "$acc"; printf '%s\n' "$pg"; } | jq -c -s '.[0] + .[1]')"
+    [ "$(jq length <<<"$pg")" -ge 100 ] && [ "$(jq length <<<"$acc")" -lt "$n" ] || break
+    page=$((page+1))
+  done
+  jq -c --argjson n "$n" '.[:$n]|map({number,title,state:(if .merged_at then "MERGED" else (.state|ascii_upcase) end),mergedAt:.merged_at,headRefOid:.head.sha,headRefName:.head.ref,isDraft:(.draft // false),isCrossRepository:((.head.repo.full_name // "") != (.base.repo.full_name // ""))})' <<<"$acc"
+}
+
+# ghx_has_open_pr <cabang>: exit 0 bila ada PR terbuka dari cabang itu; panggilan GraphQL identik dengan yang lama, REST bila batas
+ghx_has_open_pr() {
+  local rc=0 out repo
+  out="$(ghx_gql gh pr list --head "$1" --state open --json number,state -q '[.[]|select(.state=="OPEN")]|length' 2>/dev/null)" || rc=$?
+  if [ "$rc" = 0 ]; then [ "$out" -ge 1 ] 2>/dev/null; return; fi
+  [ "$rc" = 75 ] || return 1
+  repo="$(ghx_repo 2>/dev/null)" || return 1
+  out="$(_ghx_rest_get "repos/$repo/pulls?state=open&head=${repo%%/*}:$1&per_page=100" 2>/dev/null | jq 'length' 2>/dev/null)" || return 1
+  [ "$out" -ge 1 ] 2>/dev/null
 }
 
 ghx_issue_body() {   # <n> -> badan issue ("" bila kosong)

@@ -13,6 +13,7 @@
 set -u
 here="$(cd "$(dirname "$0")" && pwd)"
 source "$here/lib/msg.sh"
+export GHX_PERSIST=1   # status kuota bertahan antar proses dan putaran + ETag untuk REST (#159 tahap 1); lihat scripts/ghx.sh
 # jaga Mac tetap bangun selama loop
 [ -z "${AICREW_CAFF:-}" ] && command -v caffeinate >/dev/null 2>&1 && AICREW_CAFF=1 exec caffeinate -i bash "$0" "$@"
 idle_limit="${AICREW_IDLE_LIMIT:-1800}"; round_timeout="${AICREW_ROUND_TIMEOUT:-0}"; poll="${AICREW_IDLE_POLL:-30}"; cur_round=0
@@ -50,12 +51,12 @@ fingerprint() { local a b c f top; top="$(git rev-parse --show-toplevel 2>/dev/n
   # WORKFLOW.md utuh; berkas settings hanya bagian .permissions (Claude Code menulis kunci lain sendiri, itu bukan perubahan owner). Berkas tak ada = "tak ada", beda dari berkas kosong.
   c="$(h() { { [ -f "$1" ] || { echo none; return 0; }; if [ "$2" = perm ] && command -v jq >/dev/null 2>&1; then jq -S -c '.permissions // {}' "$1" 2>/dev/null | shasum; else shasum < "$1"; fi; } 2>/dev/null; }
     printf 'wf %s\n' "$(h "$top/docs/WORKFLOW.md" all)"; for f in "$top/.claude/settings.json" "$top/.claude/settings.local.json" "$HOME/.claude/settings.json"; do printf '%s %s\n' "$f" "$(h "$f" perm)"; done)"
-  a="$(gh issue list --state all --limit 200 --json number,state,labels)" && b="$(gh pr list --state all --limit 200 --json number,state)" || return 1; printf '%s\n%s\n%s\n' "$a" "$b" "$c" | shasum | cut -d' ' -f1; }   # gagal = tidak ada sidik jari (bukan hash keluaran kosong, #73)
+  a="$(ghx_issues all - 200 number,state,labels)" && b="$(ghx_prs all 200 number,state)" || return 1; a="$(jq -c '[.[]|{number,state:(.state|ascii_upcase),labels:([.labels[]?|.name]|sort)}]|sort_by(.number)' <<<"$a" 2>/dev/null)" && b="$(jq -c '[.[]|{number,state:(.state|ascii_upcase)}]|sort_by(.number)' <<<"$b" 2>/dev/null)" || return 1; printf '%s\n%s\n%s\n' "$a" "$b" "$c" | shasum | cut -d' ' -f1; }   # gagal = tidak ada sidik jari (bukan hash keluaran kosong, #73)
 
 # ringkasan per putaran (#63): satu baris di autopilot.log setelah putaran selesai: durasi, rc, PR yang digabung selama putaran, PR terbuka dengan sha7, total. Hanya hasil pengamatan skrip (gh), tidak pernah fatal.
 # Seperti baris rc, tidak lewat log(): autopilot.status tetap berisi keadaan putaran.
 round_summary() { local pr m o t l; t="$(cat "$d/total" 2>/dev/null || echo 0)"; [ -n "$max_total" ] && t="$t/$max_total"
-  if pr="$(gh pr list --state all --limit 50 --json number,state,mergedAt,headRefOid 2>/dev/null)" && m="$(jq -r --argjson s "$2" '[.[]|select(.state=="MERGED" and .mergedAt!=null and (.mergedAt|sub("\\.[0-9]+";"")|fromdateiso8601)>=$s)|"#\(.number)"]|if length==0 then "-" else join(" ") end' <<<"$pr" 2>/dev/null)" && o="$(jq -r '[.[]|select(.state=="OPEN")|"#\(.number)@\((.headRefOid//"")[0:7])"]|if length==0 then "-" else join(" ") end' <<<"$pr" 2>/dev/null)"; then
+  if pr="$(ghx_prs all 50 number,state,mergedAt,headRefOid 2>/dev/null)" && m="$(jq -r --argjson s "$2" '[.[]|select(.state=="MERGED" and .mergedAt!=null and (.mergedAt|sub("\\.[0-9]+";"")|fromdateiso8601)>=$s)|"#\(.number)"]|if length==0 then "-" else join(" ") end' <<<"$pr" 2>/dev/null)" && o="$(jq -r '[.[]|select(.state=="OPEN")|"#\(.number)@\((.headRefOid//"")[0:7])"]|if length==0 then "-" else join(" ") end' <<<"$pr" 2>/dev/null)"; then
     lc="$(jq -c --argjson s "$2" '[.[]|select(.state=="MERGED" and .mergedAt!=null and (.mergedAt|sub("\\.[0-9]+";"")|fromdateiso8601)>=$s)]|sort_by(.mergedAt)|last|if .==null then empty else {pr:.number,merged_at:.mergedAt} end' <<<"$pr" 2>/dev/null)"
     [ -z "$lc" ] || { printf '%s' "$lc" > "$d/last-completed.json.tmp.$$" && mv "$d/last-completed.json.tmp.$$" "$d/last-completed.json"; last_json="$lc"; printf '%s %s\n' "$(date '+%F %T')" "$(msg autopilot.last_completed "$1" "$(jq -r .pr <<<"$lc")" "$(jq -r .merged_at <<<"$lc")")" | tee -a "$d/autopilot.log"; }
     l="$(msg autopilot.round_summary "$1" "$(( $(date +%s) - $2 ))" "$3" "$m" "$o" "$t")"
@@ -63,12 +64,12 @@ round_summary() { local pr m o t l; t="$(cat "$d/total" 2>/dev/null || echo 0)";
   printf '%s %s\n' "$(date '+%F %T')" "$l" | tee -a "$d/autopilot.log"; return 0; }
 
 # semua issue terbuka hanya menunggu manusia: needs-principal, atau punya PR terbuka (cabang issue-N, konvensi yang sama dengan resume.sh)
-has_open_pr() { [ "$(gh pr list --head "issue-$1" --state open --json number,state -q '[.[]|select(.state=="OPEN")]|length' 2>/dev/null)" -ge 1 ] 2>/dev/null; }
+has_open_pr() { ghx_has_open_pr "issue-$1"; }
 is_principal() { jq -e --argjson n "$2" '.[]|select(.number==$n)|.labels|map(.name|ascii_downcase)|(index("needs-principal") or index("blocked") or index("owner-hold"))' <<<"$1" >/dev/null 2>&1; }   # blocked and owner-hold wait on a human like needs-principal
 . "$here/ghx.sh"; . "$here/lib/ci-infra.sh"
 # open issue PR whose CI cannot start (infrastructure, #80): a round cannot fix it, so treat as waiting for the owner. Any error = not blocked (fail-closed).
 ci_infra_blocked() { local repo prs pn sha
-  repo="$(ghx_repo 2>/dev/null)" && [ -n "$repo" ] && prs="$(gh pr list --state open --limit 100 --json number,headRefName,headRefOid,isDraft,isCrossRepository 2>/dev/null)" || return 1
+  repo="$(ghx_repo 2>/dev/null)" && [ -n "$repo" ] && prs="$(ghx_prs open 100 number,headRefName,headRefOid,isDraft,isCrossRepository 2>/dev/null)" || return 1
   while IFS=$'\t' read -r pn sha; do [ -n "$pn" ] && ci_infra_line "$repo" "$sha" >/dev/null && return 0; done < <(jq -r '.[]?|select(.isDraft==false and .isCrossRepository==false and (.headRefName|test("^issue-[0-9]+$")))|"\(.number)\t\(.headRefOid)"' <<<"$prs" 2>/dev/null)
   return 1; }
 . "$here/lib/blockers.sh"; . "$here/lib/board-ref.sh"   # unsat_blockers, board_ref
@@ -171,7 +172,11 @@ for ((i=1; i<=max_rounds; i++)); do
   cur_round=$i
   # issue berlabel integrasi ($L_INT, bawaan integrated; nama lama di-integrasi tetap dikenali) sudah selesai (menunggu merge ke main oleh owner): bukan pekerjaan tersisa
   # gh gagal / keluaran tak terurai = keadaan TIDAK diketahui (#75): jangan memutuskan selesai atau menunggu-owner dari data kosong; jeda, coba lagi, berhenti setelah 5 kali beruntun (exit 6)
-  if ! raw="$(gh issue list --state open --limit 200 --json number,labels,body)" || ! open="$(jq --argjson ls "$L_INT" '[.[]|select((.labels|map(.name)) as $n|(any($ls[]; . as $x|$n|index($x)) or ($n|index("epic")))|not)]' <<<"$raw")" || [ -z "$open" ]; then   # epic = pengelompokan journey, bukan pekerjaan
+  ghx_probe_floor   # proaktif: di bawah AICREW_QUOTA_FLOOR persen sisa GraphQL, turun ke REST sebelum habis
+  if ! raw="$(ghx_issues open - 200 number,labels,body)" || ! open="$(jq --argjson ls "$L_INT" '[.[]|select((.labels|map(.name)) as $n|(any($ls[]; . as $x|$n|index($x)) or ($n|index("epic")))|not)]' <<<"$raw")" || [ -z "$open" ]; then   # epic = pengelompokan journey, bukan pekerjaan
+    if [ "$(ghx_tier)" = local ]; then   # GraphQL dan REST habis: bukan galat gh. Tunggu reset tanpa memakai iterasi atau hitungan gagal (#162)
+      qw="$(ghx_wait_seconds)"; log "$(msg autopilot.quota_wait "$i" "$qw")"; sleep "$qw"; i=$((i-1)); continue
+    fi
     gh_down=$((gh_down+1)); log "$(msg autopilot.gh_unreadable_retry "$i" "$gh_down")"
     [ "$gh_down" -ge 5 ] && { set_phase gh-down "$i"; note "$(msg autopilot.gh_down_stop)"; exit 6; }
     sleep "${AICREW_ERR_SLEEP:-60}"; continue

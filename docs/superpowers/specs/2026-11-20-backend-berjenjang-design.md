@@ -180,5 +180,11 @@ dan CI silang; `Test command:` baris opsional baru di `docs/WORKFLOW.md`.
 10. **Non-tujuan tambahan**: jenjang 3 tidak melihat isu baru dari pemilik sebelum cache disegarkan; pembuatan PR di jenjang 3 masuk outbox (`pr_create`); `state.json` dan cache
     per klon (dua mesin/klon tidak berbagi status).
 
+11. **Catatan pelaksanaan tahap 1** (setelah review diff): status jenjang disimpan satu berkas per kunci, `.aicrew/backend/graphql.until` dan `rest.until`
+    (epoch), bukan satu `state.json` (menghindari baca-ubah-tulis yang saling menimpa); nilai dibatasi sekarang+3700 detik saat dibaca. Cache REST satu berkas
+    per URL (baris 1 ETag, sisanya isi; pasangan atomik) dan ETag hanya dipakai bila cache lebih muda dari `AICREW_CACHE_MAX_AGE` menit (bawaan 10). Agen
+    dengan Bash tetap bisa menulis berkas ini (batas yang sama dengan bukti lokal); gerbang melepas `GHX_PERSIST` dan tidak memakainya. REST dipakai
+    lebih dulu hanya saat GraphQL di bawah lantai `AICREW_QUOTA_FLOOR` (bawaan 5%) atau habis; di atas lantai tetap GraphQL (perilaku dan tes lama tidak berubah).
+
 ## Pertanyaan terbuka (butuh jawaban pemilik sebelum tahap 3)
 - Push langsung ke `main` pada jenjang 3 untuk L0/L1 (tanpa review GitHub, dengan CI silang sesudahnya): pemilik menyetujui spec ini pada 2026-11-20 ("mantap saya setuju"), tahap 3 mengikutinya. Pemilik dapat mengubah keputusan ini sebelum tahap 3.

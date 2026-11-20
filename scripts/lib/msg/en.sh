@@ -108,6 +108,7 @@ msg_en() {
     autopilot.sent_sigterm) printf 'round %s: session did not exit; sent SIGTERM' "$@" ;;
     autopilot.still_stuck) printf 'autopilot: still stuck: state unchanged since %s; changed inputs: none; no round run (change an issue/PR, WORKFLOW.md or permission files, or pass --retry-stuck)' "$@" ;;
     autopilot.gh_unreadable_retry) printf 'round %s: gh unreadable (attempt %s/5): state unknown, not deciding done or waiting' "$@" ;;
+    autopilot.quota_wait) printf 'round %s: GitHub quota exhausted (GraphQL and REST); waiting %s s for reset, no iteration used' "$1" "$2" ;;
     autopilot.gh_down_stop) printf 'autopilot: gh unreadable 5 times in a row; stopping (not an issue state), check network and gh auth' ;;
     autopilot.all_done) printf 'autopilot: all issues done (round %s)' "$@" ;;
     autopilot.all_await_owner) printf 'autopilot: all %s remaining issues await the owner (needs-principal, blocked or owner-hold)' "$@" ;;

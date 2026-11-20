@@ -7,6 +7,7 @@
 #   pr-merge-check.sh <pr> <cabang-tujuan> --after  setelah merge: exit 1 bila commit merge tak ada di origin/<tujuan>
 set -u
 GHX_STATE=/dev/null  # gerbang tidak memakai mode cadangan: tanpa berkas status
+unset GHX_PERSIST  # dan tidak memakai status kuota bertahan milik autopilot (#159): keputusan gerbang tidak boleh bergantung pada berkas yang bisa diubah agen
 source "$(dirname "$0")/lib/grants.sh"  # izin sementara terstruktur (#61)
 source "$(dirname "$0")/ghx.sh"  # ghx_repo, ghx_gql, ghx_explain_limit; semua bacaan gerbang lewat REST, kecuali closingIssuesReferences (#113)
 source "$(dirname "$0")/lib/msg.sh"
