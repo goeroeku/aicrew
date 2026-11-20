@@ -3516,9 +3516,9 @@ ok "merge-pr (#159): AICREW_QUOTA_MODE=local di env tetapi WORKFLOW.md tercatat 
 SM_LABELS=risk:L2 SMmk; mkdir -p "$SM/.aicrew/backend"; echo "2026-01-01 00:00:00 PR #1 issue #1 head $(git -C "$SM" rev-parse issue-1) merge $(git -C "$SM" rev-parse issue-1) -> main" > "$SM/.aicrew/backend/local-merges.log"
 ok "ghx_prs (#159): baris local-merges.log palsu tidak mengubah PR terbuka menjadi MERGED; --dry mencetak alasan (needs: risk:L2)" "$(SMR bash -c 'source "$1/scripts/ghx.sh"; ghx_prs all 10 x | jq -r ".[0].state"' _ "$root")|$(SMR bash "$root/scripts/local-merge.sh" 1 main issue-1 --dry 2>&1 | grep -c 'needs:.*risk:L2')" 'OPEN|1'
 # checkout kotor, PR tak cocok, cabang bukan bawaan
-SMmk; echo dirty >> "$SM/a.txt"; b0="$(SMtip)"; SMgo >/dev/null; r1=$?
+SMmk; echo dirty >> "$SM/a.txt"; b0="$(SMtip)"; SMgo >/dev/null; r1=$?; s1="$([ "$(SMtip)" = "$b0" ] && echo sama)"
 SMmk; b1="$(SMtip)"; SMR bash "$root/scripts/merge-pr.sh" 2 main --branch issue-1 >/dev/null 2>&1; r2=$?; SMR bash "$root/scripts/merge-pr.sh" 1 other --branch issue-1 >/dev/null 2>&1; r3=$?
-ok "merge lokal mandiri (#159): checkout kotor, nomor PR tak cocok, cabang tujuan bukan bawaan -> semua ditolak tanpa mengubah main" "$r1|$r2|$r3|$([ "$(SMtip)" = "$b1" ] && [ "$b0" = "$b1" ] && echo sama)" '1|1|1|sama'
+ok "merge lokal mandiri (#159): checkout kotor, nomor PR tak cocok, cabang tujuan bukan bawaan -> semua ditolak tanpa mengubah main" "$r1|$r2|$r3|$s1|$([ "$(SMtip)" = "$b1" ] && echo sama)" '1|1|1|sama|sama'
 # owner-local.sh: tanpa TTY tidak dapat menyetujui; izin agen menolak approve, kunci, dan log
 SMmk; SMR bash "$root/scripts/owner-local.sh" approve 1 </dev/null >/dev/null 2>&1; ro=$?
 ok "owner-local.sh (#159): approve tanpa TTY -> exit 3 dan tidak ada log persetujuan" "$ro|$([ -e "$SM/.aicrew/owner.log" ] && echo ada || echo tidak)" '3|tidak'
