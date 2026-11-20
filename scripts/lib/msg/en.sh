@@ -150,6 +150,7 @@ msg_en() {
     local.pr_mismatch) printf 'PR #%s is not an open, non-draft, same-repository PR whose head is the current tip of %s (waiting)' "$@" ;;
     local.odd_filename) printf 'a changed file name needs quoting (unusual characters); it needs the GitHub gate (waiting)' ;;
     local.test_config) printf 'test/build/CI configuration changed (%s); it needs the GitHub gate (waiting)' "$@" ;;
+    local.default_unknown) printf 'the remote did not report its default branch; cannot verify the target (waiting)' ;;
     autopilot.quota_wait) printf 'round %s: GitHub quota exhausted (GraphQL and REST); waiting %s s for reset, no iteration used' "$1" "$2" ;;
     autopilot.gh_down_stop) printf 'autopilot: gh unreadable 5 times in a row; stopping (not an issue state), check network and gh auth' ;;
     autopilot.all_done) printf 'autopilot: all issues done (round %s)' "$@" ;;

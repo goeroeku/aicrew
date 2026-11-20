@@ -3322,9 +3322,9 @@ LMmk() {   # fixture: origin bare + klon; cabang issue-5 (variasi lewat LM_*); c
       && echo 'test -f ok.txt' > check.sh && echo base > a.txt && echo x > tests/t.sh && echo x > tests/é.sh && git add -A && git commit -qm base && git push -q origin main && git remote set-head origin main >/dev/null 2>&1
     git checkout -q -b issue-5 && echo f > feat.txt; [ -n "${LM_NOOK:-}" ] || echo ok > ok.txt; eval "${LM_BRANCH_CMD:-:}"
     git add -A && git commit -qm feat && git push -q origin issue-5 && git checkout -q main ) >/dev/null 2>&1
-  jq -n --arg l "${LM_LABELS:-risk:L1}" --arg b "${LM_BODY:-x}" '[{number:5,labels:($l|split(",")|map({name:.})),body:$b}]' > "$LM/backend/cache/lst-issues-open--1.json"
-  jq -n --arg l "${LM_PRLABELS:-}" --arg h "$(git -C "$LM/origin.git" rev-parse issue-5)" --arg br "${LM_PRBR:-issue-5}" --arg st "${LM_PRSTATE:-OPEN}" \
-    '[{number:9,state:$st,headRefName:$br,headRefOid:$h,isDraft:false,isCrossRepository:false,labels:($l|split(",")|map(select(length>0)|{name:.}))}]' > "$LM/backend/cache/lst-prs-all-1.json"
+  jq -n --arg l "${LM_LABELS:-risk:L1}" --arg b "${LM_BODY:-x}" --arg l7 "${LM_L7:-}" '[{number:5,labels:($l|split(",")|map({name:.})),body:$b}] + (if $l7=="" then [] else [{number:7,labels:($l7|split(",")|map({name:.})),body:"y"}] end)' > "$LM/backend/cache/lst-issues-open--1.json"
+  jq -n --arg l "${LM_PRLABELS:-}" --arg h "$(git -C "$LM/origin.git" rev-parse issue-5)" --arg br "${LM_PRBR:-issue-5}" --arg st "${LM_PRSTATE:-OPEN}" --arg base "${LM_PRBASE:-main}" --arg body "${LM_PRBODY:-Closes #5}" \
+    '[{number:9,state:$st,headRefName:$br,baseRefName:$base,body:$body,headRefOid:$h,isDraft:false,isCrossRepository:false,labels:($l|split(",")|map(select(length>0)|{name:.}))}]' > "$LM/backend/cache/lst-prs-all-1.json"
   [ -z "${LM_NOPR:-}" ] || rm -f "$LM/backend/cache/lst-prs-all-1.json"
   [ -z "${LM_STALE:-}" ] || touch -t 202001010000 "$LM/backend/cache/lst-issues-open--1.json"
 }
@@ -3339,7 +3339,7 @@ ok "merge lokal (#159): jejak bukti .aicrew/evidence/<head>.json berisi rc 0 dan
 LMmk; b0="$(LMo)"; LM_NOOK=1 LMmk; b0="$(LMo)"; LMgo; rc=$?
 ok "merge lokal (#159): tes gagal pada hasil merge -> exit 1, origin tidak berubah" "$rc|$([ "$(LMo)" = "$b0" ] && echo sama)" '1|sama'
 # syarat yang butuh GitHub: menunggu, origin tidak berubah
-for v in 'LM_LABELS=risk:L2' 'LM_PRLABELS=owner-hold' 'LM_PRLABELS=risk:L2' 'LM_NOPR=1' 'LM_PRBR=issue-6' 'LM_PRSTATE=CLOSED' 'LM_LABELS=risk:L1,owner-hold' 'LM_LABELS=risk:L1,needs-security' 'LM_LABELS=bug' 'LM_STALE=1' 'LM_BODY=- [ ] owner only' \
+for v in 'LM_PRBASE=issue-9' 'LM_PRBODY=Closes #7' 'LM_PRBODY=Closes #7 L7=x' 'LM_WF_EXTRA=- Quota mode: local-never' 'LM_LABELS=risk:L2' 'LM_PRLABELS=owner-hold' 'LM_PRLABELS=risk:L2' 'LM_NOPR=1' 'LM_PRBR=issue-6' 'LM_PRSTATE=CLOSED' 'LM_LABELS=risk:L1,owner-hold' 'LM_LABELS=risk:L1,needs-security' 'LM_LABELS=bug' 'LM_STALE=1' 'LM_BODY=- [ ] owner only' \
          'LM_BRANCH_CMD=echo x >> docs/WORKFLOW.md' 'LM_BRANCH_CMD=echo {} > package-lock.json' 'LM_BRANCH_CMD=echo y > tests/t.sh' 'LM_BRANCH_CMD=echo exit 0 >> tests/t.sh' 'LM_BRANCH_CMD=echo x > Makefile' 'LM_BRANCH_CMD=echo {} > pyproject.toml' 'LM_BRANCH_CMD=echo y > tests/é.sh' 'LM_WF_EXTRA=- Quota mode: github' 'LM_WF_EXTRA=- Quota mode: bebas'; do
   ( export "$v"; LMmk; b0="$(LMo)"; LMgo; rc=$?; echo "$rc|$([ "$(LMo)" = "$b0" ] && echo sama)" ) > "$LM.out" 2>/dev/null
   ok "merge lokal (#159): ditolak dan origin tidak berubah ($v)" "$(cat "$LM.out")" '1|sama'
@@ -3347,6 +3347,11 @@ done
 # kontrol positif: berkas tes BARU (murni tambahan) boleh
 LM_BRANCH_CMD='echo z > tests/new.sh' LMmk; LMgo; rc=$?
 ok "merge lokal (#159): berkas tes baru (penambahan murni) lolos" "$rc" 0
+# issue tertaut di badan PR ikut diperiksa: L2 -> tolak; L1 -> lolos
+( export LM_PRBODY="Closes #5, #7" LM_L7="risk:L2"; LMmk; b0="$(LMo)"; LMgo; echo "$?|$([ "$(LMo)" = "$b0" ] && echo sama)" ) > "$LM.out" 2>/dev/null
+ok "merge lokal (#159): issue tertaut #7 berlabel risk:L2 -> ditolak, origin tidak berubah" "$(cat "$LM.out")" '1|sama'
+( export LM_PRBODY="Closes #5, #7" LM_L7="risk:L1"; LMmk; LMgo; echo "$?" ) > "$LM.out" 2>/dev/null
+ok "merge lokal (#159): issue tertaut #7 berlabel risk:L1 -> lolos" "$(cat "$LM.out")" 0
 # nama cabang tak valid / bukan cabang bawaan
 LMmk; b0="$(LMo)"; LMR bash "$root/scripts/local-merge.sh" 9 main feature-x >/dev/null 2>&1; r1=$?; LMR bash "$root/scripts/local-merge.sh" 9 other issue-5 >/dev/null 2>&1; r2=$?
 ok "merge lokal (#159): cabang bukan issue-<n> atau tujuan bukan cabang bawaan -> ditolak" "$r1|$r2|$([ "$(LMo)" = "$b0" ] && echo sama)" '1|1|sama'

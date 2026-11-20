@@ -17,16 +17,17 @@ refuse() { echo "GAGAL: $*"; exit 1; }
 # 1. konfigurasi dibaca dari cabang tujuan (git show), bukan dari PR atau env; hanya cabang bawaan (dibaca dari remote, bukan ref lokal yang dapat ditulis)
 git fetch -q origin "$dst" "$br" 2>/dev/null || refuse "$(msg local.fetch_failed)"
 dflt="$(git ls-remote --symref origin HEAD 2>/dev/null | sed -n 's#^ref: refs/heads/\(.*\)[[:space:]]HEAD$#\1#p' | head -1)"
-[ -n "$dflt" ] || dflt="$(git symbolic-ref -q --short refs/remotes/origin/HEAD 2>/dev/null | sed 's#^origin/##')"; [ -n "$dflt" ] || dflt=main
+[ -n "$dflt" ] || refuse "$(msg local.default_unknown)"   # gagal tertutup: tanpa jawaban remote tidak ada tebakan (ref lokal dapat ditulis agen)
 [ "$dst" = "$dflt" ] || refuse "$(msg local.not_default "$dst" "$dflt")"
 wf="$(git show "origin/$dst:docs/WORKFLOW.md" 2>/dev/null)" || wf=""
-qm="$(sed -n 's/^[- ]*Quota mode: *\([A-Za-z]*\).*/\1/p' <<<"$wf" | head -1 | tr 'A-Z' 'a-z')"
-case "$qm" in ''|auto|local) ;; *) refuse "$(msg local.mode_forbidden "$qm")" ;; esac   # github ou nilai tak dikenal: gagal tertutup
+qraw="$(sed -n 's/^[- ]*Quota mode: *//p' <<<"$wf" | head -1)"
+qm="$(sed -nE 's/^([A-Za-z]+)([[:space:].,;(]|$).*/\1/p' <<<"$qraw" | tr 'A-Z' 'a-z')"   # kata penuh; 'local-never' atau placeholder tak terisi bukan nilai valid
+if [ -n "$qraw" ]; then case "$qm" in auto|local) ;; *) refuse "$(msg local.mode_forbidden "${qm:-$qraw}")" ;; esac; fi   # github atau nilai tak dikenal: gagal tertutup
 head="$(git rev-parse "origin/$br" 2>/dev/null)" || refuse "$(msg local.fetch_failed)"
 # 2. PR dari cache segar: terikat ke cabang isu dan sha kepala, terbuka, bukan draft, tanpa label penahan (label PR belum tentu sama dengan label issue)
 holdre='risk:L2|needs-principal|needs-security|needs-perf|owner-hold|blocked|epic'
 prrec="$(ghx_cached_pr "$pr" 600)" || refuse "$(msg local.pr_unknown "$pr")"
-jq -e --arg br "$br" --arg h "$head" '(.state|ascii_upcase)=="OPEN" and ((.isDraft // false)==false) and ((.isCrossRepository // false)==false) and .headRefName==$br and .headRefOid==$h' <<<"$prrec" >/dev/null 2>&1 \
+jq -e --arg br "$br" --arg h "$head" --arg d "$dst" '(.state|ascii_upcase)=="OPEN" and ((.isDraft // false)==false) and ((.isCrossRepository // false)==false) and .headRefName==$br and .headRefOid==$h and .baseRefName==$d' <<<"$prrec" >/dev/null 2>&1 \
   || refuse "$(msg local.pr_mismatch "$pr" "$br")"
 prlabels="$(jq -r '[.labels[]?|if type=="object" then .name else . end]|.[]' <<<"$prrec")"
 # 3. isi diff (nama tanpa kutip git; nama yang tetap dikutip = karakter aneh = tolak): berkas yang butuh bukti GitHub = tunggu
@@ -35,10 +36,10 @@ names="$(git -c core.quotepath=false diff --name-status "origin/$dst...$head")" 
 paths="$(printf '%s\n' "$names" | awk -F'\t' '{for(i=2;i<=NF;i++)print $i}')"
 grep -q '^"' <<<"$paths" && refuse "$(msg local.odd_filename)"
 grep -iqx 'docs/workflow.md' <<<"$paths" && refuse "$(msg local.touches_workflow)"
-dep="$(grep -E '(^|/)(package-lock\.json|package\.json|npm-shrinkwrap\.json|\.npmrc|yarn\.lock|pnpm-lock\.yaml|go\.mod|go\.sum|requirements[^/]*\.txt|Pipfile(\.lock)?|poetry\.lock|pyproject\.toml|uv\.lock|Cargo\.(toml|lock)|Gemfile(\.lock)?|composer\.(json|lock)|pom\.xml|build\.gradle(\.kts)?|settings\.gradle(\.kts)?)$' <<<"$paths" | head -3 | paste -sd' ' -)"
+dep="$(grep -E '(^|/)(package-lock\.json|package\.json|npm-shrinkwrap\.json|\.npmrc|yarn\.lock|pnpm-lock\.yaml|go\.mod|go\.sum|requirements[^/]*\.txt|Pipfile(\.lock)?|poetry\.lock|pyproject\.toml|uv\.lock|Cargo\.(toml|lock)|Gemfile(\.lock)?|composer\.(json|lock)|pom\.xml|build\.gradle(\.kts)?|settings\.gradle(\.kts)?|\.pnpmfile\.cjs|\.yarnrc\.ya?ml|pnpm-workspace\.ya?ml|bun\.lockb?|deno\.jsonc?)$' <<<"$paths" | head -3 | paste -sd' ' -)"
 [ -z "$dep" ] || refuse "$(msg local.dep_manifest "$dep")"
 testre='(^|/)(tests?|__tests__|spec|testdata|__snapshots__|e2e)/|(^|/)test_[^/]*$|(^|/)tests\.py$|(_test|\.test|\.spec|_spec)\.[a-z0-9]+$|Test\.java$'
-cfgre='(^|/)(Makefile|GNUmakefile|conftest\.py|pytest\.ini|tox\.ini|setup\.cfg|jest\.config\.[a-z]+|vitest\.config\.[a-z]+|karma\.conf\.[a-z]+|\.mocharc\.[a-z]+|Dockerfile[^/]*|docker-compose[^/]*\.ya?ml|\.gitlab-ci\.ya?ml)$|^\.github/'
+cfgre='(^|/)(Makefile|GNUmakefile|justfile|Rakefile|Taskfile\.ya?ml|CMakeLists\.txt|noxfile\.py|conftest\.py|pytest\.ini|tox\.ini|setup\.cfg|phpunit\.xml(\.dist)?|(jest|vitest|playwright|cypress)\.config\.[a-z]+|karma\.conf\.[a-z]+|\.mocharc\.[a-z]+|Dockerfile[^/]*|docker-compose[^/]*\.ya?ml|\.gitlab-ci\.ya?ml|\.travis\.ya?ml|Jenkinsfile|azure-pipelines\.ya?ml)$|^\.(github|circleci)/'
 # berkas tes yang sudah ada TIDAK boleh berubah sama sekali (penambahan murni pun dapat menetralkan tes: `exit 0`); berkas BARU boleh. Konfigurasi tes/build/CI = tunggu.
 bad="$(printf '%s\n' "$names" | while IFS=$'\t' read -r st f1 f2; do
   if [ "${st#A}" != "$st" ]; then continue; fi
@@ -48,13 +49,21 @@ done | head -3 | paste -sd' ' -)"
 cfg="$(grep -E "$cfgre" <<<"$paths" | head -3 | paste -sd' ' -)"
 [ -z "$cfg" ] || refuse "$(msg local.test_config "$cfg")"
 git diff "origin/$dst...$head" | bash "$here/baseline-scan.sh" --body /dev/null --perf-labeled 0 >/dev/null 2>&1 || refuse "$(msg local.baseline_block)"
-# 4. issue dari cache segar: risk:L0/L1 (gabungan label PR dan issue; L2 di mana pun menahan), terbuka, tanpa penanda yang butuh pemilik/GitHub
-rec="$(ghx_cached_issue "$n" 600)" || refuse "$(msg local.cache_stale "$n")"
-labels="$(jq -r '[.labels[]?|if type=="object" then .name else . end]|.[]' <<<"$rec")"$'\n'"$prlabels"
+# 4. issue dari cache segar: issue cabang DAN semua #N yang disebut di badan PR (seperti gerbang normal, cadangan paling ketat): masing-masing terbuka, di cache, tanpa penanda
+# penahan; risk:L0/L1 pada gabungan label PR+issue; L2 di mana pun menahan
+linked="$( { echo "$n"; jq -r '.body // ""' <<<"$prrec" | grep -Eo '#[0-9]+' | tr -d '#'; } | sort -un)"
+labels="$prlabels"
+for m in $linked; do
+  rec="$(ghx_cached_issue "$m" 600)" || refuse "$(msg local.cache_stale "$m")"
+  il="$(jq -r '[.labels[]?|if type=="object" then .name else . end]|.[]' <<<"$rec")"
+  labels="$labels"$'\n'"$il"
+  hold="$(grep -ixE "$holdre" <<<"$il" | sort -u | paste -sd, -)"
+  [ -z "$hold" ] || refuse "$(msg local.label_blocked "$m" "$hold")"
+  jq -r '.body // ""' <<<"$rec" | grep -Eiq '^[[:space:]>]*([-*+]|[0-9]+[.)])[[:space:]]+\[ \].*owner[[:space:]_-]+only' && refuse "$(msg local.owner_only "$m")"
+done
 grep -qixE 'risk:L[01]' <<<"$labels" || refuse "$(msg local.risk_unknown "$n")"
 hold="$(grep -ixE "$holdre" <<<"$labels" | sort -u | paste -sd, -)"
 [ -z "$hold" ] || refuse "$(msg local.label_blocked "$n" "$hold")"
-jq -r '.body // ""' <<<"$rec" | grep -Eiq '^[[:space:]>]*([-*+]|[0-9]+[.)])[[:space:]]+\[ \].*owner[[:space:]_-]+only' && refuse "$(msg local.owner_only "$n")"
 # 5. bukti: gerbang menjalankan sendiri tes pada hasil merge
 ev="$(bash "$here/evidence.sh" run "$dst" "$head")"; erc=$?
 case "$erc" in 0) ;; 1) refuse "$(msg local.tests_failed)" ;; *) refuse "$(msg local.evidence_unavailable)" ;; esac

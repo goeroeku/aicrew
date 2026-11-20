@@ -150,6 +150,7 @@ msg_id() {
     local.pr_mismatch) printf 'PR #%s bukan PR terbuka, non-draft, satu repositori, dengan head sama dengan ujung %s saat ini (menunggu)' "$@" ;;
     local.odd_filename) printf 'nama berkas yang berubah perlu dikutip (karakter tak lazim); butuh gerbang GitHub (menunggu)' ;;
     local.test_config) printf 'konfigurasi tes/build/CI berubah (%s); butuh gerbang GitHub (menunggu)' "$@" ;;
+    local.default_unknown) printf 'remote tidak melaporkan cabang bawaannya; tujuan tak dapat diverifikasi (menunggu)' ;;
     autopilot.quota_wait) printf 'putaran %s: kuota GitHub habis (GraphQL dan REST); menunggu %s detik sampai reset, iterasi tidak terpakai' "$1" "$2" ;;
     autopilot.gh_down_stop) printf 'autopilot: gh tidak terbaca 5 kali beruntun; berhenti (bukan keadaan issue), periksa jaringan dan login gh' ;;
     autopilot.all_done) printf 'autopilot: semua issue selesai (putaran %s)' "$@" ;;

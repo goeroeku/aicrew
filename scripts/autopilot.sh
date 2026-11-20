@@ -56,7 +56,7 @@ fingerprint() { local a b c f top; top="$(git rev-parse --show-toplevel 2>/dev/n
 # ringkasan per putaran (#63): satu baris di autopilot.log setelah putaran selesai: durasi, rc, PR yang digabung selama putaran, PR terbuka dengan sha7, total. Hanya hasil pengamatan skrip (gh), tidak pernah fatal.
 # Seperti baris rc, tidak lewat log(): autopilot.status tetap berisi keadaan putaran.
 round_summary() { local pr m o t l; t="$(cat "$d/total" 2>/dev/null || echo 0)"; [ -n "$max_total" ] && t="$t/$max_total"
-  if pr="$(ghx_prs all 50 number,state,mergedAt,headRefOid,headRefName,isDraft,isCrossRepository,labels 2>/dev/null)" && m="$(jq -r --argjson s "$2" '[.[]|select(.state=="MERGED" and .mergedAt!=null and (.mergedAt|sub("\\.[0-9]+";"")|fromdateiso8601)>=$s)|"#\(.number)"]|if length==0 then "-" else join(" ") end' <<<"$pr" 2>/dev/null)" && o="$(jq -r '[.[]|select(.state=="OPEN")|"#\(.number)@\((.headRefOid//"")[0:7])"]|if length==0 then "-" else join(" ") end' <<<"$pr" 2>/dev/null)"; then
+  if pr="$(ghx_prs all 50 number,state,mergedAt,headRefOid,headRefName,baseRefName,isDraft,isCrossRepository,labels,body 2>/dev/null)" && m="$(jq -r --argjson s "$2" '[.[]|select(.state=="MERGED" and .mergedAt!=null and (.mergedAt|sub("\\.[0-9]+";"")|fromdateiso8601)>=$s)|"#\(.number)"]|if length==0 then "-" else join(" ") end' <<<"$pr" 2>/dev/null)" && o="$(jq -r '[.[]|select(.state=="OPEN")|"#\(.number)@\((.headRefOid//"")[0:7])"]|if length==0 then "-" else join(" ") end' <<<"$pr" 2>/dev/null)"; then
     lc="$(jq -c --argjson s "$2" '[.[]|select(.state=="MERGED" and .mergedAt!=null and (.mergedAt|sub("\\.[0-9]+";"")|fromdateiso8601)>=$s)]|sort_by(.mergedAt)|last|if .==null then empty else {pr:.number,merged_at:.mergedAt} end' <<<"$pr" 2>/dev/null)"
     [ -z "$lc" ] || { printf '%s' "$lc" > "$d/last-completed.json.tmp.$$" && mv "$d/last-completed.json.tmp.$$" "$d/last-completed.json"; last_json="$lc"; printf '%s %s\n' "$(date '+%F %T')" "$(msg autopilot.last_completed "$1" "$(jq -r .pr <<<"$lc")" "$(jq -r .merged_at <<<"$lc")")" | tee -a "$d/autopilot.log"; }
     l="$(msg autopilot.round_summary "$1" "$(( $(date +%s) - $2 ))" "$3" "$m" "$o" "$t")"
@@ -69,7 +69,7 @@ is_principal() { jq -e --argjson n "$2" '.[]|select(.number==$n)|.labels|map(.na
 . "$here/ghx.sh"; . "$here/lib/ci-infra.sh"
 # open issue PR whose CI cannot start (infrastructure, #80): a round cannot fix it, so treat as waiting for the owner. Any error = not blocked (fail-closed).
 ci_infra_blocked() { local repo prs pn sha
-  repo="$(ghx_repo 2>/dev/null)" && [ -n "$repo" ] && prs="$(ghx_prs open 100 number,headRefName,headRefOid,isDraft,isCrossRepository,labels 2>/dev/null)" || return 1
+  repo="$(ghx_repo 2>/dev/null)" && [ -n "$repo" ] && prs="$(ghx_prs open 100 number,state,mergedAt,headRefOid,headRefName,baseRefName,isDraft,isCrossRepository,labels,body 2>/dev/null)" || return 1
   while IFS=$'\t' read -r pn sha; do [ -n "$pn" ] && ci_infra_line "$repo" "$sha" >/dev/null && return 0; done < <(jq -r '.[]?|select(.isDraft==false and .isCrossRepository==false and (.headRefName|test("^issue-[0-9]+$")))|"\(.number)\t\(.headRefOid)"' <<<"$prs" 2>/dev/null)
   return 1; }
 . "$here/lib/blockers.sh"; . "$here/lib/board-ref.sh"   # unsat_blockers, board_ref

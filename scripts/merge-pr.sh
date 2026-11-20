@@ -10,7 +10,7 @@ source "$here/lib/msg.sh"; source "$here/ghx.sh"
 pr="${1:-}"; dst="${2:-}"; shift 2 2>/dev/null || true; br=""
 while [ $# -gt 0 ]; do case "$1" in --branch) br="${2:-}"; shift 2 ;; *) echo "usage: merge-pr.sh <pr> <dst-branch> [--branch issue-N]" >&2; exit 64 ;; esac; done
 [[ "$pr" =~ ^[0-9]+$ ]] && [[ "$dst" =~ ^[A-Za-z0-9._][A-Za-z0-9._/-]*$ ]] || { echo "usage: merge-pr.sh <pr> <dst-branch> [--branch issue-N]" >&2; exit 64; }
-qf="$(mktemp "${TMPDIR:-/tmp}/aicrew-quota.XXXXXX")"; trap 'rm -f "$qf" "$qf.last"' EXIT; : > "$qf"
+qf="$(mktemp "${TMPDIR:-/tmp}/aicrew-quota.XXXXXX")"; trap 'rm -f "$qf" "$qf.last"; [ "${_ghx_own:-0}" = 1 ] && rm -f "$GHX_STATE"' EXIT; : > "$qf"
 out="$(AICREW_GATE_QUOTA_FILE="$qf" bash "$here/pr-merge-check.sh" "$pr" "$dst" --auto 2>&1)"; rc=$?
 printf '%s\n' "$out"
 if [ "$rc" = 0 ]; then

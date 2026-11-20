@@ -161,21 +161,25 @@ _ghx_cache_files() {   # <pola> <menit>
   [ "${#arr[@]}" -gt 0 ] || return 1
   ls -t "${arr[@]}" 2>/dev/null
 }
-# ghx_cached_issue <n> [umur-maks-detik=600]: catatan issue {number,labels,body,...} dari cache segar; exit 1 bila tak ada atau basi; state ada dan bukan OPEN = exit 1
+# Daftar "kaya" = berisi catatan dengan semua kunci yang dibutuhkan gerbang lokal. Daftar kaya TERBARU yang menang: catatan yang tidak ada di dalamnya dianggap tidak ada (bukan bukti dari daftar lama).
+# ghx_cached_issue <n> [umur-maks-detik=600]: {number,labels,body,...} dari cache segar; exit 1 bila tak ada/basi atau state ada dan bukan OPEN
 ghx_cached_issue() {
   ghx_persist || return 1; local f r mins=$(( ${2:-600} / 60 )); [ "$mins" -ge 1 ] || mins=1
   while IFS= read -r f; do
-    r="$(jq -c --argjson n "$1" '[.[]?|select(.number==$n and has("labels") and has("body"))]|.[0] // empty' "$f" 2>/dev/null)"
-    [ -z "$r" ] || { jq -e '(.state // "OPEN")|ascii_upcase == "OPEN"' <<<"$r" >/dev/null 2>&1 || return 1; printf '%s\n' "$r"; return 0; }
+    jq -e 'any(.[]?; has("labels") and has("body"))' "$f" >/dev/null 2>&1 || continue
+    r="$(jq -c --argjson n "$1" '[.[]?|select(.number==$n)]|.[0] // empty' "$f" 2>/dev/null)"
+    [ -n "$r" ] || return 1
+    jq -e '(.state // "OPEN")|ascii_upcase == "OPEN"' <<<"$r" >/dev/null 2>&1 || return 1; printf '%s\n' "$r"; return 0
   done < <(_ghx_cache_files 'lst-issues-*.json' "$mins")
   return 1
 }
-# ghx_cached_pr <n> [umur-maks-detik=600]: catatan PR {number,headRefName,headRefOid,isDraft,state,labels} dari cache segar PR terbuka
+# ghx_cached_pr <n> [umur-maks-detik=600]: {number,state,headRefName,headRefOid,baseRefName,isDraft,isCrossRepository,labels,body} dari cache PR segar
 ghx_cached_pr() {
   ghx_persist || return 1; local f r mins=$(( ${2:-600} / 60 )); [ "$mins" -ge 1 ] || mins=1
   while IFS= read -r f; do
-    r="$(jq -c --argjson n "$1" '[.[]?|select(.number==$n and has("labels") and has("headRefOid") and has("headRefName"))]|.[0] // empty' "$f" 2>/dev/null)"   # hanya daftar yang memuat label dan head
-    [ -z "$r" ] || { printf '%s\n' "$r"; return 0; }
+    jq -e 'any(.[]?; has("labels") and has("headRefOid") and has("headRefName") and has("baseRefName") and has("body"))' "$f" >/dev/null 2>&1 || continue
+    r="$(jq -c --argjson n "$1" '[.[]?|select(.number==$n)]|.[0] // empty' "$f" 2>/dev/null)"
+    [ -n "$r" ] || return 1; printf '%s\n' "$r"; return 0
   done < <(_ghx_cache_files 'lst-prs-*.json' "$mins")
   return 1
 }
@@ -220,7 +224,7 @@ ghx_prs() {
     [ "$(jq length <<<"$pg")" -ge 100 ] && [ "$(jq length <<<"$acc")" -lt "$n" ] || break
     page=$((page+1))
   done
-  acc="$(jq -c --argjson n "$n" '.[:$n]|map({number,title,state:(if .merged_at then "MERGED" else (.state|ascii_upcase) end),mergedAt:.merged_at,headRefOid:.head.sha,headRefName:.head.ref,isDraft:(.draft // false),isCrossRepository:((.head.repo.full_name // "") != (.base.repo.full_name // "")),labels:[(.labels // [])[]|{name}]})' <<<"$acc")" || return 1
+  acc="$(jq -c --argjson n "$n" '.[:$n]|map({number,title,state:(if .merged_at then "MERGED" else (.state|ascii_upcase) end),mergedAt:.merged_at,headRefOid:.head.sha,headRefName:.head.ref,isDraft:(.draft // false),isCrossRepository:((.head.repo.full_name // "") != (.base.repo.full_name // "")),baseRefName:.base.ref,body:(.body // ""),labels:[(.labels // [])[]|{name}]})' <<<"$acc")" || return 1
   _ghx_cache_list "prs-$s-$(printf '%s' "$f" | cksum | cut -d' ' -f1)" "$acc"; printf '%s\n' "$acc"
 }
 
