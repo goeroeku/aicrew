@@ -31,6 +31,12 @@ ghx_local() {
   [ "$_GHX_LOCAL_MEMO" = 1 ]
 }
 ghx_local >/dev/null 2>&1 || true; export _GHX_LOCAL_MEMO   # `|| true`: skrip pemanggil boleh memakai set -e   # dihitung sekali saat di-source dan diwariskan ke skrip anak (perubahan WORKFLOW.md berlaku setelah autopilot dimulai ulang)
+# ghx_local_committed <cabang>: `Quota mode: local` TERCATAT di docs/WORKFLOW.md pada cabang itu (git show), mengabaikan env. Dipakai merge-pr.sh/local-merge.sh: keputusan merge tidak boleh
+# bergantung pada variabel lingkungan yang dapat diatur agen.
+ghx_local_committed() {
+  local v; v="$(git show "refs/heads/$1:docs/WORKFLOW.md" 2>/dev/null | sed -n 's/^[- ]*Quota mode: *//p' | head -1 | sed -nE 's/^([A-Za-z]+)([[:space:].,;(]|$).*/\1/p' | tr 'A-Z' 'a-z')"
+  [ "$v" = local ]
+}
 ghx_require_github() {   # <nama-skrip>: keluar bila mode local (skrip yang tidak punya padanan lokal)
   ghx_local || return 0
   echo "$(msg backend.local_unsupported "$1" 2>/dev/null || echo "$1: not available in Quota mode: local")" >&2; exit 2
@@ -234,8 +240,8 @@ _ghx_local_prs() {   # <state open|closed|all> <batas>: PR lokal = cabang issue-
   dflt="$(git -C "$root" symbolic-ref -q --short HEAD 2>/dev/null)" || { echo '[]'; return 0; }; log="$root/.aicrew/backend/local-merges.log"
   while IFS= read -r b; do
     n="${b#issue-}"; [[ "$n" =~ ^[0-9]+$ ]] || continue; tip="$(git rev-parse "refs/heads/$b" 2>/dev/null)" || continue
-    if [ -f "$log" ] && grep -q "issue #$n " "$log"; then st=MERGED
-    elif [ "$(git rev-list --count "$dflt..$b" 2>/dev/null || echo 0)" -gt 0 ]; then st=OPEN
+    if [ "$(git rev-list --count "$dflt..$b" 2>/dev/null || echo 0)" -gt 0 ]; then st=OPEN
+    elif [ -f "$log" ] && grep "issue #$n " "$log" | sed -n 's/.* merge \([0-9a-f]\{40\}\) .*/\1/p' | while read -r ms; do git merge-base --is-ancestor "$ms" "$dflt" 2>/dev/null && echo y; done | grep -q y; then st=MERGED   # MERGED hanya bila sha merge tercatat memang leluhur cabang bawaan (log yang dipalsukan tak cukup)
     else continue; fi
     lab="$(ls_view "$n" 2>/dev/null | jq -c '.labels // []')"; [ -n "$lab" ] || lab='[]'; ttl="$(ls_view "$n" 2>/dev/null | jq -r '.title // ""')"
     out="$(jq -c --argjson n "$n" --arg t "$ttl" --arg s "$st" --arg b "$b" --arg o "$tip" --arg d "$dflt" --argjson l "$lab" \

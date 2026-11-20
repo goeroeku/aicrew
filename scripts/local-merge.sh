@@ -10,7 +10,7 @@ set -u
 here="$(cd "$(dirname "$0")" && pwd)"
 export GHX_PERSIST=1
 source "$here/lib/msg.sh"; source "$here/ghx.sh"; source "$here/lib/ownerlocal.sh"
-solo=0; ghx_local && solo=1   # Quota mode: local (tanpa remote): cabang lokal, isu dari store, persetujuan pemilik lokal, ff-only ke cabang bawaan
+solo=0; dry=0; [ "${4:-}" != --dry ] || dry=1   # Quota mode: local (tanpa remote): cabang lokal, isu dari store, persetujuan pemilik lokal, ff-only ke cabang bawaan
 needs=""; soft() { if [ "$solo" = 1 ]; then needs="${needs:+$needs; }$*"; else refuse "$*"; fi; }   # syarat yang dapat disetujui pemilik (mode mandiri); selain itu tolak
 pr="${1:-}"; dst="${2:-}"; br="${3:-}"
 refuse() { echo "GAGAL: $*"; exit 1; }
@@ -18,6 +18,7 @@ refuse() { echo "GAGAL: $*"; exit 1; }
 [[ "$br" =~ ^issue-([0-9]+)$ ]] || refuse "$(msg local.bad_branch "$br")"; n="${BASH_REMATCH[1]}"
 # 1. konfigurasi dibaca dari cabang tujuan (git show), bukan dari PR atau env; hanya cabang bawaan (dibaca dari remote, bukan ref lokal yang dapat ditulis)
 g="$(git rev-parse --git-common-dir)"; root="$(cd "$g/.." && pwd)"
+ghx_local_committed "$dst" && solo=1   # dari WORKFLOW.md tercatat di cabang tujuan, bukan env
 if [ "$solo" = 1 ]; then
   dref="refs/heads/$dst"; bref="refs/heads/$br"; dflt="$(git -C "$root" symbolic-ref -q --short HEAD 2>/dev/null)"   # cabang yang di-checkout di checkout utama
   [ -n "$dflt" ] || refuse "$(msg local.default_unknown)"
@@ -35,6 +36,7 @@ if [ -n "$qraw" ]; then case "$qm" in auto|local) ;; *) refuse "$(msg local.mode
 head="$(git rev-parse "$bref" 2>/dev/null)" || refuse "$(msg local.fetch_failed)"
 # 2. PR dari cache segar: terikat ke cabang isu dan sha kepala, terbuka, bukan draft, tanpa label penahan (label PR belum tentu sama dengan label issue)
 holdre='risk:L2|needs-principal|needs-security|needs-perf|owner-hold|blocked|epic'
+hardre='owner-hold|blocked'   # pemilik/agen sengaja menahan: tidak dapat disetujui lewat persetujuan lama; label harus dicabut dulu
 if [ "$solo" = 1 ]; then prrec="$(ghx_prs open 1000 x | jq -c --argjson n "$pr" '[.[]|select(.number==$n)]|.[0] // empty')"; [ -n "$prrec" ] || refuse "$(msg local.pr_unknown "$pr")"
 else prrec="$(ghx_cached_pr "$pr" 600)" || refuse "$(msg local.pr_unknown "$pr")"; fi
 jq -e --arg br "$br" --arg h "$head" --arg d "$dst" '(.state|ascii_upcase)=="OPEN" and ((.isDraft // false)==false) and ((.isCrossRepository // false)==false) and .headRefName==$br and .headRefOid==$h and .baseRefName==$d' <<<"$prrec" >/dev/null 2>&1 \
@@ -70,13 +72,16 @@ for m in $linked; do
   else rec="$(ghx_cached_issue "$m" 600)" || refuse "$(msg local.cache_stale "$m")"; fi
   il="$(jq -r '[.labels[]?|if type=="object" then .name else . end]|.[]' <<<"$rec")"
   labels="$labels"$'\n'"$il"
+  grep -ixqE "$hardre" <<<"$il" && refuse "$(msg local.label_blocked "$m" "$(grep -ixE "$hardre" <<<"$il" | sort -u | paste -sd, -)")"
   hold="$(grep -ixE "$holdre" <<<"$il" | sort -u | paste -sd, -)"
   [ -z "$hold" ] || soft "$(msg local.label_blocked "$m" "$hold")"
   jq -r '.body // ""' <<<"$rec" | grep -Eiq '^[[:space:]>]*([-*+]|[0-9]+[.)])[[:space:]]+\[ \].*owner[[:space:]_-]+only' && soft "$(msg local.owner_only "$m")"
 done
 grep -qixE 'risk:L[01]' <<<"$labels" || soft "$(msg local.risk_unknown "$n")"
+grep -ixqE "$hardre" <<<"$labels" && refuse "$(msg local.label_blocked "$n" "$(grep -ixE "$hardre" <<<"$labels" | sort -u | paste -sd, -)")"
 hold="$(grep -ixE "$holdre" <<<"$labels" | sort -u | paste -sd, -)"
 [ -z "$hold" ] || soft "$(msg local.label_blocked "$n" "$hold")"
+if [ "$dry" = 1 ]; then echo "needs: ${needs:--}"; exit 0; fi   # owner-local.sh approve: tampilkan alasan sebelum pemilik mengetik yes
 # mode mandiri: syarat yang menunggu GitHub di jalur lain menunggu PERSETUJUAN PEMILIK LOKAL (owner-local.sh approve, terikat ke isu dan sha kepala)
 if [ "$solo" = 1 ] && [ -n "$needs" ]; then
   ol_approved "$n" "$head" merge || refuse "$(msg local.needs_owner "$n" "$needs" "$n")"

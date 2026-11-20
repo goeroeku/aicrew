@@ -14,8 +14,10 @@ case "$cmd" in
     [[ "$n" =~ ^[0-9]+$ ]] || { echo "usage: owner-local.sh approve <issue-number>" >&2; exit 64; }
     { [ -t 0 ] && [ -t 1 ]; } || { echo "$(msg ownerlocal.need_tty)" >&2; exit 3; }
     sha="$(head_of "$n")" || { echo "$(msg ownerlocal.no_branch "$n")" >&2; exit 1; }
-    echo "$(msg ownerlocal.summary "$n" "$(jq -r '.title // "-"' < <(ls_view "$n" 2>/dev/null) 2>/dev/null)" "${sha:0:7}")"
-    git diff --stat "$(git symbolic-ref --short HEAD 2>/dev/null || echo HEAD)...$sha" 2>/dev/null | tail -15
+    g="$(git rev-parse --git-common-dir)"; root="$(cd "$g/.." && pwd)"; dflt="$(git -C "$root" symbolic-ref -q --short HEAD 2>/dev/null)" || dflt=HEAD
+    echo "$(msg ownerlocal.summary "$n" "$(ls_view "$n" 2>/dev/null | jq -r '.title // "-"')" "${sha:0:7}")"
+    echo "$(msg ownerlocal.reasons) $(bash "$here/local-merge.sh" "$n" "$dflt" "issue-$n" --dry 2>&1 | tail -3 | paste -sd' ' -)"   # alasan (needs:) atau penolakan keras
+    git diff --stat=100 "$dflt...$sha" 2>/dev/null | cut -c1-140   # semua berkas, terhadap cabang bawaan
     printf '%s ' "$(msg ownerlocal.confirm)" > /dev/tty; read -r a < /dev/tty
     [ "$a" = yes ] || { echo "$(msg ownerlocal.cancelled)"; exit 1; }
     ol_record "$n" "$sha" merge || { echo "$(msg ownerlocal.write_failed)" >&2; exit 1; }
@@ -25,8 +27,8 @@ case "$cmd" in
     if ol_approved "$n" "$sha" merge; then echo "$(msg ownerlocal.status_yes "$n" "${sha:0:7}")"; else echo "$(msg ownerlocal.status_no "$n" "${sha:0:7}")"; exit 1; fi ;;
   list)
     log="$(_ol_log)" || exit 1; [ -s "$log" ] || { echo "-"; exit 0; }
-    while IFS='|' read -r ts nn sha sc mac; do
-      ok=tidak; [ -n "$mac" ] && [ "$(_ol_hmac "$ts|$nn|$sha|$sc")" = "$mac" ] && ok=sah
+    while IFS='|' read -r ts nn sha sc cx mac; do
+      ok=tidak; [ -n "$mac" ] && [ "$(_ol_hmac "$ts|$nn|$sha|$sc|$cx")" = "$mac" ] && ok=sah
       printf '%s\t#%s\t%s\t%s\t%s\n' "$(date -r "$ts" '+%F %T' 2>/dev/null || echo "$ts")" "$nn" "${sha:0:7}" "$sc" "$ok"
     done < "$log" ;;
   *) echo "usage: owner-local.sh approve <n> | status <n> | list" >&2; exit 64 ;;

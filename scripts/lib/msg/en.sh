@@ -165,6 +165,7 @@ msg_en() {
     ownerlocal.approved) printf 'approved: issue #%s at commit %s (bound to this commit; a new push needs a new approval)' "$@" ;;
     ownerlocal.status_yes) printf 'issue #%s at %s: approved' "$@" ;;
     ownerlocal.status_no) printf 'issue #%s at %s: not approved' "$@" ;;
+    ownerlocal.reasons) printf 'reasons it needs you:' ;;
     autopilot.quota_wait) printf 'round %s: GitHub quota exhausted (GraphQL and REST); waiting %s s for reset, no iteration used' "$1" "$2" ;;
     autopilot.gh_down_stop) printf 'autopilot: gh unreadable 5 times in a row; stopping (not an issue state), check network and gh auth' ;;
     autopilot.all_done) printf 'autopilot: all issues done (round %s)' "$@" ;;
