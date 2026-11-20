@@ -108,6 +108,7 @@ msg_id() {
     autopilot.sent_sigterm) printf 'putaran %s: sesi tidak berakhir; dikirim SIGTERM' "$@" ;;
     autopilot.still_stuck) printf 'autopilot: masih buntu: state unchanged since %s; changed inputs: none; tidak ada putaran dijalankan (ubah issue/PR, WORKFLOW.md atau berkas izin, atau pakai --retry-stuck)' "$@" ;;
     autopilot.gh_unreadable_retry) printf 'putaran %s: gh tidak terbaca (percobaan %s/5): keadaan tidak diketahui, tidak memutuskan selesai atau menunggu' "$@" ;;
+    autopilot.quota_wait) printf 'putaran %s: kuota GitHub habis (GraphQL dan REST); menunggu %s detik sampai reset, iterasi tidak terpakai' "$1" "$2" ;;
     autopilot.gh_down_stop) printf 'autopilot: gh tidak terbaca 5 kali beruntun; berhenti (bukan keadaan issue), periksa jaringan dan login gh' ;;
     autopilot.all_done) printf 'autopilot: semua issue selesai (putaran %s)' "$@" ;;
     autopilot.all_await_owner) printf 'autopilot: all %s remaining issues await the owner (needs-principal, blocked or owner-hold)' "$@" ;;

@@ -3132,4 +3132,63 @@ for f in agents/senior-coder.md agents/devops.md; do
   ok "agen (#160): $f mewajibkan menunggu atau menghentikan perintah latar sebelum laporan akhir" "$(grep -c 'wait for it to finish or stop it before the final report' "$f")" 1
 done
 
+# 3q. backend berjenjang, tahap 1 (#159): status kuota bertahan, ETag, ghx_prs, proaktif, autopilot menunggu kuota
+GQ="$tmp/ghq"; mkdir -p "$GQ/bin"
+cat > "$GQ/bin/gh" <<'GHQEOF'
+#!/bin/sh
+echo "$*" >> "$GHQ/calls"
+url=""; inm=""; prev=""
+for a in "$@"; do [ "$prev" = -H ] && inm="${a#If-None-Match: }"; prev="$a"; url="$a"; done
+case "$*" in
+  "api graphql -i"*) printf 'HTTP/2.0 200 OK\r\nX-Ratelimit-Limit: 5000\r\nX-Ratelimit-Remaining: %s\r\nX-Ratelimit-Reset: %s\r\n\r\n{}\n' "${GHQ_REM:-4000}" "${GHQ_RESET:-9999999999}"; exit 0 ;;
+  "issue list"*) [ -n "${GHQ_GQL_LIMIT:-}" ] && { echo "GraphQL: API rate limit already exceeded for user ID 1." >&2; exit 1; }; echo '[{"number":1}]'; exit 0 ;;
+  "repo view"*) echo o/r; exit 0 ;;
+  "api -i"*)
+    if [ -n "${GHQ_REST_LIMIT:-}" ]; then printf 'HTTP/2.0 403 Forbidden\r\nX-Ratelimit-Reset: 9999999998\r\n\r\n{"message":"API rate limit exceeded"}\n'; echo "gh: API rate limit exceeded for user ID 1. (HTTP 403)" >&2; exit 1; fi
+    if [ "$inm" = '"v1"' ]; then printf 'HTTP/2.0 304 Not Modified\r\n\r\n'; echo "gh: HTTP 304" >&2; exit 1; fi
+    case "$url" in
+      *"/pulls?"*) printf 'HTTP/2.0 200 OK\r\nEtag: "v1"\r\n\r\n[{"number":4,"title":"p","state":"closed","merged_at":"2026-11-20T01:00:00Z","draft":false,"head":{"sha":"abc1234","ref":"issue-4","repo":{"full_name":"o/r"}},"base":{"repo":{"full_name":"o/r"}}}]\n' ;;
+      *) printf 'HTTP/2.0 200 OK\r\nEtag: "v1"\r\n\r\n[{"number":7,"title":"t","body":"b","labels":[{"name":"x"}],"state":"open"}]\n' ;;
+    esac; exit 0 ;;
+esac
+exit 0
+GHQEOF
+chmod +x "$GQ/bin/gh"
+GQR() { ( export PATH="$GQ/bin:$PATH" GHQ="$GQ" GH_REPO=o/r GHX_PERSIST=1 AICREW_BACKEND_DIR="$GQ/backend" TMPDIR="$GQ"; cd "$GQ"; source "$root/scripts/ghx.sh"; "$@" ); }
+GQreset() { rm -rf "$GQ/backend" "$GQ/calls"; mkdir -p "$GQ/backend"; }
+fut=$(( $(date +%s) + 100 ))
+GQreset; t1="$(GQR ghx_tier)"; GQR _ghx_state_set graphql "$fut"; t2="$(GQR ghx_tier)"; GQR _ghx_state_set rest "$fut"; t3="$(GQR ghx_tier)"; GQR _ghx_state_set graphql 1; GQR _ghx_state_set rest 1; t4="$(GQR ghx_tier)"
+ok "ghx_tier (#159): graphql -> rest -> local -> pulih saat epoch lewat" "$t1|$t2|$t3|$t4" 'graphql|rest|local|graphql'
+GQreset; GQR _ghx_state_set graphql "$(( $(date +%s) + 5 ))"; GQR _ghx_state_set rest "$(( $(date +%s) + 5 ))"
+w1="$(AICREW_QUOTA_WAIT_MIN=1 GQR ghx_wait_seconds)"; GQR _ghx_state_set graphql "$(( $(date +%s) + 99999 ))"; GQR _ghx_state_set rest "$(( $(date +%s) + 99999 ))"; w2="$(GQR ghx_wait_seconds)"
+GQR _ghx_state_set graphql 1; GQR _ghx_state_set rest 1; w3="$(GQR ghx_wait_seconds)"
+ok "ghx_wait_seconds (#159): lantai (bisa dikecilkan), batas atas 900, bawaan 30" "$([ "$w1" -ge 1 ] && [ "$w1" -le 5 ] && echo ok)|$w2|$w3" 'ok|900|30'
+# status bertahan lintas proses: GraphQL kena batas di proses A -> proses B tidak memanggil GraphQL lagi
+GQreset; export GHQ_GQL_LIMIT=1
+GQR ghx_issues open - 5 number >/dev/null 2>&1; GQR ghx_issues open - 5 number >/dev/null 2>&1
+ok "ghx (#159): status batas GraphQL bertahan lintas proses (hanya 1 panggilan 'issue list')" "$(grep -c '^issue list' "$GQ/calls")|$(GQR ghx_tier)" '1|rest'
+ok "ghx (#159): state.json memuat exhausted_until dari header reset" "$(jq -r '.graphql.exhausted_until' "$GQ/backend/state.json")" 9999999999
+unset GHQ_GQL_LIMIT
+# ETag: panggilan REST kedua mengirim If-None-Match, 304 dilayani dari cache dengan isi sama
+GQreset; GQR _ghx_state_set graphql "$fut"
+o1="$(GQR ghx_issues open - 5 number 2>/dev/null)"; o2="$(GQR ghx_issues open - 5 number 2>/dev/null)"
+ok "ghx (#159): ETag: isi sama, panggilan kedua mengirim If-None-Match" "$([ "$o1" = "$o2" ] && [ -n "$o1" ] && echo sama)|$(grep -c 'If-None-Match' "$GQ/calls")|$(jq -r '.[0].number' <<<"$o2")" 'sama|1|7'
+# ghx_prs lewat REST: bentuk gh pr list
+GQreset; GQR _ghx_state_set graphql "$fut"
+ok "ghx_prs (#159): REST memetakan merged_at -> MERGED, headRefOid, headRefName, isCrossRepository" "$(GQR ghx_prs all 5 number,state 2>/dev/null | jq -r '.[0]|"\(.number) \(.state) \(.headRefOid) \(.headRefName) \(.isCrossRepository)"')" '4 MERGED abc1234 issue-4 false'
+# batas REST menandai rest habis -> local
+GQreset; GQR _ghx_state_set graphql "$fut"; GHQ_REST_LIMIT=1 GQR ghx_issues open - 5 number >/dev/null 2>&1; rcq=$?
+ok "ghx (#159): batas REST -> exit tak nol dan jenjang local" "$([ "$rcq" != 0 ] && echo gagal)|$(GQR ghx_tier)" 'gagal|local'
+# proaktif: sisa di bawah lantai -> turun ke REST sebelum habis
+GQreset; GHQ_REM=100 GQR ghx_probe_floor; f1="$(GQR ghx_tier)"; GQreset; GHQ_REM=4000 GQR ghx_probe_floor; f2="$(GQR ghx_tier)"
+ok "ghx_probe_floor (#159): 100/5000 -> rest; 4000/5000 -> tetap graphql" "$f1|$f2" 'rest|graphql'
+# tanpa GHX_PERSIST perilaku lama: tidak menulis status, REST biasa tanpa -i
+GQreset; (export PATH="$GQ/bin:$PATH" GHQ="$GQ" GH_REPO=o/r AICREW_BACKEND_DIR="$GQ/backend" GHQ_GQL_LIMIT=1 TMPDIR="$GQ"; cd "$GQ"; source "$root/scripts/ghx.sh"; ghx_issues open - 5 number >/dev/null 2>&1)
+ok "ghx (#159): tanpa GHX_PERSIST tidak ada state.json dan tidak ada 'api -i'" "$([ -e "$GQ/backend/state.json" ] && echo ada || echo tidak)|$(grep -c '^api -i' "$GQ/calls")" 'tidak|0'
+ok "pr-merge-check (#159): gerbang melepas GHX_PERSIST (tidak memakai status bertahan)" "$(grep -c '^unset GHX_PERSIST' scripts/pr-merge-check.sh)" 1
+# autopilot: GraphQL dan REST habis -> menunggu reset tanpa hitungan gagal; setelah pulih gh benar-benar mati -> exit 6
+rm -rf "$AP3/w/.aicrew"; mkdir -p "$AP3/w/.aicrew/backend"; qn=$(( $(date +%s) + 3 )); printf '{"graphql":{"exhausted_until":%s},"rest":{"exhausted_until":%s}}\n' "$qn" "$qn" > "$AP3/w/.aicrew/backend/state.json"
+touch "$AP3FX/ghfail"; AP3KEEP=1 AP3ENV="AICREW_QUOTA_WAIT_MIN=1" ap3 "$AP3OPEN" noop --max-rounds 20; rc=$?; rm -f "$AP3FX/ghfail"
+ok "autopilot (#159): kuota habis -> menunggu (log 'kuota GitHub habis'), lalu gh mati terus tetap exit 6 setelah pulih" "$rc|$([ "$(grep -c 'kuota GitHub habis' "$AP3/w/.aicrew/autopilot.log")" -ge 1 ] && echo menunggu)|$(grep -c 'gh tidak terbaca (percobaan' "$AP3/w/.aicrew/autopilot.log")" '6|menunggu|5'
+
 [ "$fails" = 0 ] && echo "SEMUA LULUS" || { echo "$fails GAGAL"; exit 1; }
