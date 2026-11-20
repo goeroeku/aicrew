@@ -3462,4 +3462,67 @@ ok "ghx_issues (#159): mode lokal mengembalikan larik bentuk gh dari store; labe
 (cd "$LS" && env AICREW_QUOTA_MODE=local bash -c 'source "$1/scripts/ghx.sh"; ghx_require_github "board.sh"' _ "$root" >/dev/null 2>&1); r7=$?
 ok "ghx_require_github (#159): mode lokal -> exit 2 dengan pesan; msg backend.local_unsupported ada di en dan id" "$r7|$(AICREW_LANG=en bash -c '. "$1/scripts/lib/msg.sh"; msg backend.local_unsupported board.sh' _ "$root" | grep -c 'not available')|$(AICREW_LANG=id bash -c '. "$1/scripts/lib/msg.sh"; msg backend.local_only' _ "$root" | grep -c 'Quota mode: local')" '2|1|1'
 
+# 3v. mode lokal penuh, tahap 4B (#159): PR lokal, merge tanpa remote, persetujuan pemilik lokal (owner-local.sh)
+SM="$tmp/solo"
+SMR() { ( cd "$SM" && env AICREW_QUOTA_MODE=local AICREW_NOTIFY=none "$@" ); }   # chave pemilik: ~/.config/aicrew/owner.key do HOME real (env tidak dapat menggesernya)
+SMmk() {   # repo tanpa remote: main + cabang issue-1; isu lokal #1 berlabel (SM_LABELS)
+  rm -rf "$SM"; git init -q "$SM"
+  ( cd "$SM" && git checkout -q -b main 2>/dev/null; mkdir -p docs tests; { echo "- Quota mode: ${SM_QM:-local}"; echo "- Test command: sh check.sh"; } > docs/WORKFLOW.md
+    echo 'test -f ok.txt' > check.sh; echo base > a.txt; echo x > tests/t.sh; git add -A; git commit -qm base
+    git checkout -q -b issue-1; echo f > feat.txt; [ -n "${SM_NOOK:-}" ] || echo ok > ok.txt; eval "${SM_BRANCH_CMD:-:}"; git add -A; git commit -qm feat; git checkout -q main ) >/dev/null 2>&1
+  local l; for l in $(printf '%s' "${SM_LABELS:-risk:L1}" | tr ',' ' '); do SMR bash "$root/scripts/issue.sh" label 1 --add "$l" >/dev/null 2>&1 || true; done
+  SMR bash "$root/scripts/issue.sh" create --title Feature --body "${SM_BODY:-isi}" --label "$(printf '%s' "${SM_LABELS:-risk:L1}" | cut -d, -f1)" >/dev/null
+  for l in $(printf '%s' "${SM_LABELS:-risk:L1}" | tr ',' ' '); do SMR bash "$root/scripts/issue.sh" label 1 --add "$l" >/dev/null; done
+}
+SMtip() { git -C "$SM" rev-parse main; }
+SMgo() { SMR bash "$root/scripts/merge-pr.sh" 1 main --branch issue-1 2>&1; }
+SMok() { SMR bash -c 'source "$1/scripts/lib/ownerlocal.sh"; ol_record 1 "$(git rev-parse refs/heads/issue-1)" merge' _ "$root"; }
+# model PR lokal sebelum merge
+SMmk
+ok "ghx_prs (#159): mode lokal: cabang issue-1 dengan komit di luar main = PR OPEN (nomor, head, base, label dari store)" "$(SMR bash -c 'source "$1/scripts/ghx.sh"; ghx_prs open 10 x | jq -r ".[0]|\"\(.number) \(.state) \(.headRefName) \(.baseRefName) \(.labels[0].name) \(.headRefOid|length)\""' _ "$root")|$(SMR bash -c 'source "$1/scripts/ghx.sh"; ghx_has_open_pr issue-1 && echo ya || echo tidak' _ "$root")|$(SMR bash -c 'source "$1/scripts/ghx.sh"; ghx_has_open_pr issue-9 && echo ya || echo tidak' _ "$root")" '1 OPEN issue-1 main risk:L1 40|ya|tidak'
+# kasus sukses tanpa remote: ff-only, isu ditutup, tercatat, PR jadi MERGED
+b0="$(SMtip)"; out="$(SMgo)"; rc=$?
+ok "merge lokal mandiri (#159): L1 + tes lulus -> exit 0, main maju ff (tanpa remote), berkas ada di checkout, isu CLOSED + komentar, log tertulis" "$rc|$(git -C "$SM" merge-base --is-ancestor "$b0" "$(SMtip)" && echo ff)|$([ -f "$SM/feat.txt" ] && [ -f "$SM/ok.txt" ] && echo berkas)|$(SMR bash "$root/scripts/issue.sh" view 1 | jq -r '"\(.state) \(.comments|length)"')|$(git -C "$SM" remote | wc -l | tr -d ' ')|$(grep -c 'issue #1 ' "$SM/.aicrew/backend/local-merges.log")" '0|ff|berkas|CLOSED 1|0|1'
+ok "ghx_prs (#159): sesudah merge lokal PR berstatus MERGED dan bukan PR terbuka" "$(SMR bash -c 'source "$1/scripts/ghx.sh"; ghx_prs all 10 x | jq -r ".[0].state"; ghx_prs open 10 x | jq length' _ "$root" | paste -sd' ' -)" 'MERGED 0'
+# tes gagal pada hasil merge
+SM_NOOK=1 SMmk; b0="$(SMtip)"; SMgo >/dev/null; rc=$?
+ok "merge lokal mandiri (#159): tes gagal -> exit 1, main tidak berubah" "$rc|$([ "$(SMtip)" = "$b0" ] && echo sama)" '1|sama'
+# L2 menunggu pemilik; persetujuan terikat sha; baris palsu ditolak
+SM_LABELS=risk:L2 SMmk; b0="$(SMtip)"; out="$(SMgo)"; rc=$?
+ok "merge lokal mandiri (#159): risk:L2 -> menunggu pemilik (pesan memuat 'owner-local.sh approve 1'), main tidak berubah" "$rc|$(grep -c 'owner-local.sh approve 1' <<<"$out")|$([ "$(SMtip)" = "$b0" ] && echo sama)" '1|1|sama'
+SMok; SMgo >/dev/null; rc=$?
+ok "merge lokal mandiri (#159): persetujuan pemilik sah untuk sha kepala -> L2 lolos" "$rc|$([ "$(SMtip)" != "$b0" ] && echo maju)" '0|maju'
+SM_LABELS=risk:L2 SMmk; SMok; ( cd "$SM" && git checkout -q issue-1 && echo more > more.txt && git add -A && git commit -qm more && git checkout -q main ) >/dev/null 2>&1; b0="$(SMtip)"; SMgo >/dev/null; rc=$?
+ok "merge lokal mandiri (#159): persetujuan lama tak berlaku setelah push baru (sha berubah)" "$rc|$([ "$(SMtip)" = "$b0" ] && echo sama)" '1|sama'
+SM_LABELS=risk:L2 SMmk; sh1="$(git -C "$SM" rev-parse refs/heads/issue-1)"; mkdir -p "$SM/.aicrew"; echo "$(date +%s)|1|$sh1|merge|deadbeef" > "$SM/.aicrew/owner.log"; b0="$(SMtip)"; SMgo >/dev/null; rc=$?
+ok "merge lokal mandiri (#159): baris persetujuan dengan HMAC palsu ditolak" "$rc|$([ "$(SMtip)" = "$b0" ] && echo sama)" '1|sama'
+# tes yang sudah ada diubah: menunggu pemilik, lalu lolos dengan persetujuan
+SM_BRANCH_CMD='echo y > tests/t.sh' SMmk; b0="$(SMtip)"; SMgo >/dev/null; r1=$?; SMok; SMgo >/dev/null; r2=$?
+ok "merge lokal mandiri (#159): mengubah tes yang ada -> menunggu pemilik; dengan persetujuan lolos" "$r1|$r2|$([ "$(SMtip)" != "$b0" ] && echo maju)" '1|0|maju'
+# kunci pemilik tidak dapat digeser lewat env; persetujuan terikat konteks isu; owner-hold/blocked tak dapat disetujui; keputusan solo dari WORKFLOW.md tercatat (bukan env)
+SM_LABELS=risk:L2 SMmk; sh1="$(git -C "$SM" rev-parse refs/heads/issue-1)"; mkdir -p "$SM/.aicrew"; printf 'palsu' > "$SM.fakekey"
+fm="$(date +%s)|1|$sh1|merge|$(SMR bash -c 'source "$1/scripts/lib/ownerlocal.sh"; ol_context 1' _ "$root")"; echo "$fm|$(printf '%s' "$fm" | openssl dgst -sha256 -hmac palsu | sed 's/^.* //')" > "$SM/.aicrew/owner.log"
+b0="$(SMtip)"; SMR env AICREW_OWNER_KEY="$SM.fakekey" HOME="$SM" bash "$root/scripts/merge-pr.sh" 1 main --branch issue-1 >/dev/null 2>&1; rc=$?
+ok "merge lokal mandiri (#159): kunci palsu lewat AICREW_OWNER_KEY/HOME tidak diterima (lokasi kunci tetap dari basis data pengguna)" "$rc|$([ "$(SMtip)" = "$b0" ] && echo sama)" '1|sama'
+SM_LABELS=risk:L2 SMmk; SMok; SMR bash "$root/scripts/issue.sh" label 1 --add owner-hold >/dev/null; b0="$(SMtip)"; SMgo >/dev/null; r1=$?
+SMR bash "$root/scripts/issue.sh" label 1 --remove owner-hold >/dev/null; SMR bash "$root/scripts/issue.sh" edit 1 --body "badan diubah" >/dev/null; SMgo >/dev/null; r2=$?
+ok "merge lokal mandiri (#159): sesudah persetujuan, owner-hold menahan (ditolak keras) dan perubahan badan isu membatalkan persetujuan (konteks)" "$r1|$r2|$([ "$(SMtip)" = "$b0" ] && echo sama)" '1|1|sama'
+SM_LABELS=risk:L1,blocked SMmk; SMok; b0="$(SMtip)"; SMgo >/dev/null; rc=$?
+ok "merge lokal mandiri (#159): label blocked tidak dapat disetujui, persetujuan pun tidak membuka" "$rc|$([ "$(SMtip)" = "$b0" ] && echo sama)" '1|sama'
+mkdir -p "$SM.bin"; printf '#!/bin/sh\nexit 1\n' > "$SM.bin/gh"; chmod +x "$SM.bin/gh"
+SM_QM=auto SMmk; b0="$(SMtip)"; SMR env PATH="$SM.bin:$PATH" bash "$root/scripts/merge-pr.sh" 1 main --branch issue-1 >/dev/null 2>&1; rc=$?
+ok "merge-pr (#159): AICREW_QUOTA_MODE=local di env tetapi WORKFLOW.md tercatat bukan local -> tidak ada jalur lokal (lewat gerbang GitHub, gagal), main tidak berubah" "$rc|$([ "$(SMtip)" = "$b0" ] && echo sama)" '1|sama'
+# log merge palsu tidak membuat PR terbuka tampak MERGED; --dry menampilkan alasan
+SM_LABELS=risk:L2 SMmk; mkdir -p "$SM/.aicrew/backend"; echo "2026-01-01 00:00:00 PR #1 issue #1 head $(git -C "$SM" rev-parse issue-1) merge $(git -C "$SM" rev-parse issue-1) -> main" > "$SM/.aicrew/backend/local-merges.log"
+ok "ghx_prs (#159): baris local-merges.log palsu tidak mengubah PR terbuka menjadi MERGED; --dry mencetak alasan (needs: risk:L2)" "$(SMR bash -c 'source "$1/scripts/ghx.sh"; ghx_prs all 10 x | jq -r ".[0].state"' _ "$root")|$(SMR bash "$root/scripts/local-merge.sh" 1 main issue-1 --dry 2>&1 | grep -c 'needs:.*risk:L2')" 'OPEN|1'
+# checkout kotor, PR tak cocok, cabang bukan bawaan
+SMmk; echo dirty >> "$SM/a.txt"; b0="$(SMtip)"; SMgo >/dev/null; r1=$?; s1="$([ "$(SMtip)" = "$b0" ] && echo sama)"
+SMmk; b1="$(SMtip)"; SMR bash "$root/scripts/merge-pr.sh" 2 main --branch issue-1 >/dev/null 2>&1; r2=$?; SMR bash "$root/scripts/merge-pr.sh" 1 other --branch issue-1 >/dev/null 2>&1; r3=$?
+ok "merge lokal mandiri (#159): checkout kotor, nomor PR tak cocok, cabang tujuan bukan bawaan -> semua ditolak tanpa mengubah main" "$r1|$r2|$r3|$s1|$([ "$(SMtip)" = "$b1" ] && echo sama)" '1|1|1|sama|sama'
+# owner-local.sh: tanpa TTY tidak dapat menyetujui; izin agen menolak approve, kunci, dan log
+SMmk; SMR bash "$root/scripts/owner-local.sh" approve 1 </dev/null >/dev/null 2>&1; ro=$?
+ok "owner-local.sh (#159): approve tanpa TTY -> exit 3 dan tidak ada log persetujuan" "$ro|$([ -e "$SM/.aicrew/owner.log" ] && echo ada || echo tidak)" '3|tidak'
+ok "autopilot-permissions (#159): agen dilarang approve, membaca kunci pemilik, dan menulis owner.log" "$(grep -c 'owner-local.sh \*approve\*\|~/.config/aicrew\|owner.log' "$root/templates/autopilot-permissions.json")" 5
+ok "owner-local.sh (#159): status dan list: sah untuk sha kepala sesudah ol_record" "$(SMok; SMR bash "$root/scripts/owner-local.sh" status 1 >/dev/null; echo $?)|$(SMR bash "$root/scripts/owner-local.sh" list | awk -F'\t' '{print $5}')" '0|sah'
+
 [ "$fails" = 0 ] && echo "SEMUA LULUS" || { echo "$fails GAGAL"; exit 1; }

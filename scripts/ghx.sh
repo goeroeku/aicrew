@@ -31,6 +31,12 @@ ghx_local() {
   [ "$_GHX_LOCAL_MEMO" = 1 ]
 }
 ghx_local >/dev/null 2>&1 || true; export _GHX_LOCAL_MEMO   # `|| true`: skrip pemanggil boleh memakai set -e   # dihitung sekali saat di-source dan diwariskan ke skrip anak (perubahan WORKFLOW.md berlaku setelah autopilot dimulai ulang)
+# ghx_local_committed <cabang>: `Quota mode: local` TERCATAT di docs/WORKFLOW.md pada cabang itu (git show), mengabaikan env. Dipakai merge-pr.sh/local-merge.sh: keputusan merge tidak boleh
+# bergantung pada variabel lingkungan yang dapat diatur agen.
+ghx_local_committed() {
+  local v; v="$(git show "refs/heads/$1:docs/WORKFLOW.md" 2>/dev/null | sed -n 's/^[- ]*Quota mode: *//p' | head -1 | sed -nE 's/^([A-Za-z]+)([[:space:].,;(]|$).*/\1/p' | tr 'A-Z' 'a-z')"
+  [ "$v" = local ]
+}
 ghx_require_github() {   # <nama-skrip>: keluar bila mode local (skrip yang tidak punya padanan lokal)
   ghx_local || return 0
   echo "$(msg backend.local_unsupported "$1" 2>/dev/null || echo "$1: not available in Quota mode: local")" >&2; exit 2
@@ -228,7 +234,23 @@ ghx_issues() {
 }
 
 # ghx_prs <open|closed|all> <batas> <json-fields>  -> larik JSON bentuk `gh pr list`; REST: number,title,state(OPEN|MERGED|CLOSED),mergedAt,headRefOid,headRefName,isDraft,isCrossRepository
+_ghx_local_prs() {   # <state open|closed|all> <batas>: PR lokal = cabang issue-<n> (OPEN bila ada komit di luar cabang bawaan; MERGED bila tercatat di local-merges.log)
+  local g root dflt b n tip st lab ttl out='[]' log
+  g="$(git rev-parse --git-common-dir 2>/dev/null)" && root="$(cd "$g/.." && pwd)" || { echo '[]'; return 0; }
+  dflt="$(git -C "$root" symbolic-ref -q --short HEAD 2>/dev/null)" || { echo '[]'; return 0; }; log="$root/.aicrew/backend/local-merges.log"
+  while IFS= read -r b; do
+    n="${b#issue-}"; [[ "$n" =~ ^[0-9]+$ ]] || continue; tip="$(git rev-parse "refs/heads/$b" 2>/dev/null)" || continue
+    if [ "$(git rev-list --count "$dflt..$b" 2>/dev/null || echo 0)" -gt 0 ]; then st=OPEN
+    elif [ -f "$log" ] && grep "issue #$n " "$log" | sed -n 's/.* merge \([0-9a-f]\{40\}\) .*/\1/p' | while read -r ms; do git merge-base --is-ancestor "$ms" "$dflt" 2>/dev/null && echo y; done | grep -q y; then st=MERGED   # MERGED hanya bila sha merge tercatat memang leluhur cabang bawaan (log yang dipalsukan tak cukup)
+    else continue; fi
+    lab="$(ls_view "$n" 2>/dev/null | jq -c '.labels // []')"; [ -n "$lab" ] || lab='[]'; ttl="$(ls_view "$n" 2>/dev/null | jq -r '.title // ""')"
+    out="$(jq -c --argjson n "$n" --arg t "$ttl" --arg s "$st" --arg b "$b" --arg o "$tip" --arg d "$dflt" --argjson l "$lab" \
+      '. + [{number:$n,title:$t,state:$s,mergedAt:(if $s=="MERGED" then "local" else null end),headRefName:$b,headRefOid:$o,baseRefName:$d,isDraft:false,isCrossRepository:false,labels:$l,body:("Closes #"+($n|tostring))}]' <<<"$out")"
+  done < <(git for-each-ref --format='%(refname:short)' 'refs/heads/issue-*' 2>/dev/null)
+  jq -c --arg s "$1" --argjson n "${2:-1000}" '[.[]|select($s=="all" or ($s=="open" and .state=="OPEN") or ($s=="closed" and .state!="OPEN"))]|.[:$n]' <<<"$out"
+}
 ghx_prs() {
+  ghx_local && { _ghx_local_prs "$1" "$2"; return; }
   local s="$1" n="$2" f="$3" rc=0 repo page=1 acc='[]' pg
   if ghx_persist; then   # status bertahan: simpan hasil ke cache daftar PR (dipakai gerbang lokal)
     local gout; gout="$(ghx_gql gh pr list --state "$s" --limit "$n" --json "$f")" || rc=$?
@@ -250,6 +272,7 @@ ghx_prs() {
 
 # ghx_has_open_pr <cabang>: exit 0 bila ada PR terbuka dari cabang itu; panggilan GraphQL identik dengan yang lama, REST bila batas
 ghx_has_open_pr() {
+  ghx_local && { [ "$(_ghx_local_prs open 1000 | jq --arg b "$1" '[.[]|select(.headRefName==$b)]|length')" -ge 1 ]; return; }
   local rc=0 out repo
   out="$(ghx_gql gh pr list --head "$1" --state open --json number,state -q '[.[]|select(.state=="OPEN")]|length' 2>/dev/null)" || rc=$?
   if [ "$rc" = 0 ]; then [ "$out" -ge 1 ] 2>/dev/null; return; fi

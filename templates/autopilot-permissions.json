@@ -115,6 +115,11 @@
       "Bash(rtk git rebase -x*)",
       "Bash(gh pr merge * --admin*)",
       "Bash(rtk gh pr merge * --admin*)",
+      "Bash(*owner-local.sh *approve*)",
+      "Bash(rtk *owner-local.sh *approve*)",
+      "Read(~/.config/aicrew/**)",
+      "Edit(.aicrew/owner.log)",
+      "Write(.aicrew/owner.log)",
       "Edit(.aicrew/autonomy.json)",
       "Write(.aicrew/autonomy.json)"
     ]

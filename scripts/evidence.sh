@@ -7,19 +7,20 @@
 set -u
 here="$(cd "$(dirname "$0")" && pwd)"
 source "$here/lib/msg.sh"
-[ "${1:-}" = run ] && dst="${2:-}" && head="${3:-}" || { echo "usage: evidence.sh run <dst-branch> <head-sha>" >&2; exit 64; }
+[ "${1:-}" = run ] && dst="${2:-}" && head="${3:-}" || { echo "usage: evidence.sh run <dst-branch> <head-sha> [--local]" >&2; exit 64; }
+localref=0; [ "${4:-}" != --local ] || localref=1   # mode mandiri (Quota mode: local): tanpa remote, dasar = cabang lokal <dst>
 [[ "$dst" =~ ^[A-Za-z0-9._][A-Za-z0-9._/-]*$ ]] && [[ "$head" =~ ^[0-9a-f]{7,40}$ ]] || { echo "$(msg evidence.bad_args)" >&2; exit 64; }
 g="$(git rev-parse --git-common-dir 2>/dev/null)" && root="$(cd "$g/.." && pwd)" || { echo "$(msg evidence.no_repo)" >&2; exit 2; }
-git fetch -q origin "$dst" 2>/dev/null || { echo "$(msg evidence.fetch_failed "$dst")" >&2; exit 2; }
+if [ "$localref" = 1 ]; then bref="refs/heads/$dst"; else bref="origin/$dst"; git fetch -q origin "$dst" 2>/dev/null || { echo "$(msg evidence.fetch_failed "$dst")" >&2; exit 2; }; fi
 git cat-file -e "$head^{commit}" 2>/dev/null || { echo "$(msg evidence.no_head "$head")" >&2; exit 2; }
-wf="$(git show "origin/$dst:docs/WORKFLOW.md" 2>/dev/null)" || wf=""
+wf="$(git show "$bref:docs/WORKFLOW.md" 2>/dev/null)" || wf=""
 cmd="$(sed -n 's/^[- ]*Test command: *//p' <<<"$wf" | head -1 | sed 's/^`//; s/`[[:space:]]*$//; s/[[:space:]]*$//')"
 [ -n "$cmd" ] || { echo "$(msg evidence.no_test_command "$dst")" >&2; exit 2; }
-base="$(git rev-parse "origin/$dst")"
+base="$(git rev-parse "$bref")"
 wt="$(mktemp -d "${TMPDIR:-/tmp}/aicrew-evid.XXXXXX")"; log="$(mktemp "${TMPDIR:-/tmp}/aicrew-evid-log.XXXXXX")"
 cleanup() { git -C "$root" worktree remove --force "$wt" >/dev/null 2>&1; rm -rf "$wt" "$log"; }
 trap cleanup EXIT
-git worktree add -q --detach "$wt" "origin/$dst" 2>/dev/null || { echo "$(msg evidence.worktree_failed)" >&2; exit 2; }
+git worktree add -q --detach "$wt" "$bref" 2>/dev/null || { echo "$(msg evidence.worktree_failed)" >&2; exit 2; }
 if ! git -C "$wt" -c user.name=aicrew -c user.email=aicrew@localhost merge -q --no-ff --no-edit "$head" >/dev/null 2>&1; then
   echo "$(msg evidence.merge_conflict "$head" "$dst")" >&2; exit 2
 fi
