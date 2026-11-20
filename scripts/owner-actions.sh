@@ -7,11 +7,11 @@ set -u
 here="$(cd "$(dirname "$0")" && pwd)"; source "$here/ghx.sh"; source "$here/lib/ci-infra.sh"; source "$(dirname "$0")/lib/msg.sh"
 d="${1:-.aicrew}"; mkdir -p "$d"; f="$d/owner-actions.md"
 command -v jq >/dev/null 2>&1 || { rm -f "$f"; exit 0; }   # tanpa jq tidak bisa menyusun; berkas basi tidak dibiarkan
-issues="$(gh issue list --state open --limit 200 --json number,title,labels 2>/dev/null)" || { rm -f "$f"; exit 0; }   # gh gagal: jangan tinggalkan berkas basi
-prs="$(gh pr list --state open --limit 100 --json number,title,headRefName,headRefOid,isDraft,isCrossRepository,labels 2>/dev/null)" || { rm -f "$f"; exit 0; }
-repo="$(ghx_repo 2>/dev/null)" || repo=""
+if ghx_local; then issues="$(ghx_issues open - 200 x)"; else issues="$(gh issue list --state open --limit 200 --json number,title,labels 2>/dev/null)"; fi || { rm -f "$f"; exit 0; }   # gh gagal: jangan tinggalkan berkas basi
+if ghx_local; then prs="$(ghx_prs open 100 x)"; else prs="$(gh pr list --state open --limit 100 --json number,title,headRefName,headRefOid,isDraft,isCrossRepository,labels 2>/dev/null)"; fi || { rm -f "$f"; exit 0; }
+if ghx_local; then repo=""; else repo="$(ghx_repo 2>/dev/null)" || repo=""; fi
 # catatan agen terbaru untuk #n ("" bila tidak ada); ponytail: hanya 100 komentar pertama
-note_of() { [ -n "$repo" ] || return 0; gh api "repos/$repo/issues/$1/comments?per_page=100" 2>/dev/null | jq -r '[.[]?|(.body // "")|select(startswith("owner-action:"))]|last // empty|split("\n")[0]|sub("^owner-action: *";"")|.[0:300]' 2>/dev/null; }
+note_of() { if ghx_local; then ls_comments "$1" 2>/dev/null | jq -r '[.[]?|(.body // "")|select(startswith("owner-action:"))]|last // empty|split("\n")[0]|sub("^owner-action: *";"")|.[0:300]'; return 0; fi; [ -n "$repo" ] || return 0; gh api "repos/$repo/issues/$1/comments?per_page=100" 2>/dev/null | jq -r '[.[]?|(.body // "")|select(startswith("owner-action:"))]|last // empty|split("\n")[0]|sub("^owner-action: *";"")|.[0:300]' 2>/dev/null; }
 lines="$({
   jq -r '.[]?|select((.labels // [])|map(.name)|index("needs-principal"))|"\(.number)\t- '"$(msg owner.needs_principal '\(.number)' '\(.title)' '\(.number)')"'"' <<<"$issues" 2>/dev/null
   jq -r '.[]?|select((.labels // [])|map(.name|ascii_downcase)|index("owner-hold"))|"\(.number)\t- '"$(msg owner.owner_hold '\(.number)' '\(.title)' '\(.number)')"'"' <<<"$issues" 2>/dev/null

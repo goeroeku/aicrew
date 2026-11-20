@@ -5,6 +5,8 @@
 # (mengganti opsi menghapus status kartu yang ada). Juga membuat view papan (BOARD_LAYOUT) bila belum ada. Butuh scope gh 'project'.
 # Workflow "Item closed" (kartu otomatis ke Done saat issue ditutup) TIDAK bisa diaktifkan lewat API (hanya deleteProjectV2Workflow yang ada): nyalakan di UI Project > Workflows.
 set -euo pipefail
+source "$(dirname "$0")/ghx.sh"; source "$(dirname "$0")/lib/msg.sh"
+ghx_require_github board-init.sh
 owner="${1:?owner}"; title="${2:?judul}"; num="${3:-}"
 repo="$(gh repo view --json nameWithOwner -q .nameWithOwner)"
 [ -n "$num" ] || num="$(gh project create --owner "$owner" --title "$title" --format json -q .number)"

@@ -12,6 +12,14 @@ cant() { echo "terintegrasi: $*" >&2; exit 2; }
 okx() {   # lolos; dengan <issue>: tukar label dan verifikasi
   [ -n "$issue" ] || exit 0
   local il l got; il="$(bash "$here/label.sh" integrated)"
+  if ghx_local; then   # Quota mode: local: label lewat store, verifikasi ulang dari store
+    ls_label_add "$issue" "$il" || { echo "$(msg integrated.label_apply_failed "$il" "$issue")" >&2; exit 1; }
+    ls_label_remove "$issue" in-progress; ls_label_remove "$issue" in-review
+    got="$(ls_view "$issue" 2>/dev/null | jq -r '[.labels[].name]|join(" ")')" || { echo "$(msg integrated.labels_unreadable "$issue")" >&2; exit 1; }
+    case " $got " in *" $il "*) ;; *) echo "$(msg integrated.missing_label "$issue" "$il" "$got")" >&2; exit 1 ;; esac
+    case " $got " in *" in-progress "*|*" in-review "*) echo "$(msg integrated.stale_label "$issue" "$got")" >&2; exit 1 ;; esac
+    exit 0
+  fi
   gh api -X POST "repos/$repo/issues/$issue/labels" -f "labels[]=$il" >/dev/null || { echo "$(msg integrated.label_apply_failed "$il" "$issue")" >&2; exit 1; }
   for l in in-progress in-review; do gh api -X DELETE "repos/$repo/issues/$issue/labels/$l" >/dev/null 2>&1 || true; done
   got="$(gh api "repos/$repo/issues/$issue" | jq -r '[.labels[].name]|join(" ")')" || { echo "$(msg integrated.labels_unreadable "$issue")" >&2; exit 1; }
@@ -19,6 +27,11 @@ okx() {   # lolos; dengan <issue>: tukar label dan verifikasi
   case " $got " in *" in-progress "*|*" in-review "*) echo "$(msg integrated.stale_label "$issue" "$got")" >&2; exit 1 ;; esac
   exit 0
 }
+if ghx_local; then   # PR = cabang issue-<n> (nomor PR = nomor isu); terintegrasi = MERGED menurut model lokal (sha merge tercatat leluhur cabang bawaan)
+  st="$(ghx_prs all 1000 x | jq -r --argjson n "$pr" '[.[]|select(.number==$n)]|.[0].state // empty')"
+  [ "$st" = MERGED ] || { echo "$(msg integrated.not_merged "$pr")"; exit 1; }
+  echo "$(msg integrated.to_default_branch "$(git symbolic-ref --short HEAD 2>/dev/null)")"; okx
+fi
 repo="$(ghx_repo)" || cant "$(msg integrated.repo_unknown)"
 pj="$(gh api "repos/$repo/pulls/$pr")" || cant "$(msg integrated.pr_unreadable "$pr")"
 read -r merged msha hsha base < <(jq -r '[(.merged_at // "-"), (.merge_commit_sha // "-"), (.head.sha // "-"), (.base.ref // "-")] | @tsv' <<<"$pj") || cant "$(msg integrated.pr_unparseable "$pr")"

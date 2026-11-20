@@ -9,6 +9,7 @@
 # Kode keluar: 0, 1 (--extract: bagian versi tak ada), 2 tak bisa disusun, 64 argumen.
 set -u
 here="$(cd "$(dirname "$0")" && pwd)"; source "$here/ghx.sh"; source "$here/lib/msg.sh"
+ghx_require_github release-notes.sh
 # badan PR -> "Kategori<TAB>teks" | "BEHAVIOR<TAB>teks" | "INTERNAL" | "BAD<TAB>teks"; \r dibuang, blok kode dan komentar HTML diabaikan
 parse_body() {
   tr -d '\r' | awk '

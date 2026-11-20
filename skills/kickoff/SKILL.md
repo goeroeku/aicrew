@@ -46,3 +46,6 @@ A missing `Release notes:` line is reported as *missing* and recommended (not ap
 7. Write `docs/WORKFLOW.md` from `${CLAUDE_PLUGIN_ROOT}/templates/WORKFLOW.md`, fill in the values, show it to the owner, and ask for approval.
 
 Done only when `docs/WORKFLOW.md` exists and is approved by the owner.
+
+## Quota mode (ask the owner)
+Also ask which `Quota mode:` to write in `docs/WORKFLOW.md`: `auto` (default: GitHub, and the autopilot keeps working through a GitHub quota outage), `github` (never use the local merge path, wait for the reset) or `local` (no GitHub at all: issues are files under `.aicrew/issues`, "PR" = branch `issue-<n>`, merges are local and fast-forward only, owner approvals come from `bash ${CLAUDE_PLUGIN_ROOT}/scripts/owner-local.sh approve <n>` in a terminal). Whatever the mode, ask for the `Test command:` (the full suite): the local merge paths run it themselves and refuse without it. For `Quota mode: local`: **commit** `docs/WORKFLOW.md` on the default branch (the merge scripts read `Quota mode:` and `Test command:` from the committed file, never from the environment), then run `bash ${CLAUDE_PLUGIN_ROOT}/scripts/preflight.sh`. In `local` mode `board.sh`, `epic-link.sh`, `release-report.sh`, `release-notes.sh`, `cve-audit.sh`, `scheduled-workflow.sh` and `awaiting-release.sh` exit 2 with a clear message (they need GitHub).

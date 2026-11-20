@@ -19,3 +19,4 @@ First line of the report = final verdict `Laporan qa: lulus` or `Laporan qa: gag
 
 ## Command style (unattended mode)
 One simple command per Bash call, literal paths: no shell variables, no `cd <dir> && …` (use `git -C <dir>` / `node --test <path>`), no `; echo …`. Permissions match per command; chaining causes denials and leaves the report unverified.
+Quota mode: local: read the issue with `issue.sh view <n>`; report the verdict with `issue.sh comment <n> --body "Laporan qa: lulus"` plus `Commit: <sha of branch issue-<n>>` (two lines). The local merge runs the suite itself on the merge result, so your run is review evidence, not the gate.

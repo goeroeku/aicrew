@@ -4,6 +4,11 @@
 set -o pipefail
 n="${1:-}"
 case "$n" in ''|*[!0-9]*) echo "usage: codex-prompt.sh <issue-number>" >&2; exit 2;; esac
+if source "$(dirname "$0")/ghx.sh" 2>/dev/null && ghx_local; then   # Quota mode: local: dari store; komentar pemilik = author owner
+  ls_view "$n" 2>/dev/null | jq -r --arg n "$n" '"# Issue #\($n): \(.title)\n\n## Issue body (includes acceptance criteria)\n\n\(.body // "")\n\n## Owner comments\n\n" + (([.comments[]? | select(.author == "owner") | .body] | join("\n\n---\n\n")) // "")' \
+    || { echo "codex-prompt: cannot read issue #$n" >&2; exit 1; }
+  exit 0
+fi
 json="$(gh issue view "$n" --json title,body,comments 2>&1)" || { echo "codex-prompt: cannot read issue #$n: $json" >&2; exit 1; }
 printf '%s' "$json" | jq -r --arg n "$n" '
   "# Issue #\($n): \(.title)\n\n## Issue body (includes acceptance criteria)\n\n\(.body // "")\n\n## Owner comments\n\n" +

@@ -6,6 +6,8 @@
 # Idempoten. Sub-issue native butuh id numerik issue (bukan nomor). Gagal native tidak fatal: daftar centang tetap terpasang.
 set -euo pipefail
 source "$(dirname "$0")/ghx.sh"  # cadangan REST saat GraphQL kena batas
+source "$(dirname "$0")/lib/msg.sh"
+ghx_require_github epic-link.sh
 repo="$(ghx_repo)"
 if [ "${1:-}" = "--check" ]; then
   epics="$(ghx_issues open epic 100 number,body)"; orphan=0

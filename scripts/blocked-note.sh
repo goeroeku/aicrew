@@ -5,7 +5,12 @@ source "$(dirname "$0")/lib/msg.sh"
 [ $# -eq 2 ] || { echo "$(msg blocked.note_usage)" >&2; exit 64; }
 set -euo pipefail
 source "$(dirname "$0")/ghx.sh"
-pr="$1"; cmd="$2"; line="blocked-by-permission: $cmd"; repo="$(ghx_repo)"
+pr="$1"; cmd="$2"; line="blocked-by-permission: $cmd"
+if ghx_local; then   # Quota mode: local: komentar di isu lokal (nomor PR = nomor isu), idempoten
+  ls_comments "$pr" | jq -e --arg l "$line" 'any(.[]; .body == $l)' >/dev/null 2>&1 || ls_comment "$pr" "$line"
+  echo "$(msg blocked.note_allow_hint "$cmd")"; exit 0
+fi
+repo="$(ghx_repo)"
 if ! gh api "repos/$repo/issues/$pr/comments" --paginate | jq -e --arg l "$line" 'any(.[]; .body == $l)' >/dev/null; then
   gh api "repos/$repo/issues/$pr/comments" -f "body=$line" >/dev/null
 fi
