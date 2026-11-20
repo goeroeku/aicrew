@@ -151,6 +151,8 @@ msg_en() {
     local.odd_filename) printf 'a changed file name needs quoting (unusual characters); it needs the GitHub gate (waiting)' ;;
     local.test_config) printf 'test/build/CI configuration changed (%s); it needs the GitHub gate (waiting)' "$@" ;;
     local.default_unknown) printf 'the remote did not report its default branch; cannot verify the target (waiting)' ;;
+    backend.local_unsupported) printf '%s: not available in Quota mode: local (it needs GitHub)' "$@" ;;
+    backend.local_only) printf 'issue.sh works only with Quota mode: local (set it in docs/WORKFLOW.md)' ;;
     autopilot.quota_wait) printf 'round %s: GitHub quota exhausted (GraphQL and REST); waiting %s s for reset, no iteration used' "$1" "$2" ;;
     autopilot.gh_down_stop) printf 'autopilot: gh unreadable 5 times in a row; stopping (not an issue state), check network and gh auth' ;;
     autopilot.all_done) printf 'autopilot: all issues done (round %s)' "$@" ;;
