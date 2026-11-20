@@ -3139,4 +3139,10 @@ ok "pr-merge (#161): baris terakhir keluaran gerbang adalah vonis 'ok:' dan exit
 hout="$(ORIGGH="$tmp/pmb/gh" BASE=main BODY="Closes #1" PATH="$tmp/hintbin:$PATH" bash "$root/scripts/pr-merge-check.sh" 9 integrasi 2>&1)"; hrc=$?
 ok "pr-merge (#161): gagal -> tanpa hint dan baris terakhir 'GAGAL:' dengan exit 1" "$(printf '%s\n' "$hout" | grep -c '^hint:')|$(printf '%s\n' "$hout" | tail -1 | cut -c1-6)|$hrc" "0|GAGAL:|1"
 
+# agen (#160): tidak boleh mengakhiri giliran dengan perintah latar yang masih jalan
+for f in agents/senior-coder.md agents/devops.md; do
+  ok "agen (#160): $f melarang run_in_background untuk tes/skrip pembungkus" "$(grep -c 'Background commands: never start tests' "$f")" 1
+  ok "agen (#160): $f mewajibkan menunggu atau menghentikan perintah latar sebelum laporan akhir" "$(grep -c 'wait for it to finish or stop it before the final report' "$f")" 1
+done
+
 [ "$fails" = 0 ] && echo "SEMUA LULUS" || { echo "$fails GAGAL"; exit 1; }
