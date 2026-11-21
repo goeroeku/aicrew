@@ -3558,4 +3558,12 @@ t1=0; for f in skills/kickoff/SKILL.md skills/breakdown/SKILL.md skills/orchestr
 ok "teks (#159 4C): kickoff, breakdown, orchestrate, senior-coder, qa, README menjelaskan Quota mode: local" "$t1" 0
 ok "teks (#159 4C): template WORKFLOW memuat 'auto | github | local'; orchestrate menyebut merge-pr.sh dan owner-local.sh approve; kickoff meminta Test command" "$(grep -c 'auto | github | local' "$root/templates/WORKFLOW.md")|$(grep -c 'owner-local.sh approve' "$root/skills/orchestrate/SKILL.md")|$(grep -c 'Test command:' "$root/skills/kickoff/SKILL.md")" '1|1|1'
 
+# localstore (#159 perbaikan CI): create tanpa kunci (ln atomik) tahan banting terhadap banyak proses paralel; kunci yatim lama diambil alih untuk penyuntingan
+LSP="$tmp/lspar"; git init -q "$LSP"; rm -f "$LSP/par.txt"
+for _i in $(seq 1 40); do ( cd "$LSP" && AICREW_QUOTA_MODE=local bash "$root/scripts/issue.sh" create --title "p$_i" >> "$LSP/par.txt" ) & done; wait
+ok "localstore (#159): 40 create paralel -> 40 nomor unik berurutan 1..40, semua berkas JSON valid" "$(sort -u "$LSP/par.txt" | wc -l | tr -d ' ')|$(sort -n "$LSP/par.txt" | head -1)|$(sort -n "$LSP/par.txt" | tail -1)|$(for f in "$LSP"/.aicrew/issues/[0-9]*.json; do jq -e .number "$f" >/dev/null || echo rusak; done | wc -l | tr -d ' ')" '40|1|40|0'
+mkdir -p "$LSP/.aicrew/issues/.lock"; echo 1 > "$LSP/.aicrew/issues/.lock/pid"; touch -t 202001010000 "$LSP/.aicrew/issues/.lock"
+( cd "$LSP" && AICREW_QUOTA_MODE=local bash "$root/scripts/issue.sh" label 1 --add yatim-lama >/dev/null 2>&1 ); lr=$?
+ok "localstore (#159): kunci lama (> 2 menit) diambil alih untuk penyuntingan label" "$lr|$(cd "$LSP" && AICREW_QUOTA_MODE=local bash "$root/scripts/issue.sh" view 1 | jq -r '[.labels[].name]|index("yatim-lama")|type')" '0|number'
+
 [ "$fails" = 0 ] && echo "SEMUA LULUS" || { echo "$fails GAGAL"; exit 1; }
