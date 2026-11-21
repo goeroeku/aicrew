@@ -3561,6 +3561,6 @@ ok "teks (#159 4C): template WORKFLOW memuat 'auto | github | local'; orchestrat
 # git -C <wt> merge/rebase (#165): bentuk yang dianjurkan agen cocok dengan aturan izin; deny --exec/-x tetap menang pada bentuk -C
 PT="$root/templates/autopilot-permissions.json"
 ok "izin (#165): allow memuat git -C * merge*/rebase* (dan rtk) berdampingan dengan git merge/rebase" "$(jq -r '[.permissions.allow[]|select(test("^Bash\\((rtk )?git -C \\* (merge|rebase)\\*\\)$"))]|length' "$PT")" 4
-ok "izin (#165): deny memuat rebase --exec dan -x untuk bentuk git -C (dan rtk), tanpa aturan gh api lebar" "$(jq -r '[.permissions.deny[]|select(test("git -C \\* rebase \\* (--exec|-x)\\*"))]|length' "$PT")|$(jq -r '[.permissions.allow[]|select(test("gh api"))]|length' "$PT")" '4|0'
+ok "izin (#165): deny memuat rebase*exec* dan rebase*-x* untuk bentuk git -C (dan rtk), tanpa aturan gh api lebar" "$(jq -r '[.permissions.deny[]|select(test("git -C \\* rebase\\*(exec|-x)\\*"))]|length' "$PT")|$(jq -r '[.permissions.allow[]|select(test("gh api"))]|length' "$PT")" '4|0'
 
 [ "$fails" = 0 ] && echo "SEMUA LULUS" || { echo "$fails GAGAL"; exit 1; }
