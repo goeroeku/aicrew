@@ -3558,6 +3558,10 @@ t1=0; for f in skills/kickoff/SKILL.md skills/breakdown/SKILL.md skills/orchestr
 ok "teks (#159 4C): kickoff, breakdown, orchestrate, senior-coder, qa, README menjelaskan Quota mode: local" "$t1" 0
 ok "teks (#159 4C): template WORKFLOW memuat 'auto | github | local'; orchestrate menyebut merge-pr.sh dan owner-local.sh approve; kickoff meminta Test command" "$(grep -c 'auto | github | local' "$root/templates/WORKFLOW.md")|$(grep -c 'owner-local.sh approve' "$root/skills/orchestrate/SKILL.md")|$(grep -c 'Test command:' "$root/skills/kickoff/SKILL.md")" '1|1|1'
 
+# aturan tanpa skip pada tes DB/integrasi (#156): tiga berkas memuat aturan yang sama
+for f in agents/senior-coder.md agents/qa.md templates/codex-prompt.md; do
+  ok "aturan no-skip (#156): $f melarang t.Skip/skip/xit/@Disabled pada tes DB/integrasi dan meminta melapor" "$(grep -c 'Never add `t.Skip`, `skip`, `xit`, `@Disabled`' "$f")|$(grep -c 'counts as NOT VERIFIED' "$f")" '1|1'
+done
 # localstore (#159 perbaikan CI): create tanpa kunci (ln atomik) tahan banting terhadap banyak proses paralel; kunci yatim lama diambil alih untuk penyuntingan
 LSP="$tmp/lspar"; git init -q "$LSP"; rm -f "$LSP/par.txt"
 for _i in $(seq 1 40); do ( cd "$LSP" && AICREW_QUOTA_MODE=local bash "$root/scripts/issue.sh" create --title "p$_i" >> "$LSP/par.txt" ) & done; wait
