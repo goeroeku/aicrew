@@ -3596,6 +3596,10 @@ WF="$root/templates/close-on-integration-merge.yml"
 ok "templat close-on-integration-merge (#155): badan PR hanya sebagai nilai env (PR_BODY), tak ada \${{ }} di dalam run:" "$(grep -c 'github.event.pull_request.body' "$WF")|$(grep 'github.event.pull_request.body' "$WF" | grep -vc '^ *PR_BODY: \${{ github.event.pull_request.body }}$')|$(awk '/run: \|/{r=1;next} r' "$WF" | grep -c '\${{')" '1|0|0'
 ok "templat close-on-integration-merge (#155): hanya PR ter-merge, cabang integrasi bisa diatur, menolak epic/needs-principal/owner-hold; permissions: issues write saja" "$(grep -c 'merged == true' "$WF")|$(grep -c '. == "owner-hold"' "$WF")|$(grep -c 'branches: \[integration\]' "$WF")|$(grep -c 'issues: write' "$WF")" '1|1|1|1'
 ok "izin (#155): template izin tidak mendapat aturan gh api lebar; README mendokumentasikan kedua skrip" "$(jq -r '[.permissions.allow[]|select(test("gh api"))]|length' "$root/templates/autopilot-permissions.json")|$(grep -c 'issue-close.sh' "$root/README.md")" '0|1'
+# aturan tanpa skip pada tes DB/integrasi (#156): tiga berkas memuat aturan yang sama
+for f in agents/senior-coder.md agents/qa.md templates/codex-prompt.md; do
+  ok "aturan no-skip (#156): $f melarang t.Skip/skip/xit/@Disabled pada tes DB/integrasi dan meminta melapor" "$(grep -c 'Never add `t.Skip`, `skip`, `xit`, `@Disabled`' "$f")|$(grep -c 'counts as NOT VERIFIED' "$f")" '1|1'
+done
 # localstore (#159 perbaikan CI): create tanpa kunci (ln atomik) tahan banting terhadap banyak proses paralel; kunci yatim lama diambil alih untuk penyuntingan
 LSP="$tmp/lspar"; git init -q "$LSP"; rm -f "$LSP/par.txt"
 for _i in $(seq 1 40); do ( cd "$LSP" && AICREW_QUOTA_MODE=local bash "$root/scripts/issue.sh" create --title "p$_i" >> "$LSP/par.txt" ) & done; wait
