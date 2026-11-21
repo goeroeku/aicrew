@@ -3558,6 +3558,10 @@ t1=0; for f in skills/kickoff/SKILL.md skills/breakdown/SKILL.md skills/orchestr
 ok "teks (#159 4C): kickoff, breakdown, orchestrate, senior-coder, qa, README menjelaskan Quota mode: local" "$t1" 0
 ok "teks (#159 4C): template WORKFLOW memuat 'auto | github | local'; orchestrate menyebut merge-pr.sh dan owner-local.sh approve; kickoff meminta Test command" "$(grep -c 'auto | github | local' "$root/templates/WORKFLOW.md")|$(grep -c 'owner-local.sh approve' "$root/skills/orchestrate/SKILL.md")|$(grep -c 'Test command:' "$root/skills/kickoff/SKILL.md")" '1|1|1'
 
+# git -C <wt> merge/rebase (#165): bentuk yang dianjurkan agen cocok dengan aturan izin; deny --exec/-x tetap menang pada bentuk -C
+PT="$root/templates/autopilot-permissions.json"
+ok "izin (#165): allow memuat git -C * merge*/rebase* (dan rtk) berdampingan dengan git merge/rebase" "$(jq -r '[.permissions.allow[]|select(test("^Bash\\((rtk )?git -C \\* (merge|rebase)\\*\\)$"))]|length' "$PT")" 4
+ok "izin (#165): deny memuat rebase*exec* dan rebase*-x* untuk bentuk git -C (dan rtk), tanpa aturan gh api lebar" "$(jq -r '[.permissions.deny[]|select(test("git -C \\* rebase\\*(exec|-x)\\*"))]|length' "$PT")|$(jq -r '[.permissions.allow[]|select(test("gh api"))]|length' "$PT")" '4|0'
 # aturan tanpa skip pada tes DB/integrasi (#156): tiga berkas memuat aturan yang sama
 for f in agents/senior-coder.md agents/qa.md templates/codex-prompt.md; do
   ok "aturan no-skip (#156): $f melarang t.Skip/skip/xit/@Disabled pada tes DB/integrasi dan meminta melapor" "$(grep -c 'Never add `t.Skip`, `skip`, `xit`, `@Disabled`' "$f")|$(grep -c 'counts as NOT VERIFIED' "$f")" '1|1'
