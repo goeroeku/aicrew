@@ -167,9 +167,7 @@ msg_id() {
     ownerlocal.status_no) printf 'isu #%s pada %s: belum disetujui' "$@" ;;
     ownerlocal.reasons) printf 'alasan butuh Anda:' ;;
     cleanup.local_skipped) printf 'cleanup: dilewati pada Quota mode: local (tak ada PR GitHub untuk dicocokkan)' ;;
-<<<<<<< HEAD
     tick.usage) printf 'pakai: tick-status.sh [--header] [--gate <cabang-tujuan>]' ;;
-=======
     issueclose.usage) printf 'pakai: issue-close.sh <nomor-issue> [--comment <teks>]' ;;
     issueclose.unreadable) printf 'issue #%s tidak terbaca (ditolak: gagal tertutup)' "$@" ;;
     issueclose.no_repo) printf 'repositori tak dapat ditentukan' ;;
@@ -183,7 +181,6 @@ msg_id() {
     labelremove.never_hold) printf 'owner-hold tidak pernah dicabut skrip; owner yang mencabutnya' ;;
     labelremove.absent) printf 'issue #%s tidak berlabel '\''%s'\'' (tidak ada yang dilakukan)' "$@" ;;
     labelremove.removed) printf 'label '\''%s'\'' dicabut dari issue #%s' "$@" ;;
->>>>>>> origin/main
     autopilot.quota_wait) printf 'putaran %s: kuota GitHub habis (GraphQL dan REST); menunggu %s detik sampai reset, iterasi tidak terpakai' "$1" "$2" ;;
     autopilot.gh_down_stop) printf 'autopilot: gh tidak terbaca 5 kali beruntun; berhenti (bukan keadaan issue), periksa jaringan dan login gh' ;;
     autopilot.all_done) printf 'autopilot: semua issue selesai (putaran %s)' "$@" ;;
