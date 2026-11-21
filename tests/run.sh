@@ -3612,4 +3612,33 @@ mkdir -p "$LSP/.aicrew/issues/.lock"; echo 1 > "$LSP/.aicrew/issues/.lock/pid"; 
 ( cd "$LSP" && AICREW_QUOTA_MODE=local bash "$root/scripts/issue.sh" label 1 --add yatim-lama >/dev/null 2>&1 ); lr=$?
 ok "localstore (#159): kunci lama (> 2 menit) diambil alih untuk penyuntingan label" "$lr|$(cd "$LSP" && AICREW_QUOTA_MODE=local bash "$root/scripts/issue.sh" view 1 | jq -r '[.labels[].name]|index("yatim-lama")|type')" '0|number'
 
+# board.sh (#154): mode batch --apply (field dan item diambil sekali), tanpa proses yatim (EXIT/TERM mematikan keturunan, jam pengawas internal)
+BD="$tmp/bdx"; mkdir -p "$BD/bin" "$BD/repo"; git init -q "$BD/repo"; : > "$BD/calls"
+cat > "$BD/bin/gh" <<'BDEOF'
+#!/usr/bin/env bash
+echo "$*" >> "$BDD/calls"
+case "$*" in
+  "repo view"*) echo o/r ;;
+  "project view"*) [ -n "${BD_SLOW:-}" ] && sleep 37; echo PID ;;
+  "project field-list"*) echo '{"fields":[{"name":"Status","id":"F1","options":[{"name":"In review","id":"O1"},{"name":"Done","id":"OD"},{"name":"Backlog","id":"OB"}]}]}' ;;
+  "project item-list"*) echo '{"items":[{"id":"I5","status":"Backlog","content":{"number":5,"type":"Issue"}},{"id":"I6","status":"Backlog","content":{"number":6,"type":"Issue"}}]}' ;;
+  "project item-add"*) echo '{"id":"INEW"}' ;;
+esac
+BDEOF
+chmod +x "$BD/bin/gh"
+BDR() { ( cd "$BD/repo" && env PATH="$BD/bin:$PATH" BDD="$BD" "$@" ); }
+printf '5\tDone\n6\tin review\n9\tDone\n# comentario\n\nabc\tDone\n7\tTidakAda\n' > "$BD/plan.tsv"
+: > "$BD/calls"; bout="$(BDR bash "$root/scripts/board.sh" o 3 --apply "$BD/plan.tsv" 2>&1)"; brc=$?
+ok "board --apply (#154): 3 kartu dipindah (termasuk menambah #9), baris tak valid/status tak ada dilaporkan, exit 1 karena ada yang gagal" "$brc|$(grep -c '^project field-list' "$BD/calls")|$(grep -c '^project item-list' "$BD/calls")|$(grep -c '^project item-edit' "$BD/calls")|$(grep -c '^project item-add' "$BD/calls")|$(grep -c -- '--apply 3 dipindah, 2 gagal' <<<"$bout")" '1|1|1|3|1|1'
+: > "$BD/calls"; printf '5\tDone\n' | BDR bash "$root/scripts/board.sh" o 3 --apply - >/dev/null 2>&1; brc2=$?
+ok "board --apply (#154): rencana dari stdin ('-'), exit 0 bila semua berhasil" "$brc2|$(grep -c '^project item-edit.*I5.*OD' "$BD/calls")" '0|1'
+BDR bash "$root/scripts/board.sh" o 3 --apply /tidak/ada >/dev/null 2>&1; ok "board --apply (#154): berkas rencana tak terbaca -> exit 64" $? 64
+# tanpa proses yatim: TERM pada board.sh mematikan gh/sleep turunannya; jam pengawas internal menghentikan sendiri
+( cd "$BD/repo" && env PATH="$BD/bin:$PATH" BDD="$BD" BD_SLOW=1 bash "$root/scripts/board.sh" o 3 5 Done >/dev/null 2>&1 ) & bpid=$!
+sleep 2; pkill -TERM -f "scripts/board.sh o 3 5 Done" 2>/dev/null; sleep 2
+ok "board.sh (#154): TERM mematikan seluruh keturunan (tidak ada 'sleep 37' yatim)" "$(pgrep -f 'sleep 37' | wc -l | tr -d ' ')" 0
+wait "$bpid" 2>/dev/null
+( cd "$BD/repo" && env PATH="$BD/bin:$PATH" BDD="$BD" BD_SLOW=1 AICREW_BOARD_TIMEOUT=1 bash "$root/scripts/board.sh" o 3 5 Done >/dev/null 2>&1 ); trc=$?; sleep 1
+ok "board.sh (#154): jam pengawas AICREW_BOARD_TIMEOUT=1 menghentikan skrip (exit 143) dan tidak meninggalkan proses yatim" "$trc|$(pgrep -f 'sleep 37' | wc -l | tr -d ' ')" '143|0'
+
 [ "$fails" = 0 ] && echo "SEMUA LULUS" || { echo "$fails GAGAL"; exit 1; }
