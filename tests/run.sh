@@ -3574,4 +3574,48 @@ mkdir -p "$LSP/.aicrew/issues/.lock"; echo 1 > "$LSP/.aicrew/issues/.lock/pid"; 
 ( cd "$LSP" && AICREW_QUOTA_MODE=local bash "$root/scripts/issue.sh" label 1 --add yatim-lama >/dev/null 2>&1 ); lr=$?
 ok "localstore (#159): kunci lama (> 2 menit) diambil alih untuk penyuntingan label" "$lr|$(cd "$LSP" && AICREW_QUOTA_MODE=local bash "$root/scripts/issue.sh" view 1 | jq -r '[.labels[].name]|index("yatim-lama")|type')" '0|number'
 
+# tick-status.sh (#157): REST saja, kolom TSV tetap, vonis terikat head, tetap jalan saat GraphQL habis
+TS="$tmp/tick"; mkdir -p "$TS/bin" "$TS/repo"; git init -q "$TS/repo"
+cat > "$TS/bin/gh" <<'TSEOF'
+#!/bin/sh
+echo "$*" >> "$TSD/calls"
+case "$*" in *graphql*|"pr list"*|"issue list"*|"repo view"*) echo "gh: GraphQL: API rate limit already exceeded for user ID 1." >&2; exit 1 ;; esac
+url=""; for a in "$@"; do case "$a" in repos/*) url="$a" ;; esac; done
+case "$url" in
+  repos/o/r/pulls\?*) cat "$TSD/pulls.json" ;;
+  repos/o/r/commits/*/check-runs*) sha="${url#repos/o/r/commits/}"; sha="${sha%%/*}"; { cat "$TSD/cr-$sha.json" 2>/dev/null || echo '{"check_runs":[]}'; } | jq -c '.check_runs[]' ;;   # emula --jq .check_runs[] do gh
+  repos/o/r/issues/*/comments*) n="${url#repos/o/r/issues/}"; n="${n%%/*}"; cat "$TSD/cm-$n.json" 2>/dev/null || echo '[]' ;;
+esac
+exit 0
+TSEOF
+chmod +x "$TS/bin/gh"
+A40="$(printf 'a%.0s' $(seq 1 40))"; B40="$(printf 'b%.0s' $(seq 1 40))"; C40="$(printf 'c%.0s' $(seq 1 40))"; D40="$(printf 'd%.0s' $(seq 1 40))"
+cat > "$TS/pulls.json" <<TSJ
+[{"number":11,"head":{"ref":"issue-5","sha":"$A40","repo":{"full_name":"o/r"}},"base":{"repo":{"full_name":"o/r"}}},
+ {"number":12,"head":{"ref":"issue-6","sha":"$B40","repo":{"full_name":"o/r"}},"base":{"repo":{"full_name":"o/r"}}},
+ {"number":13,"head":{"ref":"issue-7","sha":"$C40","repo":{"full_name":"o/r"}},"base":{"repo":{"full_name":"o/r"}}},
+ {"number":14,"head":{"ref":"feature-x","sha":"$D40","repo":{"full_name":"o/r"}},"base":{"repo":{"full_name":"o/r"}}},
+ {"number":15,"head":{"ref":"issue-8","sha":"$D40","repo":{"full_name":"fork/r"}},"base":{"repo":{"full_name":"o/r"}}}]
+TSJ
+echo '{"check_runs":[{"name":"tests","status":"completed","conclusion":"success","app":{"id":1}}]}' > "$TS/cr-$A40.json"
+echo '{"check_runs":[{"name":"tests","status":"in_progress","conclusion":null,"app":{"id":1}}]}' > "$TS/cr-$B40.json"
+echo '{"check_runs":[{"name":"tests","status":"completed","conclusion":"failure","app":{"id":1},"output":{"title":"t","summary":"assert failed"}}]}' > "$TS/cr-$C40.json"
+printf '[{"body":"Laporan qa: lulus\\nCommit: %s","author_association":"OWNER"},{"body":"Laporan security: lulus\\nCommit: %s","author_association":"MEMBER"},{"body":"Laporan perf: lulus Commit: %s","author_association":"NONE"}]' "$A40" "$A40" "$A40" > "$TS/cm-11.json"
+printf '[{"body":"Laporan qa: lulus\\nCommit: %s","author_association":"OWNER"}]' "${A40:0:20}$(printf 'f%.0s' $(seq 1 20))" > "$TS/cm-12.json"
+printf '[{"body":"Laporan qa: lulus\\nCommit: %s","author_association":"OWNER"},{"body":"Laporan qa: gagal\\nCommit: %s","author_association":"OWNER"}]' "$C40" "$C40" > "$TS/cm-13.json"
+mkdir -p "$TS/repo/.aicrew/executors"; sleep 30 & slp=$!; echo "$slp" > "$TS/repo/.aicrew/executors/issue-5.pid"; echo 99999999 > "$TS/repo/.aicrew/executors/issue-6.pid"
+TSR() { ( cd "$TS/repo" && env PATH="$TS/bin:$PATH" TSD="$TS" GH_REPO=o/r bash "$root/scripts/tick-status.sh" "$@" ); }
+: > "$TS/calls"; tout="$(TSR --header)"; trc=$?; kill "$slp" 2>/dev/null
+ok "tick-status (#157): PR hijau dengan vonis qa+security lulus untuk head (komentar NONE diabaikan), eksekutor running" "$(grep -P '^11\t' <<<"$tout" 2>/dev/null || awk -F'\t' '$1==11' <<<"$tout")" "$(printf '11\t5\taaaaaaa\tnone\tlulus\tlulus\t-\trunning\t-')"
+ok "tick-status (#157): vonis untuk head lama -> stale; check berjalan -> pending; eksekutor dengan PID mati -> dead" "$(awk -F'\t' '$1==12' <<<"$tout")" "$(printf '12\t6\tbbbbbbb\tpending\tstale\t-\t-\tdead\t-')"
+ok "tick-status (#157): vonis gagal terakhir untuk head menang; CI gagal -> code" "$(awk -F'\t' '$1==13' <<<"$tout")" "$(printf '13\t7\tccccccc\tcode\tgagal\t-\t-\t-\t-')"
+ok "tick-status (#157): header tetap, PR non-issue dan PR dari fork dilewati, exit 0, urut nomor PR" "$trc|$(head -1 <<<"$tout")|$(awk -F'\t' 'NR>1{print $1}' <<<"$tout" | paste -sd, -)" "0|$(printf 'pr\tissue\thead7\tci\tqa\tsecurity\tperf\texecutor\tgate')|11,12,13"
+ok "tick-status (#157): hanya REST: tidak ada panggilan graphql/pr list/issue list/repo view (GraphQL habis tidak mengganggu)" "$(grep -c 'graphql\|^pr list\|^issue list\|^repo view' "$TS/calls")" 0
+(cd "$TS/repo" && env PATH="$TS/bin:$PATH" TSD="$TS" GH_REPO=o/r bash "$root/scripts/tick-status.sh" --bogus >/dev/null 2>&1); ok "tick-status (#157): argumen asing -> exit 64" $? 64
+# mode lokal: PR dari cabang issue-<n>, vonis dari komentar isu lokal
+SMmk; ( cd "$SM" && git checkout -q issue-1 ) >/dev/null 2>&1; ( cd "$SM" && git checkout -q main ) >/dev/null 2>&1
+sh1="$(git -C "$SM" rev-parse refs/heads/issue-1)"; SMR bash "$root/scripts/issue.sh" comment 1 --body "Laporan qa: lulus
+Commit: $sh1" >/dev/null
+ok "tick-status (#157): mode lokal: baris PR dari cabang issue-1, vonis qa dari komentar lokal, ci '-'" "$(SMR bash "$root/scripts/tick-status.sh" | awk -F'\t' '{print $1"|"$2"|"$4"|"$5"|"$6}')" '1|1|-|lulus|-'
+
 [ "$fails" = 0 ] && echo "SEMUA LULUS" || { echo "$fails GAGAL"; exit 1; }

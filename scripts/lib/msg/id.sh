@@ -167,6 +167,7 @@ msg_id() {
     ownerlocal.status_no) printf 'isu #%s pada %s: belum disetujui' "$@" ;;
     ownerlocal.reasons) printf 'alasan butuh Anda:' ;;
     cleanup.local_skipped) printf 'cleanup: dilewati pada Quota mode: local (tak ada PR GitHub untuk dicocokkan)' ;;
+    tick.usage) printf 'pakai: tick-status.sh [--header] [--gate <cabang-tujuan>]' ;;
     autopilot.quota_wait) printf 'putaran %s: kuota GitHub habis (GraphQL dan REST); menunggu %s detik sampai reset, iterasi tidak terpakai' "$1" "$2" ;;
     autopilot.gh_down_stop) printf 'autopilot: gh tidak terbaca 5 kali beruntun; berhenti (bukan keadaan issue), periksa jaringan dan login gh' ;;
     autopilot.all_done) printf 'autopilot: semua issue selesai (putaran %s)' "$@" ;;
