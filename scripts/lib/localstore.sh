@@ -9,14 +9,20 @@ _ls_dir() {
   if [ -z "$d" ]; then g="$(git rev-parse --git-common-dir 2>/dev/null)" && root="$(cd "$g/.." && pwd)" || return 1; d="$root/.aicrew/issues"; fi
   mkdir -p "$d" 2>/dev/null || return 1; printf '%s' "$d"
 }
-_ls_lock() {   # <dir>: kunci mkdir berisi pid; kunci yatim (pid mati atau > 2 menit) diambil alih dengan `mv` atomik: hanya satu penunggu yang menang
-  local d="$1" i=0 p
+_ls_age() { local m; m="$(stat -c %Y "$1" 2>/dev/null || stat -f %m "$1" 2>/dev/null)"; if [[ "$m" =~ ^[0-9]+$ ]]; then echo $(( $(date +%s) - m )); else echo 0; fi; }
+# <dir>: kunci mkdir berisi pid. Kunci yatim diambil alih bila (umur >= 3 dtk DAN pid mati) atau umur >= 2 menit; pengambilalihan memakai mv atomik lalu memeriksa ulang umur kunci yang
+# terambil: bila ternyata kunci baru (umur < 3 dtk, diambil orang lain di antara pembacaan dan mv) dikembalikan. Sisa jendela sangat sempit dan hanya ada setelah proses mati.
+_ls_lock() {
+  local d="$1" i=0 p a st
   while ! mkdir "$d/.lock" 2>/dev/null; do
     i=$((i+1))
     if [ "$i" -ge 20 ]; then
-      p="$(cat "$d/.lock/pid" 2>/dev/null)"
-      if { [ -n "$p" ] && ! kill -0 "$p" 2>/dev/null; } || [ -n "$(find "$d/.lock" -maxdepth 0 -mmin +2 2>/dev/null)" ]; then
-        mv "$d/.lock" "$d/.lock.stale.$$.$RANDOM" 2>/dev/null && rm -rf "$d"/.lock.stale.* 2>/dev/null
+      a="$(_ls_age "$d/.lock")"; p="$(cat "$d/.lock/pid" 2>/dev/null)"
+      if [ "$a" -ge 120 ] || { [ "$a" -ge 3 ] && [ -n "$p" ] && ! kill -0 "$p" 2>/dev/null; }; then
+        st="$d/.lock.stale.$$.$RANDOM"
+        if mv "$d/.lock" "$st" 2>/dev/null; then
+          if [ "$(_ls_age "$st")" -ge 3 ]; then rm -rf "$st"; else mv "$st" "$d/.lock" 2>/dev/null || rm -rf "$st"; fi
+        fi
         i=0; continue
       fi
     fi
@@ -38,15 +44,18 @@ _ls_now() { date -u +%Y-%m-%dT%H:%M:%SZ; }
 ls_create() {
   local title="$1" body="$2" d n j l labs='[]'; shift 2; d="$(_ls_dir)" || return 1
   for l in "$@"; do _ls_label_ok "$l" || { echo "localstore: label tak valid: $l" >&2; return 1; }; labs="$(jq -c --arg l "$l" '. + [$l] | unique' <<<"$labs")"; done
-  _ls_lock "$d" || { echo "localstore: tidak dapat mengunci $d" >&2; return 1; }
-  n="$(cat "$d/next" 2>/dev/null)"
-  _ls_num_ok "$n" || n=0
-  local mx; mx="$(ls "$d" 2>/dev/null | sed -n 's/^\([0-9][0-9]*\)\.json$/\1/p' | sort -n | tail -1)"   # nunca sobrescreve: next menor que o maior existente = usa maior+1
-  [ "$((10#${n:-0}))" -gt "$((10#${mx:-0}))" ] || n=$(( 10#${mx:-0} + 1 ))
-  n=$((10#$n))
-  j="$(jq -nc --argjson n "$n" --arg t "$title" --arg b "$body" --argjson l "$labs" --arg now "$(_ls_now)" '{number:$n,title:$t,body:$b,state:"open",labels:$l,created:$now,updated:$now}')" || { _ls_unlock "$d"; return 1; }
-  _ls_write "$d/$n.json" "$j" && _ls_write "$d/next" "$((n+1))"; local rc=$?
-  _ls_unlock "$d"; [ "$rc" = 0 ] && echo "$n"; return "$rc"
+  # tanpa kunci: nomor diklaim dengan `ln` (hard link atomik, gagal bila berkas sudah ada), isi sudah lengkap saat terlihat pembaca; tabrakan = coba nomor berikutnya (#159 perbaikan CI)
+  local mx t tries=0; mx="$(ls "$d" 2>/dev/null | sed -n 's/^\([0-9][0-9]*\)\.json$/\1/p' | sort -n | tail -1)"; n=$(( 10#${mx:-0} + 1 ))
+  t="$(mktemp "$d/.new.XXXXXX")" || return 1
+  while :; do
+    j="$(jq -nc --argjson n "$n" --arg t "$title" --arg b "$body" --argjson l "$labs" --arg now "$(_ls_now)" '{number:$n,title:$t,body:$b,state:"open",labels:$l,created:$now,updated:$now}')" || { rm -f "$t"; return 1; }
+    printf '%s\n' "$j" > "$t" || { rm -f "$t"; return 1; }
+    ln "$t" "$d/$n.json" 2>/dev/null && break
+    tries=$((tries+1)); [ "$tries" -le 2000 ] || { rm -f "$t"; echo "localstore: tidak dapat memberi nomor isu" >&2; return 1; }
+    n=$((n+1))
+  done
+  rm -f "$t"; printf '%s\n' "$((n+1))" > "$d/next" 2>/dev/null || true   # petunjuk saja; nomor sebenarnya = klaim ln di atas
+  echo "$n"
 }
 _ls_edit() {   # <n> <filtro jq> [--arg k v ...]: aplica ao registro sob kunci
   local n="$1" f="$2" d cur new rc=0; shift 2; _ls_num_ok "$n" || { echo "localstore: nomor tak valid: $n" >&2; return 1; }
