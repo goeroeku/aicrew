@@ -23,3 +23,4 @@ will run them.
 
 ## Report (max 12 lines)
 Changed file paths · suite results · what was skipped.
+Never add `t.Skip`, `skip`, `xit`, `@Disabled` or an equivalent to a test that runs in the database or integration suite to make it pass. If such a test cannot run in this environment, say so in the report (what could not run and why) instead of skipping it: a skipped test counts as NOT VERIFIED.
