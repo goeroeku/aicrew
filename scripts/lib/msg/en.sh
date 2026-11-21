@@ -167,7 +167,23 @@ msg_en() {
     ownerlocal.status_no) printf 'issue #%s at %s: not approved' "$@" ;;
     ownerlocal.reasons) printf 'reasons it needs you:' ;;
     cleanup.local_skipped) printf 'cleanup: skipped in Quota mode: local (no GitHub PRs to match)' ;;
+<<<<<<< HEAD
     tick.usage) printf 'usage: tick-status.sh [--header] [--gate <target-branch>]' ;;
+=======
+    issueclose.usage) printf 'usage: issue-close.sh <issue-number> [--comment <text>]' ;;
+    issueclose.unreadable) printf 'issue #%s could not be read (refusing: fail closed)' "$@" ;;
+    issueclose.no_repo) printf 'repository could not be determined' ;;
+    issueclose.is_pr) printf '#%s is a pull request, not an issue' "$@" ;;
+    issueclose.locked) printf 'issue #%s is locked' "$@" ;;
+    issueclose.protected) printf 'issue #%s carries %s; only the owner handles it' "$@" ;;
+    issueclose.already) printf 'issue #%s is already closed (nothing to do)' "$@" ;;
+    issueclose.closed) printf 'issue #%s closed' "$@" ;;
+    issueclose.failed) printf 'the change on issue #%s failed' "$@" ;;
+    labelremove.usage) printf 'usage: label-remove.sh <issue-number> <label>' ;;
+    labelremove.never_hold) printf 'owner-hold is never removed by a script; the owner removes it' ;;
+    labelremove.absent) printf 'issue #%s does not carry '\''%s'\'' (nothing to do)' "$@" ;;
+    labelremove.removed) printf 'label '\''%s'\'' removed from issue #%s' "$@" ;;
+>>>>>>> origin/main
     autopilot.quota_wait) printf 'round %s: GitHub quota exhausted (GraphQL and REST); waiting %s s for reset, no iteration used' "$1" "$2" ;;
     autopilot.gh_down_stop) printf 'autopilot: gh unreadable 5 times in a row; stopping (not an issue state), check network and gh auth' ;;
     autopilot.all_done) printf 'autopilot: all issues done (round %s)' "$@" ;;

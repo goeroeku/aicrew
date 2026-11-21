@@ -3558,6 +3558,44 @@ t1=0; for f in skills/kickoff/SKILL.md skills/breakdown/SKILL.md skills/orchestr
 ok "teks (#159 4C): kickoff, breakdown, orchestrate, senior-coder, qa, README menjelaskan Quota mode: local" "$t1" 0
 ok "teks (#159 4C): template WORKFLOW memuat 'auto | github | local'; orchestrate menyebut merge-pr.sh dan owner-local.sh approve; kickoff meminta Test command" "$(grep -c 'auto | github | local' "$root/templates/WORKFLOW.md")|$(grep -c 'owner-local.sh approve' "$root/skills/orchestrate/SKILL.md")|$(grep -c 'Test command:' "$root/skills/kickoff/SKILL.md")" '1|1|1'
 
+# issue-close.sh dan label-remove.sh (#155): REST, jalur tetap, penolakan tertutup, tanpa aturan gh api lebar
+IC="$tmp/icx"; mkdir -p "$IC/bin"; : > "$IC/calls"
+cat > "$IC/bin/gh" <<'ICEOF'
+#!/bin/sh
+echo "$*" >> "$ICD/calls"
+meth=GET; url=""; prev=""
+for a in "$@"; do [ "$prev" = -X ] && meth="$a"; case "$a" in repos/*) url="$a" ;; esac; prev="$a"; done
+n="$(printf '%s' "$url" | sed -n 's#^repos/o/r/issues/\([0-9][0-9]*\).*#\1#p')"
+case "$meth $url" in
+  "GET repos/o/r/issues/$n") [ -f "$ICD/issue-$n.json" ] && cat "$ICD/issue-$n.json" || { echo "gh: Not Found (HTTP 404)" >&2; exit 1; } ;;
+  *) exit 0 ;;
+esac
+ICEOF
+chmod +x "$IC/bin/gh"
+ICR() { ( cd "$IC" && env PATH="$IC/bin:$PATH" ICD="$IC" GH_REPO=o/r bash "$@" ); }
+icj() { printf '%s' "$2" > "$IC/issue-$1.json"; }
+icw() { grep -c -- '-X' "$IC/calls"; }
+icj 1 '{"number":1,"state":"open","locked":false,"labels":[{"name":"bug"}]}'
+: > "$IC/calls"; out="$(ICR "$root/scripts/issue-close.sh" 1 --comment "selesai terintegrasi" 2>&1)"; rc=$?
+ok "issue-close.sh (#155): issue terbuka biasa -> komentar lalu penutupan lewat REST (POST comments, PATCH state=closed), exit 0" "$rc|$(grep -c 'api -X POST repos/o/r/issues/1/comments' "$IC/calls")|$(grep -c 'api -X PATCH repos/o/r/issues/1 -f state=closed' "$IC/calls")|$(grep -c 'graphql\|issue close' "$IC/calls")" '0|1|1|0'
+for lb in epic needs-principal owner-hold; do icj 2 "{\"number\":2,\"state\":\"open\",\"locked\":false,\"labels\":[{\"name\":\"bug\"},{\"name\":\"$lb\"}]}"; : > "$IC/calls"; ICR "$root/scripts/issue-close.sh" 2 >/dev/null 2>&1; r=$?
+  ok "issue-close.sh (#155): menolak issue berlabel $lb tanpa tulisan" "$r|$(icw)" '1|0'; done
+icj 3 '{"number":3,"state":"open","locked":true,"labels":[]}'; icj 4 '{"number":4,"state":"open","labels":[],"pull_request":{"url":"x"}}'; icj 5 '{"number":5,"state":"closed","labels":[]}'
+: > "$IC/calls"; ICR "$root/scripts/issue-close.sh" 3 >/dev/null 2>&1; r3=$?; ICR "$root/scripts/issue-close.sh" 4 >/dev/null 2>&1; r4=$?; ICR "$root/scripts/issue-close.sh" 5 >/dev/null 2>&1; r5=$?; ICR "$root/scripts/issue-close.sh" 99 >/dev/null 2>&1; r6=$?; ICR "$root/scripts/issue-close.sh" abc >/dev/null 2>&1; r7=$?
+ok "issue-close.sh (#155): terkunci -> 1, PR -> 1, sudah tertutup -> 0 tanpa tulis, tak terbaca -> 1 (gagal tertutup), nomor tak valid -> 64" "$r3|$r4|$r5|$r6|$r7|$(icw)" '1|1|0|1|64|0'
+icj 6 '{"number":6,"state":"open","locked":false,"labels":[{"name":"in-review"},{"name":"bug"}]}'; icj 7 '{"number":7,"state":"open","locked":false,"labels":[{"name":"epic"},{"name":"in-review"}]}'
+: > "$IC/calls"; ICR "$root/scripts/label-remove.sh" 6 in-review >/dev/null 2>&1; l1=$?; c1="$(grep -c 'api -X DELETE repos/o/r/issues/6/labels/in-review' "$IC/calls")"
+: > "$IC/calls"; ICR "$root/scripts/label-remove.sh" 6 owner-hold >/dev/null 2>&1; l2=$?; ICR "$root/scripts/label-remove.sh" 7 in-review >/dev/null 2>&1; l3=$?; ICR "$root/scripts/label-remove.sh" 6 absent >/dev/null 2>&1; l4=$?; ICR "$root/scripts/label-remove.sh" 6 'a/b' >/dev/null 2>&1; l5=$?
+ok "label-remove.sh (#155): remove in-review via DELETE; owner-hold nunca; issue epic ditolak; label tak ada -> 0; label tak valid -> 64; tanpa tulisan pada penolakan" "$l1|$c1|$l2|$l3|$l4|$l5|$(icw)" '0|1|1|1|0|64|0'
+# mode lokal: lewat store, aturan penolakan sama, tanpa gh
+SMmk; SMR bash "$root/scripts/issue.sh" create --title "dua" --label epic >/dev/null
+SMR bash "$root/scripts/issue-close.sh" 2 >/dev/null 2>&1; k1=$?; SMR bash "$root/scripts/issue-close.sh" 1 --comment "ok" >/dev/null 2>&1; k2=$?; SMR bash "$root/scripts/label-remove.sh" 1 risk:L1 >/dev/null 2>&1; k3=$?
+ok "issue-close.sh/label-remove.sh (#155): mode lokal: epic ditolak, isu biasa ditutup lewat store, label dicabut" "$k1|$k2|$k3|$(SMR bash "$root/scripts/issue.sh" view 1 | jq -r '"\(.state) \([.labels[].name]|length)"')" '1|0|0|CLOSED 0'
+# templat workflow: badan PR hanya lewat env; hanya angka ke gh; izin tidak memuat gh api lebar
+WF="$root/templates/close-on-integration-merge.yml"
+ok "templat close-on-integration-merge (#155): badan PR hanya sebagai nilai env (PR_BODY), tak ada \${{ }} di dalam run:" "$(grep -c 'github.event.pull_request.body' "$WF")|$(grep 'github.event.pull_request.body' "$WF" | grep -vc '^ *PR_BODY: \${{ github.event.pull_request.body }}$')|$(awk '/run: \|/{r=1;next} r' "$WF" | grep -c '\${{')" '1|0|0'
+ok "templat close-on-integration-merge (#155): hanya PR ter-merge, cabang integrasi bisa diatur, menolak epic/needs-principal/owner-hold; permissions: issues write saja" "$(grep -c 'merged == true' "$WF")|$(grep -c '. == "owner-hold"' "$WF")|$(grep -c 'branches: \[integration\]' "$WF")|$(grep -c 'issues: write' "$WF")" '1|1|1|1'
+ok "izin (#155): template izin tidak mendapat aturan gh api lebar; README mendokumentasikan kedua skrip" "$(jq -r '[.permissions.allow[]|select(test("gh api"))]|length' "$root/templates/autopilot-permissions.json")|$(grep -c 'issue-close.sh' "$root/README.md")" '0|1'
 # git -C <wt> merge/rebase (#165): bentuk yang dianjurkan agen cocok dengan aturan izin; deny --exec/-x tetap menang pada bentuk -C
 PT="$root/templates/autopilot-permissions.json"
 ok "izin (#165): allow memuat git -C * merge*/rebase* (dan rtk) berdampingan dengan git merge/rebase" "$(jq -r '[.permissions.allow[]|select(test("^Bash\\((rtk )?git -C \\* (merge|rebase)\\*\\)$"))]|length' "$PT")" 4
