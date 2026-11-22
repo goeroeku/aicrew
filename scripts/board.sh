@@ -19,7 +19,7 @@ if [ "$#" -lt 3 ] || { [ "$3" != "--sync" ] && [ "$3" != "--sync-cards" ] && [ "
 fi
 owner="$1"; num="$2"
 if [ "$3" = "--sync-cards" ]; then   # status kartu task dari label/PR/worktree/blocker (#69); pemetaan di lib/card-status.sh
-  [ -z "${4:-}" ] || [ "${4:-}" = "--dry-run" ] || { echo "board: argumen tak dikenal: $4" >&2; exit 64; }
+  [ -z "${4:-}" ] || [ "${4:-}" = "--dry-run" ] || { echo "$(msg board.unknown_arg "$4")" >&2; exit 64; }
   . "$(dirname "$0")/lib/card-sync.sh"; card_sync "$owner" "$num" "$([ "${4:-}" = "--dry-run" ] && echo 1 || echo 0)"; exit 0
 fi
 if [ "${3:-}" = "--sync" ]; then
@@ -100,7 +100,7 @@ if [ "$3" = "--apply" ]; then   # mode batch (#154): board.sh <owner> <proj> --a
   if [ "$src" = - ]; then exec 3<&0; else exec 3< "$src"; fi
   while IFS=$'\t' read -r issue status <&3; do
     [ -n "$issue" ] && [ "${issue#\#}" = "$issue" ] || continue
-    [[ "$issue" =~ ^[0-9]+$ ]] && [ -n "$status" ] || { echo "board: baris rencana tak valid: $issue" >&2; bad=$((bad+1)); continue; }
+    [[ "$issue" =~ ^[0-9]+$ ]] && [ -n "$status" ] || { echo "$(msg board.bad_plan_line "$issue")" >&2; bad=$((bad+1)); continue; }
     oid="$(jq -r --arg s "$status" '.options[] | select(.name|ascii_downcase==($s|ascii_downcase)) | .id' <<<"$field")"
     [ -n "$oid" ] || { echo "$(msg board.status_missing_issue "$status" "$issue")" >&2; bad=$((bad+1)); continue; }
     item="$(jq -r --argjson n "$issue" '.items[] | select(.content.number==$n and .content.type=="Issue") | .id' <<<"$items" | head -1)"

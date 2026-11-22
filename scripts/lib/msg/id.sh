@@ -306,6 +306,11 @@ msg_id() {
     board.move_failed) printf 'board: #%s gagal dipindah' "$@" ;;
     board.apply_summary) printf 'board: --apply %s dipindah, %s gagal' "$@" ;;
     board.status_missing_choices) printf 'board: status '\''%s'\'' tidak ada; pilihan: %s' "$@" ;;
+    cveaudit.open_unreadable) printf 'cve-audit: daftar issue terbuka tak terbaca' ;;
+    board.unknown_arg) printf 'board: argumen tak dikenal: %s' "$@" ;;
+    board.bad_plan_line) printf 'board: baris rencana tak valid: %s' "$@" ;;
+    lock.timeout) printf 'lock: '\''%s'\'' dipegang pid %s; habis waktu %ss' "$@" ;;
+    scan.unknown_arg) printf 'argumen tak dikenal: %s' "$@" ;;
     autopilot.quota_wait) printf 'putaran %s: kuota GitHub habis (GraphQL dan REST); menunggu %s detik sampai reset, iterasi tidak terpakai' "$1" "$2" ;;
     autopilot.gh_down_stop) printf 'autopilot: gh tidak terbaca 5 kali beruntun; berhenti (bukan keadaan issue), periksa jaringan dan login gh' ;;
     autopilot.all_done) printf 'autopilot: semua issue selesai (putaran %s)' "$@" ;;

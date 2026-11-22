@@ -3727,4 +3727,14 @@ for l in en id; do
   ok "katalog (#64 D grup B): $l: usage lock/label/issue/epic-link/board dan baris preflight" "$(grep -c -F -- "$e1" <<<"$o1")|$(grep -c -F -- "$e2" <<<"$o2")|$(grep -c -F -- "$e3" <<<"$o3")|$(grep -c -F -- "$e4" <<<"$o4")|$(grep -c -F -- "$e5" <<<"$o5")|$(grep -c -F -- "$e6" <<<"$o6")|$(grep -c -F -- "$e7" <<<"$o6")" '1|1|1|1|1|1|1'
 done
 
+# katalog pesan, sisa tahap D (#64): argumen tak dikenal (baseline-scan, board), baris rencana tak valid, habis waktu lock
+CR="$tmp/catr"; git init -q "$CR"; : > "$CR/plan.tsv"; printf 'abc\tDone\n' > "$CR/plan.tsv"
+for l in en id; do
+  case "$l" in en) m1='unknown argument: --x'; m2='board: unknown argument: --zz'; m3='lock: '"'"'catr-lk'"'"' is held by pid' ;; id) m1='argumen tak dikenal: --x'; m2='board: argumen tak dikenal: --zz'; m3='lock: '"'"'catr-lk'"'"' dipegang pid' ;; esac
+  o1="$(echo | AICREW_LANG=$l bash "$root/scripts/baseline-scan.sh" --x 2>&1)"; o2="$(cd "$CR" && AICREW_LANG=$l bash "$root/scripts/board.sh" o 3 --sync-cards --zz 2>&1)"
+  mkdir -p "${TMPDIR:-/tmp}/aicrew-lock-catr-lk"; echo $$ > "${TMPDIR:-/tmp}/aicrew-lock-catr-lk/pid"
+  o3="$(AICREW_LANG=$l bash "$root/scripts/lock.sh" catr-lk --wait 1 -- true 2>&1)"; rm -rf "${TMPDIR:-/tmp}/aicrew-lock-catr-lk"
+  ok "katalog (#64 sisa): $l: argumen tak dikenal (baseline-scan, board) dan habis waktu lock" "$(grep -c -F -- "$m1" <<<"$o1")|$(grep -c -F -- "$m2" <<<"$o2")|$(grep -c -F -- "$m3" <<<"$o3")" '1|1|1'
+done
+
 [ "$fails" = 0 ] && echo "SEMUA LULUS" || { echo "$fails GAGAL"; exit 1; }
