@@ -306,6 +306,11 @@ msg_en() {
     board.move_failed) printf 'board: #%s could not be moved' "$@" ;;
     board.apply_summary) printf 'board: --apply %s moved, %s failed' "$@" ;;
     board.status_missing_choices) printf 'board: status '\''%s'\'' does not exist; options: %s' "$@" ;;
+    cveaudit.open_unreadable) printf 'cve-audit: list of open issues unreadable' ;;
+    board.unknown_arg) printf 'board: unknown argument: %s' "$@" ;;
+    board.bad_plan_line) printf 'board: invalid plan line: %s' "$@" ;;
+    lock.timeout) printf 'lock: '\''%s'\'' is held by pid %s; timed out after %ss' "$@" ;;
+    scan.unknown_arg) printf 'unknown argument: %s' "$@" ;;
     autopilot.quota_wait) printf 'round %s: GitHub quota exhausted (GraphQL and REST); waiting %s s for reset, no iteration used' "$1" "$2" ;;
     autopilot.gh_down_stop) printf 'autopilot: gh unreadable 5 times in a row; stopping (not an issue state), check network and gh auth' ;;
     autopilot.all_done) printf 'autopilot: all issues done (round %s)' "$@" ;;

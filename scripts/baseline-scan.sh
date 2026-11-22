@@ -7,7 +7,7 @@ set -u
 source "$(dirname "$0")/lib/msg.sh"   # awalan BLOK:/PERINGATAN: tetap literal
 body=""; perf=0
 while [ $# -gt 0 ]; do case "$1" in
-  --body) body="$2"; shift 2 ;; --perf-labeled) perf="$2"; shift 2 ;; *) echo "argumen tak dikenal: $1" >&2; exit 64 ;; esac; done
+  --body) body="$2"; shift 2 ;; --perf-labeled) perf="$2"; shift 2 ;; *) echo "$(msg scan.unknown_arg "$1")" >&2; exit 64 ;; esac; done
 [ -f "$body" ] || body=/dev/null
 t="$(mktemp -d)"; trap 'rm -rf "$t"' EXIT
 # F = berkas yang disentuh; A = baris tambahan "berkas<TAB>teks". Header (+++) hanya diakui antara `diff --git` dan `@@` pertama,
