@@ -5,6 +5,7 @@
 # Juga: - Grant: scope=ci-local; branch=<cabang>; expires=...; note=...  (grant_allows ci-local <cabang> ...)
 # Format (bagian "## Temporary grants", kolom 0): - Grant: scope=merge; risk=L2; branch=<cabang>; expires=YYYY-MM-DDTHH:MM:SS(Z|+HH:MM); note=<teks, terakhir, tanpa ';'>
 # Waktu "sekarang" hanya lewat parameter (tidak pernah dari lingkungan). Maksimum 7 hari ke depan. Cabang bawaan tidak boleh diberi izin. Perbandingan cabang persis (bukan pola).
+. "$(dirname "${BASH_SOURCE[0]}")/msg.sh"   # pesan lewat katalog (awalan "PERINGATAN:" tetap literal)
 grant_epoch() {
   local re='^([0-9]{4})-([0-9]{2})-([0-9]{2})T([0-9]{2}):([0-9]{2}):([0-9]{2})(Z|[+-][0-9]{2}:[0-9]{2})$'
   [[ "$1" =~ $re ]] || return 1
@@ -50,20 +51,20 @@ grant_parse() {
   for p in "${parts[@]}"; do
     [ "$i" = 0 ] || p="${p# }"
     i=$((i+1))
-    [[ "$p" =~ ^([a-z]+)=(.+)$ ]] || { echo "PERINGATAN: baris izin tidak sah (bagian '$p'): $1" >&2; return 1; }
+    [[ "$p" =~ ^([a-z]+)=(.+)$ ]] || { echo "PERINGATAN: $(msg grants.bad_line "$p" "$1")" >&2; return 1; }
     k="${BASH_REMATCH[1]}"; v="${BASH_REMATCH[2]}"
     case "$seen" in *" $k "*) echo "PERINGATAN: baris izin memuat kunci ganda '$k': $1" >&2; return 1 ;; esac
-    [ "$note" = 0 ] || { echo "PERINGATAN: 'note' harus bagian terakhir: $1" >&2; return 1; }
+    [ "$note" = 0 ] || { echo "PERINGATAN: $(msg grants.note_last "$1")" >&2; return 1; }
     case "$v" in " "*|*" ") echo "PERINGATAN: nilai '$k' berspasi di tepi: $1" >&2; return 1 ;; esac
     seen="$seen$k "
     case "$k" in scope) scope="$v" ;; risk) risk="$v" ;; branch) branch="$v" ;; expires) exp="$v" ;; note) note=1 ;;
-      *) echo "PERINGATAN: kunci izin tak dikenal '$k' (baris tidak berlaku): $1" >&2; return 1 ;; esac
+      *) echo "PERINGATAN: $(msg grants.unknown_key "$k" "$1")" >&2; return 1 ;; esac
   done
   if [ "$scope" = merge ] && [ "$risk" = L2 ]; then :
   elif [ "$scope" = ci-local ] && [ -z "$risk" ]; then risk=ci-local   # CI tak dapat mulai (#83): suite lokal menggantikan CI; hanya dibaca gerbang bila CI terklasifikasi infrastruktur
-  else echo "PERINGATAN: hanya scope=merge+risk=L2 atau scope=ci-local (tanpa risk) didukung: $1" >&2; return 1; fi
-  [[ "$branch" =~ ^[A-Za-z0-9._/-]+$ ]] || { echo "PERINGATAN: branch tidak sah: $1" >&2; return 1; }
-  ep="$(grant_epoch "$exp")" || { echo "PERINGATAN: expires tidak sah (butuh YYYY-MM-DDTHH:MM:SS dengan Z atau +HH:MM): $1" >&2; return 1; }
+  else echo "PERINGATAN: $(msg grants.unsupported "$1")" >&2; return 1; fi
+  [[ "$branch" =~ ^[A-Za-z0-9._/-]+$ ]] || { echo "PERINGATAN: $(msg grants.bad_branch "$1")" >&2; return 1; }
+  ep="$(grant_epoch "$exp")" || { echo "PERINGATAN: $(msg grants.bad_expires "$1")" >&2; return 1; }
   printf '%s\t%s\t%s\n' "$risk" "$branch" "$ep"
 }
 grant_allows() {

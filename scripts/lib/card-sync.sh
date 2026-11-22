@@ -8,12 +8,12 @@ card_sync() {
   local owner="$1" num="$2" dry="$3" min="${AICREW_BOARD_MIN_GRAPHQL:-1500}" h rem items all openset repo prs wts il ilj n lb bl pr wt cur want ch=0 sk=0 fail=0 reasons="" r c
   h="$(_ghx_probe)"; rem="$(_ghx_hdr "$h" x-ratelimit-remaining)"
   if [[ "$rem" =~ ^[0-9]+$ ]] && [ "$rem" -lt "$min" ]; then echo "board: graphql sisa $rem < $min, sinkron kartu dilewati"; return 0; fi
-  items="$(ghx_items "$owner" "$num")" || { echo "board: papan tak terbaca, sinkron kartu dilewati"; return 0; }
-  all="$(ghx_issues open - 200 number,body,labels)" || { echo "board: issue tak terbaca, sinkron kartu dilewati"; return 0; }
-  repo="$(ghx_repo)" || { echo "board: repo tak diketahui, sinkron kartu dilewati"; return 0; }
-  prs="$(gh api "repos/$repo/pulls?state=all&per_page=100" 2>/dev/null)" || { echo "board: PR tak terbaca, sinkron kartu dilewati"; return 0; }
-  il="$(bash "$_cs_scripts/label.sh" integrated --all)" && ilj="$(bash "$_cs_scripts/label.sh" integrated --json)" || { echo "board: label integrated tak terbaca, sinkron kartu dilewati"; return 0; }
-  openset="$(jq --argjson ls "$ilj" '[.[]|select((.labels|map(.name)) as $n|(any($ls[]; . as $x|$n|index($x)) or ($n|index("epic")))|not)]' <<<"$all")" || { echo "board: issue tak terurai, sinkron kartu dilewati"; return 0; }  # sama dengan autopilot: epic dan integrated bukan blocker
+  items="$(ghx_items "$owner" "$num")" || { echo "$(msg cs.board_unreadable)"; return 0; }
+  all="$(ghx_issues open - 200 number,body,labels)" || { echo "$(msg cs.issues_unreadable)"; return 0; }
+  repo="$(ghx_repo)" || { echo "$(msg cs.repo_unknown)"; return 0; }
+  prs="$(gh api "repos/$repo/pulls?state=all&per_page=100" 2>/dev/null)" || { echo "$(msg cs.prs_unreadable)"; return 0; }
+  il="$(bash "$_cs_scripts/label.sh" integrated --all)" && ilj="$(bash "$_cs_scripts/label.sh" integrated --json)" || { echo "$(msg cs.label_unreadable)"; return 0; }
+  openset="$(jq --argjson ls "$ilj" '[.[]|select((.labels|map(.name)) as $n|(any($ls[]; . as $x|$n|index($x)) or ($n|index("epic")))|not)]' <<<"$all")" || { echo "$(msg cs.issues_unparsed)"; return 0; }  # sama dengan autopilot: epic dan integrated bukan blocker
   wts="$(git worktree list --porcelain 2>/dev/null | sed -n 's#^worktree .*-wt-\([0-9][0-9]*\)$#\1#p')" || true
   while IFS=$'\t' read -r n lb; do
     [ -n "$n" ] || continue
@@ -31,6 +31,6 @@ card_sync() {
   done < <(jq -r '.[]|select((.labels|map(.name)|index("epic"))|not)|"\(.number)\t\(.labels|map(.name)|join(" "))"' <<<"$all")
   r=""; for c in integrated multi-merged-pr needs-principal no-card; do
     k=$(printf '%s\n' $reasons | grep -cx "$c" || true); [ "$k" = 0 ] || r="$r${r:+, }$c $k"; done
-  echo "board: $ch kartu $([ "$dry" = 1 ] && echo akan\ diubah || echo diubah), $sk dilewati${r:+ ($r)}${fail:+$([ "$fail" = 0 ] || echo ", $fail gagal ditulis")}, graphql sisa ${rem:-?}"
+  echo "$(msg cs.summary "$ch" "$([ "$dry" = 1 ] && msg cs.would_change || msg cs.changed)" "$sk" "${r:+ ($r)}" "${fail:+$([ "$fail" = 0 ] || msg cs.write_failed "$fail")}" "${rem:-?}")"
   return 0
 }

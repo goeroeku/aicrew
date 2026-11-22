@@ -18,7 +18,7 @@ body_arg() {   # --body B | --body-file F (dari argumen sisa) -> $BODY, $HAVE_BO
   BODY=""; HAVE_BODY=0
   while [ $# -gt 0 ]; do case "$1" in
     --body) BODY="${2-}"; HAVE_BODY=1; shift $(( $# < 2 ? $# : 2 )) ;;
-    --body-file) [ -r "${2-}" ] || die "berkas tak terbaca: ${2-}"; BODY="$(cat "$2")"; HAVE_BODY=1; shift $(( $# < 2 ? $# : 2 )) ;;
+    --body-file) [ -r "${2-}" ] || die "$(msg issue.file_unreadable "${2-}")"; BODY="$(cat "$2")"; HAVE_BODY=1; shift $(( $# < 2 ? $# : 2 )) ;;
     *) shift ;; esac; done
 }
 case "$cmd" in
@@ -26,8 +26,8 @@ case "$cmd" in
     title=""; labels=(); parent=""; rest=("$@")
     while [ $# -gt 0 ]; do case "$1" in
       --title) title="${2-}"; shift $(( $# < 2 ? $# : 2 )) ;; --label) labels+=("${2-}"); shift $(( $# < 2 ? $# : 2 )) ;; --parent) parent="${2-}"; shift $(( $# < 2 ? $# : 2 )) ;; *) shift ;; esac; done
-    [ -n "$title" ] || die "create butuh --title"
-    [ -z "$parent" ] || { [[ "$parent" =~ ^[0-9]+$ ]] && ls_view "$parent" >/dev/null 2>&1; } || die "--parent harus nomor isu yang ada"
+    [ -n "$title" ] || die "$(msg issue.need_title)"
+    [ -z "$parent" ] || { [[ "$parent" =~ ^[0-9]+$ ]] && ls_view "$parent" >/dev/null 2>&1; } || die "$(msg issue.parent_exists)"
     body_arg "${rest[@]}"
     n="$(ls_create "$title" "$BODY" "${labels[@]+"${labels[@]}"}")" || exit 1
     [ -z "$parent" ] || ls_set_parent "$n" "$parent" || exit 1
@@ -36,18 +36,18 @@ case "$cmd" in
     st=open; lab=-; lim=1000
     while [ $# -gt 0 ]; do case "$1" in
       --state) st="${2-}"; shift $(( $# < 2 ? $# : 2 )) ;; --label) lab="${2-}"; shift $(( $# < 2 ? $# : 2 )) ;; --limit) lim="${2-}"; shift $(( $# < 2 ? $# : 2 )) ;; *) shift ;; esac; done
-    case "$st" in open|closed|all) ;; *) die "--state: open|closed|all" ;; esac
-    [[ "$lim" =~ ^[0-9]+$ ]] || die "--limit harus angka"
+    case "$st" in open|closed|all) ;; *) die "$(msg issue.state_values)" ;; esac
+    [[ "$lim" =~ ^[0-9]+$ ]] || die "$(msg issue.limit_number)"
     ls_list "$st" "$lab" "$lim" ;;
-  view) [ -n "${1:-}" ] || die "view butuh nomor"; ls_view "$1" || { echo "issue.sh: isu #$1 tidak ada" >&2; exit 1; } ;;
-  comment) n="${1:-}"; shift || true; body_arg "$@"; { [ "$HAVE_BODY" = 1 ] && [ -n "$BODY" ]; } || die "comment butuh --body tidak kosong"; ls_comment "$n" "$BODY" || exit 1 ;;
+  view) [ -n "${1:-}" ] || die "$(msg issue.view_needs_number)"; ls_view "$1" || { echo "$(msg issue.not_found "$1")" >&2; exit 1; } ;;
+  comment) n="${1:-}"; shift || true; body_arg "$@"; { [ "$HAVE_BODY" = 1 ] && [ -n "$BODY" ]; } || die "$(msg issue.comment_body)"; ls_comment "$n" "$BODY" || exit 1 ;;
   label) n="${1:-}"; shift || true
     while [ $# -gt 0 ]; do case "$1" in
-      --add) ls_label_add "$n" "${2-}" || exit 1; shift $(( $# < 2 ? $# : 2 )) ;; --remove) ls_label_remove "$n" "${2-}" || exit 1; shift $(( $# < 2 ? $# : 2 )) ;; *) die "label: --add L | --remove L" ;; esac; done ;;
-  edit) n="${1:-}"; shift || true; body_arg "$@"; [ "$HAVE_BODY" = 1 ] || die "edit butuh --body"; ls_set_body "$n" "$BODY" || exit 1 ;;
+      --add) ls_label_add "$n" "${2-}" || exit 1; shift $(( $# < 2 ? $# : 2 )) ;; --remove) ls_label_remove "$n" "${2-}" || exit 1; shift $(( $# < 2 ? $# : 2 )) ;; *) die "$(msg issue.label_usage)" ;; esac; done ;;
+  edit) n="${1:-}"; shift || true; body_arg "$@"; [ "$HAVE_BODY" = 1 ] || die "$(msg issue.edit_body)"; ls_set_body "$n" "$BODY" || exit 1 ;;
   close) n="${1:-}"; shift || true; c=""
     while [ $# -gt 0 ]; do case "$1" in --comment) c="${2-}"; shift $(( $# < 2 ? $# : 2 )) ;; *) shift ;; esac; done
     ls_close "$n" "$c" || exit 1 ;;
   reopen) ls_reopen "${1:-}" || exit 1 ;;
-  *) die "pakai: create|list|view|comment|label|edit|close|reopen" ;;
+  *) die "$(msg issue.usage)" ;;
 esac

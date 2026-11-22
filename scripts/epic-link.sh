@@ -17,7 +17,7 @@ if [ "${1:-}" = "--check" ]; then
     p="$(gh api "repos/$repo/issues/$n/parent" --jq .number 2>/dev/null || true)"; [[ "$p" =~ ^[0-9]+$ ]] && continue
     jq -r '.[].body // ""' <<<"$epics" | grep -qE "^- \[[ xX]\] #$n\b" && continue
     echo "yatim: #$n $(jq -r .title <<<"$i")"; orphan=1
-  done < <(open="$(ghx_issues open - 200 number,title,labels)"; [ "$(jq length <<<"$open")" -lt 200 ] || echo "epic-link --check: 200 issue terbuka pertama saja diperiksa; hasil bisa tidak lengkap" >&2
+  done < <(open="$(ghx_issues open - 200 number,title,labels)"; [ "$(jq length <<<"$open")" -lt 200 ] || echo "$(msg epic.check_limit)" >&2
            jq -c --argjson np "$np" '.[]|select(((.labels|map(.name)) as $n|($n|index("epic")) or any($np[]; . as $x|$n|index($x)))|not)' <<<"$open")
   exit $((orphan*3))
 fi
@@ -31,10 +31,10 @@ if [ "${1:-}" = "--inherit" ]; then
       if jq -r '.body // ""' <<<"$e" | grep -qE "^- \[[ xX]\] #$src\b"; then epic="$(jq .number <<<"$e")"; break; fi
     done < <(ghx_issues open epic 100 number,body | jq -c '.[]')
   fi
-  [ -n "$epic" ] || { echo "epic-link: #$src tidak punya epic induk; #$kid yatim" >&2; exit 3; }
+  [ -n "$epic" ] || { echo "$(msg epic.orphan "$src" "$kid")" >&2; exit 3; }
   set -- "$epic" "$kid"
 fi
-epic="${1:?epic}"; shift; [ "$#" -gt 0 ] || { echo "pakai: epic-link.sh <epic> <anak...>" >&2; exit 64; }
+epic="${1:?epic}"; shift; [ "$#" -gt 0 ] || { echo "$(msg epic.usage)" >&2; exit 64; }
 for kid in "$@"; do
   # baca ulang tepat sebelum menulis dan verifikasi sesudahnya: dua proses yang menambah anak bersamaan bisa saling menimpa; coba lagi
   for try in 1 2 3; do
@@ -43,8 +43,8 @@ for kid in "$@"; do
     ghx_issue_set_body "$epic" "$body"$'\n'"- [ ] #$kid"
     sleep "0.$((try*3))"; ghx_issue_body "$epic" | grep -qE "^- \[[ xX]\] #$kid\b" && break
   done
-  ghx_issue_body "$epic" | grep -qE "^- \[[ xX]\] #$kid\b" || { echo "epic-link: daftar centang #$kid di epic #$epic gagal terpasang setelah 3 percobaan (tertimpa proses lain?)" >&2; exit 1; }
+  ghx_issue_body "$epic" | grep -qE "^- \[[ xX]\] #$kid\b" || { echo "$(msg epic.checklist_failed "$kid" "$epic")" >&2; exit 1; }
   id="$(gh api "repos/$repo/issues/$kid" --jq .id)"
-  gh api -X POST "repos/$repo/issues/$epic/sub_issues" -F sub_issue_id="$id" >/dev/null 2>&1 || echo "epic-link: sub-issue native #$kid tidak terpasang (mungkin sudah)" >&2
+  gh api -X POST "repos/$repo/issues/$epic/sub_issues" -F sub_issue_id="$id" >/dev/null 2>&1 || echo "$(msg epic.subissue_failed "$kid")" >&2
   echo "epic-link: #$kid -> epic #$epic"
 done

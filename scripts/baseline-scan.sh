@@ -4,6 +4,7 @@
 # BLOK: (exit 1) rahasia pada baris tambahan atau berkas .env; nilainya tidak pernah dicetak.
 # PERINGATAN: (exit 0) `|| true` pada jalur sync/auth/verify, dependensi baru yang tak disebut di badan PR, jalur perf tanpa needs-perf.
 set -u
+source "$(dirname "$0")/lib/msg.sh"   # awalan BLOK:/PERINGATAN: tetap literal
 body=""; perf=0
 while [ $# -gt 0 ]; do case "$1" in
   --body) body="$2"; shift 2 ;; --perf-labeled) perf="$2"; shift 2 ;; *) echo "argumen tak dikenal: $1" >&2; exit 64 ;; esac; done
@@ -32,11 +33,11 @@ secret "token Slack/Stripe" 'xox[abprs]-[A-Za-z0-9-]{10,}|sk_live_[A-Za-z0-9]{16
 secret "kredensial literal" "(password|passwd|secret|token|api[_-]?key)[A-Za-z_]*[\"']?[[:space:]]*(:=|[:=])[[:space:]]*[\"'][^\"']{12,}[\"']"
 grep -E '(^|/)\.env(\.[^/]*)?$' "$t/f" | grep -Eiv '\.(example|sample|template)$' > "$t/e"
 [ -s "$t/e" ] && blok=1
-while IFS= read -r f; do echo "BLOK: berkas .env ditambahkan: $f"; done < "$t/e"
+while IFS= read -r f; do echo "BLOK: $(msg scan.env_added "$f")"; done < "$t/e"
 where() { # <regex>: berkas:baris (baris di sisi baru) untuk tiap baris tambahan yang cocok, unik (#86)
   grep -Ein "$1" "$t/a" | cut -d: -f1 | while IFS= read -r i; do printf '%s:%s\n' "$(sed -n "${i}p" "$t/a" | cut -f1)" "$(sed -n "${i}p" "$t/an")"; done | sort -u; }
 where '(password|passwd|secret|api[_-]?key|token)[A-Za-z_]*[[:space:]]*[:=][[:space:]]*[A-Za-z0-9/+_=.-]{16,}[[:space:]]*$' \
-  | while IFS= read -r l; do echo "PERINGATAN: nilai tanpa kutip mirip kredensial di $l (periksa; tidak diblokir karena rawan positif palsu)"; done
+  | while IFS= read -r l; do echo "PERINGATAN: $(msg scan.unquoted_secret "$l")"; done
 where '(sync|fsync|auth|verif).*\|\|[[:space:]]*true' \
   | while IFS= read -r l; do echo "PERINGATAN: '|| true' membungkam kegagalan pada jalur sync/auth/verify di $l"; done
 depname() { # <berkas> <teks>: nama dependensi bila baris itu mendeklarasikannya, kosong bila bukan
@@ -59,10 +60,10 @@ while IFS="$(printf '\t')" read -r f x; do n="$(depname "$f" "$x")"; [ -z "$n" ]
 while IFS="$(printf '\t')" read -r f x; do
   name="$(depname "$f" "$x")"; [ -n "$name" ] || continue
   grep -qxF "$(printf '%s\t%s' "$f" "$name")" "$t/rn" && continue
-  grep -qiF -- "$name" "$body" || echo "PERINGATAN: dependensi baru '$name' ($f) tidak disebut di badan PR"
+  grep -qiF -- "$name" "$body" || echo "PERINGATAN: $(msg scan.new_dep "$name" "$f")"
 done < "$t/a"
 if [ "$perf" = 0 ]; then
   grep -Ei '(^|/)migrations?/|(^|/)Dockerfile|compose[^/]*\.ya?ml$|redis[^/]*\.conf$|postgres[^/]*\.conf$|(queue|worker|cron)' "$t/f" | sort -u \
-    | while IFS= read -r f; do echo "PERINGATAN: $f menyentuh jalur tulis DB/antrean/cron/config infra tetapi PR belum berlabel needs-perf"; done
+    | while IFS= read -r f; do echo "PERINGATAN: $(msg scan.perf_path "$f")"; done
 fi
 exit "$blok"
