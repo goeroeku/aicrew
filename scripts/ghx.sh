@@ -4,6 +4,7 @@
 # Mode disimpan di GHX_REST (diekspor) dan di berkas GHX_STATE, karena pembungkus sering dipanggil di dalam $(...): variabel yang
 # diset di subshell hilang, berkas tidak. Anak proses (bash "$0" ...) mewarisi keduanya lewat lingkungan.
 
+_ghx_msg() { declare -F msg >/dev/null 2>&1 || . "$(dirname "${BASH_SOURCE[0]}")/lib/msg.sh"; msg "$@"; }   # pesan lewat katalog (#64); memuat lib/msg.sh bila pemanggil belum
 _ghx_own=0; [ -n "${GHX_STATE:-}" ] || _ghx_own=1
 [ "$_ghx_own" = 0 ] || GHX_STATE="$(mktemp "${TMPDIR:-/tmp}/ghx-state.XXXXXX")"  # nama acak (bukan PID): tak basi, tak bisa ditebak
 export GHX_STATE
@@ -83,7 +84,7 @@ ghx_wait_seconds() {
 _ghx_rest_get() {
   local u="$1" d k f ef tf out rc=0 st et body etag rst
   if ! ghx_persist || ! d="$(_ghx_dir)"; then gh api "$u"; return; fi
-  if [ "$(_ghx_state_get rest)" -gt "$(date +%s)" ]; then echo "ghx: batas REST GitHub habis; menunggu reset" >&2; return 1; fi
+  if [ "$(_ghx_state_get rest)" -gt "$(date +%s)" ]; then echo "$(_ghx_msg ghx.rest_wait)" >&2; return 1; fi
   k="$(printf '%s' "$u" | shasum | cut -c1-40)"; f="$d/cache/$k"; ef="$(mktemp "${TMPDIR:-/tmp}/ghx.err.XXXXXX")"; et=""
   [ -s "$f" ] && [ -n "$(find "$f" -mmin "-${AICREW_CACHE_MAX_AGE:-10}" 2>/dev/null)" ] && et="$(head -1 "$f")"
   if [ -n "$et" ]; then out="$(gh api -i -H "If-None-Match: $et" "$u" 2>"$ef")" || rc=$?; else out="$(gh api -i "$u" 2>"$ef")" || rc=$?; fi
@@ -123,7 +124,7 @@ ghx_reset_time() { _ghx_fmt "$(_ghx_hdr "$(_ghx_probe)" x-ratelimit-reset)"; }
 ghx_explain_limit() {
   local h t; h="$(_ghx_probe)"; [ "$(_ghx_hdr "$h" x-ratelimit-remaining)" = 0 ] || return 0
   t="$(_ghx_fmt "$(_ghx_hdr "$h" x-ratelimit-reset)")"
-  echo "Penyebab: batas GraphQL GitHub habis${t:+; reset $t UTC}. Tunggu lalu ulangi; gerbang tidak dilewati."
+  echo "$(_ghx_msg ghx.cause_graphql "${t:+; reset $t UTC}")"
 }
 
 # dipakai pr-merge-check.sh saat menolak: hanya mencetak bila batas REST (core) benar-benar habis (#113); `gh api rate_limit` tidak memakai kuota
@@ -131,7 +132,7 @@ ghx_explain_rest_limit() {
   local r rem rst t; r="$(gh api rate_limit --jq '.resources.core | "\(.remaining) \(.reset)"' 2>/dev/null)" || return 0
   read -r rem rst <<<"$r"; [ "${rem:-}" = 0 ] || return 0
   t="$(_ghx_fmt "${rst:-}")"
-  echo "Penyebab: batas REST GitHub habis${t:+; reset $t UTC}. Tunggu lalu ulangi; gerbang tidak dilewati."
+  echo "$(_ghx_msg ghx.cause_rest "${t:+; reset $t UTC}")"
 }
 
 ghx_enter_rest() {
@@ -141,7 +142,7 @@ ghx_enter_rest() {
   [ "$first" = 1 ] || return 0
   h="$(_ghx_probe)"; ep="$(_ghx_hdr "$h" x-ratelimit-reset)"; t="$(_ghx_fmt "$ep")"
   if ghx_persist; then [[ "$ep" =~ ^[0-9]+$ ]] || ep=$(( $(date +%s) + 60 )); _ghx_state_set graphql "$ep"; fi
-  echo "mode cadangan REST: batas GraphQL GitHub tercapai${t:+; reset $t UTC}" >&2
+  echo "$(_ghx_msg ghx.rest_mode "${t:+; reset $t UTC}")" >&2
 }
 
 # ghx_gql <perintah gh...>: exit 0 + stdout bila sukses; 75 bila batas (mode cadangan aktif, panggil jalur REST);
@@ -164,7 +165,7 @@ ghx_repo() {
   if [ "$rc" = 0 ]; then echo "$o"; return 0; fi; [ "$rc" = 75 ] || return "$rc"
   u="$(git remote get-url origin 2>/dev/null || true)"
   case "$u" in *github.com*) u="${u#*github.com}"; u="${u#*[:/]}"; echo "${u%.git}"; return 0 ;; esac
-  echo "ghx: repo tak dapat ditentukan saat GraphQL terblokir (tak ada remote GitHub); set GH_REPO=owner/repo" >&2; return 1
+  echo "$(_ghx_msg ghx.repo_blocked)" >&2; return 1
 }
 
 # awalan jalur REST Project v2: orgs/<owner> atau users/<owner> (tipe dari REST, bukan GraphQL)
@@ -224,7 +225,7 @@ ghx_issues() {
   repo="$(ghx_repo)" || return 1
   while :; do   # REST per halaman 100; entri bergaris pull_request dibuang; berhenti saat batas terkumpul
     q="repos/$repo/issues?state=$s&per_page=100&page=$page"; [ "$l" = - ] || q="$q&labels=$l"
-    pg="$(_ghx_rest_get "$q")" || { echo "ghx: REST juga gagal (GraphQL terblokir); coba lagi setelah reset" >&2; return 1; }
+    pg="$(_ghx_rest_get "$q")" || { echo "$(_ghx_msg ghx.rest_failed)" >&2; return 1; }
     acc="$({ printf '%s\n' "$acc"; printf '%s\n' "$pg"; } | jq -c -s '.[0] + [.[1][]|select(has("pull_request")|not)]')"  # stdin: halaman bisa >1 MB, argv terbatas
     [ "$(jq length <<<"$pg")" -ge 100 ] && [ "$(jq length <<<"$acc")" -lt "$n" ] || break
     page=$((page+1))
@@ -261,7 +262,7 @@ ghx_prs() {
   fi
   repo="$(ghx_repo)" || return 1
   while :; do
-    pg="$(_ghx_rest_get "repos/$repo/pulls?state=$s&per_page=100&page=$page")" || { echo "ghx: REST juga gagal (GraphQL terblokir); coba lagi setelah reset" >&2; return 1; }
+    pg="$(_ghx_rest_get "repos/$repo/pulls?state=$s&per_page=100&page=$page")" || { echo "$(_ghx_msg ghx.rest_failed)" >&2; return 1; }
     acc="$({ printf '%s\n' "$acc"; printf '%s\n' "$pg"; } | jq -c -s '.[0] + .[1]')"
     [ "$(jq length <<<"$pg")" -ge 100 ] && [ "$(jq length <<<"$acc")" -lt "$n" ] || break
     page=$((page+1))

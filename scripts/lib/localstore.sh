@@ -4,6 +4,7 @@
 #              <n>.comments.jsonl = satu komentar per baris {id,author,body,created}; `next` = nomor berikutnya. Tulis atomik (mktemp + mv), penomoran dengan kunci mkdir.
 # Keluaran ls_list/ls_view berbentuk `gh issue list --json`: [{number,title,body,state:OPEN|CLOSED,labels:[{name}]}].
 # Berkas ini dapat ditulis agen yang punya Bash: pagar kecelakaan, bukan keamanan terhadap agen berniat jahat (persetujuan pemilik tetap lewat owner-local.sh dengan TTY).
+declare -F msg >/dev/null 2>&1 || . "$(dirname "${BASH_SOURCE[0]}")/msg.sh"   # mensagens via catalogo (#64)
 _ls_dir() {
   local g root d; d="${AICREW_LOCAL_DIR:-}"
   if [ -z "$d" ]; then g="$(git rev-parse --git-common-dir 2>/dev/null)" && root="$(cd "$g/.." && pwd)" || return 1; d="$root/.aicrew/issues"; fi
@@ -43,7 +44,7 @@ _ls_now() { date -u +%Y-%m-%dT%H:%M:%SZ; }
 # ls_create <judul> <badan> [label ...]  -> mencetak nomor; label bentuk "parent=N" tidak dipakai (gunakan ls_set_parent)
 ls_create() {
   local title="$1" body="$2" d n j l labs='[]'; shift 2; d="$(_ls_dir)" || return 1
-  for l in "$@"; do _ls_label_ok "$l" || { echo "localstore: label tak valid: $l" >&2; return 1; }; labs="$(jq -c --arg l "$l" '. + [$l] | unique' <<<"$labs")"; done
+  for l in "$@"; do _ls_label_ok "$l" || { echo "$(msg ls.bad_label "$l")" >&2; return 1; }; labs="$(jq -c --arg l "$l" '. + [$l] | unique' <<<"$labs")"; done
   # tanpa kunci: nomor diklaim dengan `ln` (hard link atomik, gagal bila berkas sudah ada), isi sudah lengkap saat terlihat pembaca; tabrakan = coba nomor berikutnya (#159 perbaikan CI)
   local mx t tries=0; mx="$(ls "$d" 2>/dev/null | sed -n 's/^\([0-9][0-9]*\)\.json$/\1/p' | sort -n | tail -1)"; n=$(( 10#${mx:-0} + 1 ))
   t="$(mktemp "$d/.new.XXXXXX")" || return 1
@@ -51,27 +52,27 @@ ls_create() {
     j="$(jq -nc --argjson n "$n" --arg t "$title" --arg b "$body" --argjson l "$labs" --arg now "$(_ls_now)" '{number:$n,title:$t,body:$b,state:"open",labels:$l,created:$now,updated:$now}')" || { rm -f "$t"; return 1; }
     printf '%s\n' "$j" > "$t" || { rm -f "$t"; return 1; }
     ln "$t" "$d/$n.json" 2>/dev/null && break
-    tries=$((tries+1)); [ "$tries" -le 2000 ] || { rm -f "$t"; echo "localstore: tidak dapat memberi nomor isu" >&2; return 1; }
+    tries=$((tries+1)); [ "$tries" -le 2000 ] || { rm -f "$t"; echo "$(msg ls.no_number)" >&2; return 1; }
     n=$((n+1))
   done
   rm -f "$t"; printf '%s\n' "$((n+1))" > "$d/next" 2>/dev/null || true   # petunjuk saja; nomor sebenarnya = klaim ln di atas
   echo "$n"
 }
 _ls_edit() {   # <n> <filtro jq> [--arg k v ...]: aplica ao registro sob kunci
-  local n="$1" f="$2" d cur new rc=0; shift 2; _ls_num_ok "$n" || { echo "localstore: nomor tak valid: $n" >&2; return 1; }
-  d="$(_ls_dir)" || return 1; [ -f "$d/$n.json" ] || { echo "localstore: isu #$n tidak ada" >&2; return 1; }
+  local n="$1" f="$2" d cur new rc=0; shift 2; _ls_num_ok "$n" || { echo "$(msg ls.bad_number "$n")" >&2; return 1; }
+  d="$(_ls_dir)" || return 1; [ -f "$d/$n.json" ] || { echo "$(msg ls.no_issue "$n")" >&2; return 1; }
   _ls_lock "$d" || return 1
   cur="$(cat "$d/$n.json")"; new="$(jq -c "$@" "$f | .updated=\"$(_ls_now)\"" <<<"$cur")" && _ls_write "$d/$n.json" "$new" || rc=1
   _ls_unlock "$d"; return "$rc"
 }
 # GitHub memperlakukan nama label tanpa peka huruf besar-kecil: tambah/cabut/filter juga begitu
-ls_label_add() { _ls_label_ok "$2" || { echo "localstore: label tak valid: $2" >&2; return 1; }; _ls_edit "$1" 'if any(.labels[]?; ascii_downcase == ($l|ascii_downcase)) then . else .labels = ((.labels // []) + [$l]) end' --arg l "$2"; }
+ls_label_add() { _ls_label_ok "$2" || { echo "$(msg ls.bad_label "$2")" >&2; return 1; }; _ls_edit "$1" 'if any(.labels[]?; ascii_downcase == ($l|ascii_downcase)) then . else .labels = ((.labels // []) + [$l]) end' --arg l "$2"; }
 ls_label_remove() { _ls_edit "$1" '.labels = ((.labels // []) | map(select(ascii_downcase != ($l|ascii_downcase))))' --arg l "$2"; }
 ls_set_body() { _ls_edit "$1" '.body = $b' --arg b "$2"; }
 ls_set_parent() { _ls_num_ok "$2" || return 1; _ls_edit "$1" '.parent = ($p|tonumber)' --arg p "$2"; }
 ls_reopen() { _ls_edit "$1" '.state = "open"'; }
 ls_comment() {   # <n> <teks> [autor=$AICREW_LOCAL_AUTHOR|agent]
-  local n="$1" d id line; _ls_num_ok "$n" || return 1; d="$(_ls_dir)" || return 1; [ -f "$d/$n.json" ] || { echo "localstore: isu #$n tidak ada" >&2; return 1; }
+  local n="$1" d id line; _ls_num_ok "$n" || return 1; d="$(_ls_dir)" || return 1; [ -f "$d/$n.json" ] || { echo "$(msg ls.no_issue "$n")" >&2; return 1; }
   _ls_lock "$d" || return 1
   id=$(( $( [ -f "$d/$n.comments.jsonl" ] && wc -l < "$d/$n.comments.jsonl" | tr -d ' ' || echo 0 ) + 1 ))
   line="$(jq -nc --argjson id "$id" --arg a "${3:-${AICREW_LOCAL_AUTHOR:-agent}}" --arg b "$2" --arg now "$(_ls_now)" '{id:$id,author:$a,body:$b,created:$now}')" && printf '%s\n' "$line" >> "$d/$n.comments.jsonl"

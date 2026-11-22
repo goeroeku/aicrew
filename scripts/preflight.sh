@@ -2,18 +2,18 @@
 # aicrew preflight: cek lingkungan. Pakai: preflight.sh [github|gitlab]
 # Exit 1 bila backend yang diminta tidak siap (tak terpasang / belum login / bukan repo git).
 backend="${1:-}"; rc=0
-source "$(dirname "$0")/ghx.sh"
+source "$(dirname "$0")/ghx.sh"; source "$(dirname "$0")/lib/msg.sh"
 ghx_local && [ -z "$backend" -o "$backend" = github ] && backend=local   # Quota mode: local: tanpa pemeriksaan gh/remote
 have() { command -v "$1" >/dev/null 2>&1; }
 say() { printf '%-6s %s\n' "$1" "$2"; }
 
-git rev-parse --is-inside-work-tree >/dev/null 2>&1 && say ok "repo git" || { say GAGAL "bukan repo git"; rc=1; }
-git remote -v 2>/dev/null | grep -q . && say ok "remote git ada" || say info "belum ada remote git"
-have codex && say ok "codex terpasang (senior-coder dapat didelegasikan)" || say info "codex tidak ada: senior-coder pakai sonnet"
-have jq && say ok jq || say info "jq tidak ada: notifikasi memakai teks generik"
+git rev-parse --is-inside-work-tree >/dev/null 2>&1 && say ok "$(msg pf.repo_ok)" || { say GAGAL "$(msg pf.not_repo)"; rc=1; }
+git remote -v 2>/dev/null | grep -q . && say ok "$(msg pf.remote_ok)" || say info "$(msg pf.no_remote)"
+have codex && say ok "$(msg pf.codex_ok)" || say info "$(msg pf.codex_missing)"
+have jq && say ok jq || say info "$(msg pf.jq_missing)"
 for f in .github/workflows/*.y*ml; do [ -f "$f" ] || continue
   grep -qE '^[[:space:]]*push:' "$f" && grep -qE 'branches:.*(main|master)|^[[:space:]]*-[[:space:]]*(main|master)[[:space:]]*$' "$f" \
-    && say AWAS "$f jalan saat push ke main/master: merge ke main memicunya (deploy?)"
+    && say AWAS "$(msg pf.push_workflow "$f")"
 done
 # mode merge (#66): env AICREW_MERGE_MODE, lalu docs/WORKFLOW.md, bawaan owner; agent-after-qa = alur integrasi oleh agen (butuh 'gh pr merge', git merge, git rebase)
 # shellcheck source=lib/merge-mode.sh
@@ -26,13 +26,13 @@ if have jq && [ -f "$top/.aicrew/autonomy.json" ]; then
   aut_ep="$(jq -r '.until_epoch // empty' "$top/.aicrew/autonomy.json" 2>/dev/null)"
   aut_un="$(jq -r '.until // empty' "$top/.aicrew/autonomy.json" 2>/dev/null)"
   if [[ "$aut_ep" =~ ^[0-9]+$ ]] && [ "$(date +%s)" -ge "$aut_ep" ]; then
-    say AWAS "autonomy: KEDALUWARSA, jalankan: autonomy.sh off (sampai $aut_un)"
+    say AWAS "$(msg pf.autonomy_expired "$aut_un")"
   fi
 fi
 set -- "$HOME/.claude/settings.json" "$HOME/.claude/settings.local.json" "$top/.claude/settings.json" "$top/.claude/settings.local.json"
 ex=(); for f in "$@"; do [ -f "$f" ] && ex+=("$f"); done
-if ! have jq; then say info "izin subagen: jq tidak ada, aturan Bash tidak diperiksa"
-elif [ "${#ex[@]}" -gt 0 ] && jq -e '.permissions.defaultMode == "bypassPermissions"' "${ex[@]}" 2>/dev/null | grep -q true; then say info "izin subagen: mode bypassPermissions aktif, aturan Bash tidak diperiksa"
+if ! have jq; then say info "$(msg pf.perm_no_jq)"
+elif [ "${#ex[@]}" -gt 0 ] && jq -e '.permissions.defaultMode == "bypassPermissions"' "${ex[@]}" 2>/dev/null | grep -q true; then say info "$(msg pf.perm_bypass)"
 else
   allow="$( [ "${#ex[@]}" -gt 0 ] && jq -r '.permissions.allow[]? | strings' "${ex[@]}" 2>/dev/null)"
   [ -n "$aut_added" ] && allow="$(grep -vxF -f <(printf '%s\n' "$aut_added") <<<"$allow" || true)"
@@ -43,16 +43,16 @@ else
     case "$r" in git*) b="git" ;; gh*) b="gh" ;; make) b="make" ;; go*) b="go" ;; esac
     grep -qxF -e "Bash($r:*)" -e "Bash($b:*)" -e "Bash" <<<"$allow" || miss="$miss Bash($r:*)"
   done <<<"$(tr "|" "\n" <<<"$need")"
-  if [ -z "$miss" ]; then say ok "izin subagen: aturan Bash yang dibutuhkan ada"
-  else say AWAS "izin subagen: aturan allow hilang:$miss. Subagen tanpa aturan ini ditolak (QA 'no tests executed', PR menggantung). Pasang dari template: ! bash $(dirname "$0")/install-permissions.sh"; fi
+  if [ -z "$miss" ]; then say ok "$(msg pf.perm_ok)"
+  else say AWAS "$(msg pf.perm_missing "$miss" "$(dirname "$0")")"; fi
 fi
-case "$PWD$(git worktree list 2>/dev/null)" in *orca/workspaces/*) say AWAS "workspace Orca: Orca meluncurkan agen dengan --dangerously-skip-permissions secara bawaan, sehingga aturan deny di settings TIDAK ditegakkan; matikan flag itu di pengaturan agen Orca" ;; esac
+case "$PWD$(git worktree list 2>/dev/null)" in *orca/workspaces/*) say AWAS "$(msg pf.orca_skip)" ;; esac
 
 case "$backend" in
   github)
-    if ! have gh; then say GAGAL "gh tidak terpasang"; rc=1
+    if ! have gh; then say GAGAL "$(msg pf.gh_missing)"; rc=1
     elif gh auth status >/dev/null 2>&1; then say ok "gh login"
-    else say GAGAL "gh belum login (jalankan: gh auth login)"; rc=1; fi
+    else say GAGAL "$(msg pf.gh_logged_out)"; rc=1; fi
     # mode merge (#66): sama seperti install-permissions.sh: env AICREW_MERGE_MODE, lalu docs/WORKFLOW.md, bawaan owner; agent-after-qa menuntut aturan 'gh pr merge'
     has_merge_perm=0
     if [ -n "$aut_added" ]; then
@@ -61,14 +61,14 @@ case "$backend" in
       has_merge_perm=1
     fi
     if [ "$has_merge_perm" = 1 ]; then
-      say ok "aturan izin 'gh pr merge' ada"
-    elif [ "$mmode" = agent-after-qa ]; then say AWAS "mode merge agent-after-qa tanpa aturan izin 'gh pr merge': agen akan ditolak saat merge dan PR menggantung. Pasang: ! bash $(dirname "$0")/install-permissions.sh (menambah aturan sesuai mode di docs/WORKFLOW.md)"
-    else say info "tanpa aturan izin 'gh pr merge' (mode merge owner: owner yang merge; mode agent-after-qa butuh aturan ini, pasang dengan install-permissions.sh)"; fi
+      say ok "$(msg pf.merge_perm_ok)"
+    elif [ "$mmode" = agent-after-qa ]; then say AWAS "$(msg pf.merge_perm_missing "$(dirname "$0")")"
+    else say info "$(msg pf.merge_perm_owner)"; fi
     # setelan GitHub: hapus cabang otomatis saat merge (plugin tidak mengubahnya; milik owner repo) dan jumlah cabang ter-merge (bukti offline saja)
     if rp="$(ghx_repo 2>/dev/null)" && [ -n "$rp" ]; then
       case "$(gh api "repos/$rp" 2>/dev/null | jq -r '.delete_branch_on_merge | if . == null then empty else tostring end' 2>/dev/null)" in
-        true) say ok "GitHub: cabang dihapus otomatis saat merge" ;;
-        false) say AWAS "GitHub: delete_branch_on_merge=false, cabang ter-merge menumpuk dan PR bertumpuk bisa berbasis cabang induk yang sudah ter-merge (isinya tak masuk integrasi). Perbaiki: gh api -X PATCH repos/$rp -F delete_branch_on_merge=true" ;;
+        true) say ok "$(msg pf.delete_on_merge_ok)" ;;
+        false) say AWAS "$(msg pf.delete_on_merge_off "$rp")" ;;
       esac
     fi
     # labels (#111): label.sh owns the fixed names; warn when open issues carry a default/legacy name other than the configured one (agent-created duplicate)
@@ -83,22 +83,22 @@ case "$backend" in
     fi
     if git remote -v 2>/dev/null | grep -q .; then
       n="$(bash "$(dirname "$0")/cleanup.sh" --count 2>/dev/null)"
-      [ "${n:-0}" = 0 ] || say info "$n cabang ter-merge (bukti offline) belum dihapus; daftar dan pengecualian PR terbuka: bash scripts/cleanup.sh"
+      [ "${n:-0}" = 0 ] || say info "$(msg pf.stale_branches "$n")"
     fi
-    gh auth status 2>&1 | grep -qE "Token scopes:.*'project'" && say ok "gh scope project (kanban)" \
-      || say info "gh tanpa scope 'project' (hanya untuk sinkron kanban): ! gh auth refresh -h github.com -s project -c" ;;
+    gh auth status 2>&1 | grep -qE "Token scopes:.*'project'" && say ok "$(msg pf.gh_scope_ok)" \
+      || say info "$(msg pf.gh_scope_missing)" ;;
   local)
-    say ok "Quota mode: local (tanpa GitHub; isu di .aicrew/issues)"
-    have openssl && say ok "openssl (persetujuan pemilik lokal)" || { say GAGAL "openssl tidak ada: owner-local.sh tidak dapat menandatangani persetujuan"; rc=1; }
+    say ok "$(msg pf.local_mode)"
+    have openssl && say ok "$(msg pf.openssl_ok)" || { say GAGAL "$(msg pf.openssl_missing)"; rc=1; }
     root="$(cd "$(git rev-parse --git-common-dir)/.." 2>/dev/null && pwd)"
-    git show "HEAD:docs/WORKFLOW.md" 2>/dev/null | grep -qE '^[- ]*Test command: *[^ {]' && say ok "Test command: ada (dibutuhkan merge lokal)" || say AWAS "docs/WORKFLOW.md (ter-commit) tanpa 'Test command:': merge lokal menolak sampai diisi"
-    git show "HEAD:docs/WORKFLOW.md" 2>/dev/null | grep -qE '^[- ]*Quota mode: *local' && say ok "Quota mode: local tercatat di WORKFLOW.md ter-commit" || say AWAS "Quota mode: local belum ter-commit di docs/WORKFLOW.md (merge-pr.sh memakai jalur lokal hanya dari yang ter-commit)" ;;
+    git show "HEAD:docs/WORKFLOW.md" 2>/dev/null | grep -qE '^[- ]*Test command: *[^ {]' && say ok "$(msg pf.testcmd_ok)" || say AWAS "$(msg pf.testcmd_missing)"
+    git show "HEAD:docs/WORKFLOW.md" 2>/dev/null | grep -qE '^[- ]*Quota mode: *local' && say ok "$(msg pf.mode_committed)" || say AWAS "$(msg pf.mode_uncommitted)" ;;
   gitlab)
-    if ! have glab; then say GAGAL "glab tidak terpasang"; rc=1
+    if ! have glab; then say GAGAL "$(msg pf.glab_missing)"; rc=1
     elif glab auth status >/dev/null 2>&1; then say ok "glab login"
-    else say GAGAL "glab belum login (jalankan: glab auth login)"; rc=1; fi ;;
-  "") have gh && say info "gh terpasang"; have glab && say info "glab terpasang" ;;
-  *) say GAGAL "backend tidak dikenal: $backend"; rc=1 ;;
+    else say GAGAL "$(msg pf.glab_logged_out)"; rc=1; fi ;;
+  "") have gh && say info "$(msg pf.gh_present)"; have glab && say info "$(msg pf.glab_present)" ;;
+  *) say GAGAL "$(msg pf.unknown_backend "$backend")"; rc=1 ;;
 esac
-[ -n "${AICREW_TG_TOKEN:-}" ] && [ -n "${AICREW_TG_CHAT:-}" ] && say ok "notifikasi Telegram aktif" || say info "notifikasi Telegram nonaktif (AICREW_TG_TOKEN/AICREW_TG_CHAT belum diset)"
+[ -n "${AICREW_TG_TOKEN:-}" ] && [ -n "${AICREW_TG_CHAT:-}" ] && say ok "$(msg pf.tg_on)" || say info "$(msg pf.tg_off)"
 exit $rc

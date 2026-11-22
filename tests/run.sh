@@ -3684,4 +3684,30 @@ sh1="$(git -C "$SM" rev-parse refs/heads/issue-1)"; SMR bash "$root/scripts/issu
 Commit: $sh1" >/dev/null
 ok "tick-status (#157): mode lokal: baris PR dari cabang issue-1, vonis qa dari komentar lokal, ci '-'" "$(SMR bash "$root/scripts/tick-status.sh" | awk -F'\t' '{print $1"|"$2"|"$4"|"$5"|"$6}')" '1|1|-|lulus|-'
 
+# katalog pesan, tahap D terakhir grup A (#64): cve-check, cve-audit, grants, baseline-scan: en bawaan, id identik dengan teks lama, awalan mesin tetap literal
+CD="$tmp/catd"; mkdir -p "$CD"; echo '{"lockfileVersion":1,"dependencies":{}}' > "$CD/package-lock.json"
+for l in en id; do
+  case "$l" in en) wu='usage: cve-check.sh --list <file>'; wl='tidak lengkap: lockfileVersion 1 without a packages key'; ba='BLOK: .env file added: .env'; au='usage: cve-audit.sh [--dry-run] [<file>...]'; gk="PERINGATAN: unknown grant key 'zzz' (line has no effect)" ;;
+    id) wu='pakai: cve-check.sh --list <berkas>'; wl='tidak lengkap: lockfileVersion 1 tanpa kunci packages'; ba='BLOK: berkas .env ditambahkan: .env'; au='pakai: cve-audit.sh [--dry-run] [<berkas>...]'; gk="PERINGATAN: kunci izin tak dikenal 'zzz' (baris tidak berlaku)" ;; esac
+  o1="$(AICREW_LANG=$l bash "$root/scripts/cve-check.sh" --list 2>&1)"; o2="$(AICREW_LANG=$l bash "$root/scripts/cve-check.sh" --list "$CD/package-lock.json" 2>&1 >/dev/null)"
+  o3="$(printf 'diff --git a/.env b/.env\nnew file mode 100644\n--- /dev/null\n+++ b/.env\n@@ -0,0 +1 @@\n+X=1\n' | AICREW_LANG=$l bash "$root/scripts/baseline-scan.sh" 2>&1)"
+  o4="$(AICREW_LANG=$l bash "$root/scripts/cve-audit.sh" --bogus 2>&1)"
+  o5="$(AICREW_LANG=$l bash -c 'source "$1/scripts/lib/grants.sh"; wf="## Temporary grants
+- Grant: scope=merge; risk=L2; branch=main; zzz=1; expires=2099-01-01T00:00:00Z"; grant_allows L2 main "$wf" 0 "main" 2>&1 >/dev/null' _ "$root")"
+  ok "katalog (#64 D): $l: cve-check usage, penanda 'tidak lengkap:' tetap literal, BLOK: baseline-scan, cve-audit usage, PERINGATAN: grants" "$(grep -c -F -- "$wu" <<<"$o1")|$(grep -c -F -- "$wl" <<<"$o2")|$(grep -c -F -- "$ba" <<<"$o3")|$(grep -c -F -- "$au" <<<"$o4")|$(grep -c -F -- "$gk" <<<"$o5")" '1|1|1|1|1'
+done
+
+# katalog pesan, tahap D terakhir grup B (#64): en bawaan, id identik dengan teks lama
+CB="$tmp/catb"; git init -q "$CB"
+for l in en id; do
+  case "$l" in
+    en) e1='usage: lock.sh <name>'; e2='usage: label.sh integrated|auto'; e3='usage: create|list|view'; e4='usage: epic-link.sh <epic> <children...>'; e5='Usage: board.sh <owner> <proj>'; e6='git repository'; e7='no git remote yet' ;;
+    id) e1='pakai: lock.sh <nama>'; e2='pakai: label.sh integrated|auto'; e3='pakai: create|list|view'; e4='pakai: epic-link.sh <epic> <anak...>'; e5='Pemakaian: board.sh <owner> <proj>'; e6='repo git'; e7='belum ada remote git' ;;
+  esac
+  o1="$(cd "$CB" && AICREW_LANG=$l bash "$root/scripts/lock.sh" nm 2>&1)"; o2="$(cd "$CB" && AICREW_LANG=$l bash "$root/scripts/label.sh" bogus 2>&1)"
+  o3="$(cd "$CB" && AICREW_LANG=$l AICREW_QUOTA_MODE=local bash "$root/scripts/issue.sh" bogus 2>&1)"; o4="$(cd "$CB" && GH_REPO=o/r AICREW_LANG=$l bash "$root/scripts/epic-link.sh" 5 2>&1)"
+  o5="$(cd "$CB" && AICREW_LANG=$l bash "$root/scripts/board.sh" o 2>&1)"; o6="$(cd "$CB" && AICREW_LANG=$l bash "$root/scripts/preflight.sh" 2>&1)"
+  ok "katalog (#64 D grup B): $l: usage lock/label/issue/epic-link/board dan baris preflight" "$(grep -c -F -- "$e1" <<<"$o1")|$(grep -c -F -- "$e2" <<<"$o2")|$(grep -c -F -- "$e3" <<<"$o3")|$(grep -c -F -- "$e4" <<<"$o4")|$(grep -c -F -- "$e5" <<<"$o5")|$(grep -c -F -- "$e6" <<<"$o6")|$(grep -c -F -- "$e7" <<<"$o6")" '1|1|1|1|1|1|1'
+done
+
 [ "$fails" = 0 ] && echo "SEMUA LULUS" || { echo "$fails GAGAL"; exit 1; }

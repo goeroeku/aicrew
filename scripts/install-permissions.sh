@@ -16,7 +16,7 @@ base="${AICREW_WORKTREE_BASE:-$({ bash "$here/scripts/lib/wf-normalize.sh" < "$w
 # shellcheck source=lib/merge-mode.sh
 # helper hilang (salinan skrip tunggal): peringatkan, mode hanya dari env (dinormalkan), selain itu owner
 if [ -f "$here/scripts/lib/merge-mode.sh" ]; then source "$here/scripts/lib/merge-mode.sh"; mode="$(merge_mode "$wf")"
-else echo "install-permissions: scripts/lib/merge-mode.sh tidak ada (merge-mode tidak dibaca dari WORKFLOW.md); mode dari AICREW_MERGE_MODE saja" >&2
+else if [ -f "$here/scripts/lib/msg.sh" ]; then . "$here/scripts/lib/msg.sh"; echo "$(msg perm.no_merge_mode)" >&2; else echo "install-permissions: scripts/lib/merge-mode.sh not found (the merge mode is not read from WORKFLOW.md); mode from AICREW_MERGE_MODE only" >&2; fi
   case "$(printf '%s' "${AICREW_MERGE_MODE:-}" | tr '[:upper:]' '[:lower:]')" in agent-after-qa|agen-setelah-qa) mode=agent-after-qa ;; *) mode=owner ;; esac   # alias-usang
 fi
 tpl="$(sed "s|__PLUGIN__|$plug|g; s|__REPO_PARENT__|$base|g; s|__REPO_NAME__|$(basename "$top")|g" "$here/templates/autopilot-permissions.json")"
