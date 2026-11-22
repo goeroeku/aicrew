@@ -132,6 +132,22 @@
       "Write(.aicrew/autonomy.json)"
     ]
   },
+  "features": {
+    "docker": {
+      "allow": [
+        "Bash(docker info:*)",
+        "Bash(rtk docker info:*)",
+        "Bash(docker compose -f * up*)",
+        "Bash(docker compose -f * exec*)",
+        "Bash(docker compose -f * ps*)",
+        "Bash(docker compose -f * down*)",
+        "Bash(rtk docker compose -f * up*)",
+        "Bash(rtk docker compose -f * exec*)",
+        "Bash(rtk docker compose -f * ps*)",
+        "Bash(rtk docker compose -f * down*)"
+      ]
+    }
+  },
   "modes": {
     "agent-after-qa": {
       "allow": [

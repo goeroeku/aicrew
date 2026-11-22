@@ -3684,6 +3684,23 @@ sh1="$(git -C "$SM" rev-parse refs/heads/issue-1)"; SMR bash "$root/scripts/issu
 Commit: $sh1" >/dev/null
 ok "tick-status (#157): mode lokal: baris PR dari cabang issue-1, vonis qa dari komentar lokal, ci '-'" "$(SMR bash "$root/scripts/tick-status.sh" | awk -F'\t' '{print $1"|"$2"|"$4"|"$5"|"$6}')" '1|1|-|lulus|-'
 
+# izin Docker sempit hanya bila target tes membutuhkannya (#107)
+DK="$tmp/dk"; mkdir -p "$DK/h" "$DK/none" "$DK/comp" "$DK/mk" "$DK/mk2"; for r in none comp mk mk2; do git init -q "$DK/$r"; done
+: > "$DK/comp/docker-compose.yml"; printf 'test-db:\n\tdocker compose -f docker-compose.yml up -d\n' > "$DK/mk/Makefile"; printf 'build:\n\tgo build ./...\n' > "$DK/mk2/Makefile"
+for r in none comp mk mk2; do ( cd "$DK/$r" && echo '{}' > s.json && HOME="$DK/h" bash "$root/scripts/install-permissions.sh" "$DK/$r/s.json" >/dev/null 2>&1 ); done
+dkn() { jq -r '[.permissions.allow[]|select(test("docker"))]|length' "$DK/$1/s.json"; }
+ok "install-permissions (#107): izin Docker sempit HANYA bila ada berkas compose atau Makefile yang menyebut docker" "$(dkn none)|$(dkn comp)|$(dkn mk)|$(dkn mk2)" '0|10|10|0'
+( cd "$DK/comp" && echo '{}' > s0.json && AICREW_DOCKER=0 HOME="$DK/h" bash "$root/scripts/install-permissions.sh" "$DK/comp/s0.json" >/dev/null 2>&1 ); ( cd "$DK/none" && echo '{}' > s1.json && AICREW_DOCKER=1 HOME="$DK/h" bash "$root/scripts/install-permissions.sh" "$DK/none/s1.json" >/dev/null 2>&1 )
+ok "install-permissions (#107): AICREW_DOCKER=0 menekan dan =1 memaksa" "$(jq -r '[.permissions.allow[]|select(test("docker"))]|length' "$DK/comp/s0.json")|$(jq -r '[.permissions.allow[]|select(test("docker"))]|length' "$DK/none/s1.json")" '0|10'
+ok "izin Docker (#107): hanya docker info dan docker compose -f <berkas> up|exec|ps|down; tidak pernah docker:*, docker run, docker exec: atau docker compose tanpa -f" "$(jq -r '[.features.docker.allow[]|select(test("^Bash\\((rtk )?docker (info:\\*|compose -f \\* (up|exec|ps|down)\\*)\\)$"))]|length' "$root/templates/autopilot-permissions.json")|$(jq -r '[.features.docker.allow[]|select(test("docker:\\*|docker run|docker exec:|docker rm|docker compose:"))]|length' "$root/templates/autopilot-permissions.json")|$(jq -r '[.permissions.allow[]|select(test("docker"))]|length' "$root/templates/autopilot-permissions.json")" '10|0|0'
+# preflight: pada proyek yang butuh Docker, rule yang hilang disebut namanya; bila ada, ok
+out="$(cd "$DK/mk" && HOME="$DK/h" bash "$root/scripts/preflight.sh" 2>&1)"
+ok "preflight (#107): proyek butuh Docker tanpa izin -> AWAS menyebut Bash(docker info:*)" "$(grep '^AWAS.*izin subagen' <<<"$out" | grep -c 'Bash(docker info:\*)')" 1
+out="$(cd "$DK/mk2" && HOME="$DK/h" bash "$root/scripts/preflight.sh" 2>&1)"
+ok "preflight (#107): proyek tanpa kebutuhan Docker tidak diminta izin docker" "$(grep '^AWAS.*izin subagen' <<<"$out" | grep -c 'docker')" 0
+mkdir -p "$DK/mk/.claude"; printf '{"permissions":{"allow":["Bash(git worktree:*)","Bash(git commit:*)","Bash(git push:*)","Bash(make:*)","Bash(docker info:*)"]}}' > "$DK/mk/.claude/settings.local.json"
+out="$(cd "$DK/mk" && HOME="$DK/h" bash "$root/scripts/preflight.sh" 2>&1)"
+ok "preflight (#107): dengan Bash(docker info:*) terpasang -> aturan Bash yang dibutuhkan ada" "$(grep -c '^ok.*izin subagen: aturan Bash yang dibutuhkan ada' <<<"$out")" 1
 # katalog pesan, tahap D terakhir grup A (#64): cve-check, cve-audit, grants, baseline-scan: en bawaan, id identik dengan teks lama, awalan mesin tetap literal
 CD="$tmp/catd"; mkdir -p "$CD"; echo '{"lockfileVersion":1,"dependencies":{}}' > "$CD/package-lock.json"
 for l in en id; do

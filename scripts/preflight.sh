@@ -39,8 +39,9 @@ else
   need="git worktree|git commit|git push"; [ "$backend" = github ] && need="$need|gh pr|gh issue"
   [ -f "$top/Makefile" ] && need="$need|make"; [ -f "$top/go.mod" ] && need="$need|go test"
   [ "$mmode" = agent-after-qa ] && need="$need|git merge|git rebase"
+  if [ -f "$(dirname "$0")/lib/docker-need.sh" ]; then source "$(dirname "$0")/lib/docker-need.sh"; docker_needed "$top" && need="$need|docker info"; fi   # #107: hanya bila target tes butuh Docker
   miss=""; while IFS= read -r r; do
-    case "$r" in git*) b="git" ;; gh*) b="gh" ;; make) b="make" ;; go*) b="go" ;; esac
+    case "$r" in git*) b="git" ;; gh*) b="gh" ;; make) b="make" ;; go*) b="go" ;; docker*) b="docker" ;; esac
     grep -qxF -e "Bash($r:*)" -e "Bash($b:*)" -e "Bash" <<<"$allow" || miss="$miss Bash($r:*)"
   done <<<"$(tr "|" "\n" <<<"$need")"
   if [ -z "$miss" ]; then say ok "$(msg pf.perm_ok)"
