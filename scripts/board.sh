@@ -8,8 +8,14 @@ set -euo pipefail
 source "$(dirname "$0")/ghx.sh"  # cadangan REST saat GraphQL kena batas
 source "$(dirname "$0")/lib/msg.sh"
 ghx_require_github board.sh
-if [ "$#" -lt 3 ] || { [ "$3" != "--sync" ] && [ "$3" != "--sync-cards" ] && [ "$#" -lt 4 ]; }; then
-  echo "Pemakaian: board.sh <owner> <proj> <issue> <status> | board.sh <owner> <proj> --sync | board.sh <owner> <proj> --sync-cards [--dry-run]" >&2; exit 64
+# anak proses tidak boleh yatim (#154): penjaga (lib/guard.sh) berjalan di latar: induk dimatikan pemanggil (TERM/INT/timeout) -> keturunannya (gh/jq) ikut dimatikan; batas waktu internal
+# AICREW_BOARD_TIMEOUT (bawaan 300 dtk, 0 = mati) menghentikan skrip sendiri. board.sh TIDAK memasang trap EXIT (bash menunda TERM selama perintah latar depan bila ada trap): berkas sementara
+# dihapus penjaga setelah induk selesai (<= 0,5 dtk).
+trap - EXIT
+_bd="$(mktemp -d "${TMPDIR:-/tmp}/board.XXXXXX")"; plan="$_bd/plan"
+bash "$(dirname "$0")/lib/guard.sh" "$$" "${AICREW_BOARD_TIMEOUT:-300}" "$_bd" "$GHX_STATE" >/dev/null 2>&1 &
+if [ "$#" -lt 3 ] || { [ "$3" != "--sync" ] && [ "$3" != "--sync-cards" ] && [ "$#" -lt 4 ]; }; then   # --apply butuh berkas sebagai argumen ke-4
+  echo "Pemakaian: board.sh <owner> <proj> <issue> <status> | board.sh <owner> <proj> --sync | board.sh <owner> <proj> --sync-cards [--dry-run] | board.sh <owner> <proj> --apply <berkas|->" >&2; exit 64
 fi
 owner="$1"; num="$2"
 if [ "$3" = "--sync-cards" ]; then   # status kartu task dari label/PR/worktree/blocker (#69); pemetaan di lib/card-status.sh
@@ -72,6 +78,7 @@ if [ "${3:-}" = "--sync" ]; then
   # cerminkan issue yang ditutup TANPA PR ke Done, hanya bila WORKFLOW.md menulis "Done card: agent-after-merge"
   grep -qE '^[- ]*Done card: *agent-after-merge' <<<"$wfc" || { echo "board --sync: Done card bukan agent-after-merge; tidak ada yang diubah"; finish; }
   [ "$cards" = 1 ] || { skipped=$((skipped+1)); finish; }
+  : > "$plan"
   done_items="$(ghx_items "$owner" "$num")" || { skipped=$((skipped+1)); finish; }
   done_n="$(jq -r '.items[]|select(.status=="Done" and .content.type=="Issue")|.content.number' <<<"$done_items")"
   # closedByPullRequestsReferences hanya ada di GraphQL: pada mode cadangan langkah ini dilewati (bukan ditebak)
@@ -80,9 +87,30 @@ if [ "${3:-}" = "--sync" ]; then
   # issue ditutup lewat PR (ke cabang mana pun) hanya dicerminkan bila kartunya belum bernilai status (#111); kartu ber-status diurus alur merge
   nostat="$(jq -r '.items[]|select(.content.type=="Issue" and ((.status // "")==""))|.content.number' <<<"$done_items")"
   for n in $(jq -r --arg ns "$nostat" '.[]|select(((.closedByPullRequestsReferences|length)==0 or (.number as $x|$ns|split("\n")|index($x|tostring))!=null) and ((.labels // [])|map(.name)|index("epic")|not))|.number' <<<"$closed"); do
-    grep -qx "$n" <<<"$done_n" || bash "$0" "$owner" "$num" "$n" Done || true
+    grep -qx "$n" <<<"$done_n" || printf '%s\tDone\n' "$n" >> "$plan"   # dikumpulkan: satu proses --apply memindahkan semuanya (bukan satu proses board.sh per kartu, #154)
   done
+  if [ -s "$plan" ]; then bash "$0" "$owner" "$num" --apply "$plan" || true; fi
   exit 0
+fi
+if [ "$3" = "--apply" ]; then   # mode batch (#154): board.sh <owner> <proj> --apply <berkas|->, satu baris "<issue><TAB><status>"; ambil field dan item SEKALI, ubah kartu satu per satu
+  src="${4:?berkas rencana}"; [ "$src" = - ] || [ -r "$src" ] || { echo "board: berkas rencana tak terbaca: $src" >&2; exit 64; }
+  field="$(ghx_status_field "$owner" "$num")"; [ -n "$field" ] || { echo "board: project $num tidak punya field Status" >&2; exit 1; }
+  fid="$(jq -r .id <<<"$field")"; items="$(ghx_items "$owner" "$num")" || exit $?
+  bad=0; moved=0
+  if [ "$src" = - ]; then exec 3<&0; else exec 3< "$src"; fi
+  while IFS=$'\t' read -r issue status <&3; do
+    [ -n "$issue" ] && [ "${issue#\#}" = "$issue" ] || continue
+    [[ "$issue" =~ ^[0-9]+$ ]] && [ -n "$status" ] || { echo "board: baris rencana tak valid: $issue" >&2; bad=$((bad+1)); continue; }
+    oid="$(jq -r --arg s "$status" '.options[] | select(.name|ascii_downcase==($s|ascii_downcase)) | .id' <<<"$field")"
+    [ -n "$oid" ] || { echo "board: status '$status' tidak ada (#$issue)" >&2; bad=$((bad+1)); continue; }
+    item="$(jq -r --argjson n "$issue" '.items[] | select(.content.number==$n and .content.type=="Issue") | .id' <<<"$items" | head -1)"
+    if [ -z "$item" ]; then
+      item="$(ghx_card_add "$owner" "$num" "$issue")" || { echo "board: kartu #$issue tidak dapat ditambahkan" >&2; bad=$((bad+1)); continue; }
+      items="$(jq -c --argjson n "$issue" --arg id "$item" '.items += [{id:$id,status:null,content:{number:$n,type:"Issue"}}]' <<<"$items")"
+    fi
+    if ghx_card_set "$owner" "$num" "$item" "$fid" "$oid"; then echo "board: #$issue -> $status"; moved=$((moved+1)); else echo "board: #$issue gagal dipindah" >&2; bad=$((bad+1)); fi
+  done
+  echo "board: --apply $moved dipindah, $bad gagal"; [ "$bad" = 0 ]; exit $?
 fi
 issue="${3:?nomor issue}"; status="${4:?status}"
 field="$(ghx_status_field "$owner" "$num")"
