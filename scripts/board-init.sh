@@ -7,17 +7,18 @@
 set -euo pipefail
 source "$(dirname "$0")/ghx.sh"; source "$(dirname "$0")/lib/msg.sh"
 ghx_require_github board-init.sh
+# Langkah manual di UI project (tidak ada API): kolom 'Parent issue', Group by -> Parent issue, view 'Journeys' (filter label:epic); teks pesannya ada di katalog (binit.manual).
 owner="${1:?owner}"; title="${2:?judul}"; num="${3:-}"
 repo="$(gh repo view --json nameWithOwner -q .nameWithOwner)"
 [ -n "$num" ] || num="$(gh project create --owner "$owner" --title "$title" --format json -q .number)"
-gh project link "$num" --owner "$owner" --repo "$repo" >/dev/null 2>&1 || echo "board-init: tautan repo gagal/sudah ada" >&2
+gh project link "$num" --owner "$owner" --repo "$repo" >/dev/null 2>&1 || echo "$(msg binit.link_failed)" >&2
 field="$(gh project field-list "$num" --owner "$owner" --format json | jq -c '.fields[] | select(.name=="Status")')"
 fid="$(jq -r .id <<<"$field")"
 want='["Backlog","Ready","In progress","In review","Done"]'
 have="$(jq -c '[.options[].name]' <<<"$field")"
 if [ "$have" != "$want" ]; then
   items="$(gh project item-list "$num" --owner "$owner" --limit 1 --format json -q '.items|length')"
-  [ "$items" = 0 ] || { echo "board-init: project $num berisi kartu; opsi Status tidak diganti (pakai nama status yang ada)" >&2; echo "$num"; exit 0; }
+  [ "$items" = 0 ] || { echo "$(msg binit.has_cards "$num")" >&2; echo "$num"; exit 0; }
   jq -n --arg f "$fid" --argjson w "$want" '{query:"mutation($i:UpdateProjectV2FieldInput!){updateProjectV2Field(input:$i){clientMutationId}}",
     variables:{i:{fieldId:$f,singleSelectOptions:[$w[]|{name:.,color:"GRAY",description:""}]}}}' \
   | gh api graphql --input - >/dev/null
@@ -28,7 +29,7 @@ layouts="$(gh api graphql -f query='query($p:ID!){node(id:$p){... on ProjectV2{v
 if ! grep -q BOARD_LAYOUT <<<"$layouts"; then
   jq -n --arg p "$pid" '{query:"mutation($i:CreateProjectV2ViewInput!){createProjectV2View(input:$i){projectV2View{id}}}",
     variables:{i:{projectId:$p,name:"Board",layout:"BOARD_LAYOUT"}}}' | gh api graphql --input - >/dev/null \
-  || echo "board-init: gagal membuat view papan (project tetap berguna sebagai tabel)" >&2
+  || echo "$(msg binit.view_failed)" >&2
 fi
-echo "board-init: langkah manual di UI project: kolom 'Parent issue', Group by -> Parent issue, dan view 'Journeys' (filter label:epic); tidak ada API untuk tampilan." >&2
+echo "$(msg binit.manual)" >&2
 echo "$num"

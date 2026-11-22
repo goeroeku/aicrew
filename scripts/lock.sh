@@ -5,7 +5,7 @@
 set -uo pipefail
 name="${1:?nama kunci}"; shift; wait_s=300
 [ "${1:-}" = "--wait" ] && { wait_s="${2:?detik}"; shift 2; }
-[ "${1:-}" = "--" ] && shift; [ "$#" -gt 0 ] || { echo "pakai: lock.sh <nama> [--wait detik] -- perintah..." >&2; exit 64; }
+[ "${1:-}" = "--" ] && shift; [ "$#" -gt 0 ] || { . "$(dirname "$0")/lib/msg.sh"; echo "$(msg lock.usage)" >&2; exit 64; }
 d="${TMPDIR:-/tmp}/aicrew-lock-$name"; waited=0
 until mkdir "$d" 2>/dev/null; do
   holder="$(cat "$d/pid" 2>/dev/null || true)"

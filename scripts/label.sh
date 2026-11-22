@@ -10,7 +10,7 @@ case "${1:-}" in
   notsplit) v="${AICREW_LABEL_NOTSPLIT:-}"; k='Unsplit epic label'; def=unsplit; old=belum-dipecah ;;
   noparent) v="${AICREW_LABEL_NOPARENT:-}"; k='No-parent label'; def=no-parent; old=tanpa-induk ;;
   waiting) v="${AICREW_LABEL_WAITING:-}"; k='Awaiting-release label'; def=awaiting-release; old=menunggu-rilis ;;
-  *) echo "pakai: label.sh integrated|auto|discovery|notsplit|noparent|waiting [--all|--json]" >&2; exit 64 ;;
+  *) { . "$(dirname "$0")/lib/msg.sh"; echo "$(msg label.usage)" >&2; }; exit 64 ;;
 esac
 [ -n "$v" ] || v="$(sed -n "s/^[- ]*$k: *\([A-Za-z0-9._:\/-]*\).*/\1/p" 2>/dev/null <<<"$(bash "$(dirname "$0")/workflow.sh")" | head -1)"
 v="${v:-$def}"
