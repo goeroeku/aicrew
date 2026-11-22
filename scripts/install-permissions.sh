@@ -19,8 +19,10 @@ if [ -f "$here/scripts/lib/merge-mode.sh" ]; then source "$here/scripts/lib/merg
 else echo "install-permissions: scripts/lib/merge-mode.sh tidak ada (merge-mode tidak dibaca dari WORKFLOW.md); mode dari AICREW_MERGE_MODE saja" >&2
   case "$(printf '%s' "${AICREW_MERGE_MODE:-}" | tr '[:upper:]' '[:lower:]')" in agent-after-qa|agen-setelah-qa) mode=agent-after-qa ;; *) mode=owner ;; esac   # alias-usang
 fi
+# Docker sempit (#107): hanya bila target tes proyek membutuhkannya (berkas compose atau Makefile yang menyebut docker); tidak pernah `docker:*` atau `docker run`
+dk=0; if [ -f "$here/scripts/lib/docker-need.sh" ]; then source "$here/scripts/lib/docker-need.sh"; docker_needed "$top" && dk=1; fi
 tpl="$(sed "s|__PLUGIN__|$plug|g; s|__REPO_PARENT__|$base|g; s|__REPO_NAME__|$(basename "$top")|g" "$here/templates/autopilot-permissions.json")"
-jq -s --arg m "$mode" '.[0] as $a | .[1] as $b | $a * {permissions:(($a.permissions//{}) * {
-  allow:((($a.permissions.allow//[])+$b.permissions.allow+($b.modes[$m].allow//[]))|unique),
+jq -s --arg m "$mode" --argjson dk "$dk" '.[0] as $a | .[1] as $b | $a * {permissions:(($a.permissions//{}) * {
+  allow:((($a.permissions.allow//[])+$b.permissions.allow+($b.modes[$m].allow//[])+(if $dk==1 then ($b.features.docker.allow//[]) else [] end))|unique),
   deny:((($a.permissions.deny//[])+$b.permissions.deny)|unique)})}' "$f" <(printf '%s' "$tpl") > "$f.tmp" && mv "$f.tmp" "$f"
 jq -r '"terpasang di '"$f"': allow \(.permissions.allow|length), deny \(.permissions.deny|length)"' "$f"
