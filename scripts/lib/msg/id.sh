@@ -167,6 +167,7 @@ msg_id() {
     ownerlocal.status_no) printf 'isu #%s pada %s: belum disetujui' "$@" ;;
     ownerlocal.reasons) printf 'alasan butuh Anda:' ;;
     cleanup.local_skipped) printf 'cleanup: dilewati pada Quota mode: local (tak ada PR GitHub untuk dicocokkan)' ;;
+    tick.usage) printf 'pakai: tick-status.sh [--header] [--gate <cabang-tujuan>]' ;;
     issueclose.usage) printf 'pakai: issue-close.sh <nomor-issue> [--comment <teks>]' ;;
     issueclose.unreadable) printf 'issue #%s tidak terbaca (ditolak: gagal tertutup)' "$@" ;;
     issueclose.no_repo) printf 'repositori tak dapat ditentukan' ;;
