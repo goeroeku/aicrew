@@ -167,6 +167,7 @@ msg_en() {
     ownerlocal.status_no) printf 'issue #%s at %s: not approved' "$@" ;;
     ownerlocal.reasons) printf 'reasons it needs you:' ;;
     cleanup.local_skipped) printf 'cleanup: skipped in Quota mode: local (no GitHub PRs to match)' ;;
+    tick.usage) printf 'usage: tick-status.sh [--header] [--gate <target-branch>]' ;;
     issueclose.usage) printf 'usage: issue-close.sh <issue-number> [--comment <text>]' ;;
     issueclose.unreadable) printf 'issue #%s could not be read (refusing: fail closed)' "$@" ;;
     issueclose.no_repo) printf 'repository could not be determined' ;;
