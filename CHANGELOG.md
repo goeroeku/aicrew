@@ -4,6 +4,51 @@ All notable changes to aiCrew are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Entries before 0.11.0 were reconstructed from tags, merged pull requests and commit history.
 
+## [1.6.0] - 2026-11-22
+
+### Added
+
+- `scripts/lib/msg.sh` message catalog with English default and Indonesian option (`AICREW_LANG`, `Language:` in WORKFLOW.md); script messages migrate to it in later releases. (#147)
+- PRD `Abuse cases and limits`, unbounded-input labelling in breakdown, a bounded local load smoke in aicrew-perf, and resource-exhaustion and crash-dump checks in aicrew-security. (#151)
+- design spec for a tiered GraphQL/REST/local backend (no behavior change yet) (#159)
+- GitHub writes are queued locally when the quota is exhausted and synced automatically after the reset (backend-sync.sh) (#169)
+- merge-pr.sh: L0/L1 PRs merge locally with self-run tests while the GitHub quota is exhausted (fail-closed); Quota mode and Test command in WORKFLOW.md (#170)
+- local issue store and issue.sh for the standalone Quota mode: local (no GitHub); ghx routes issues, labels and comments to it (#171)
+- Quota mode: local can merge without GitHub: local PR model, ff-only merge with self-run tests, owner approval via owner-local.sh (interactive terminal, bound to commit and issue state) (#172)
+- Quota mode: local works end to end without GitHub (integrated, resume, owner-actions, blocked-note, codex-prompt, preflight; GitHub-only scripts say so); skills, agents and README describe the local flow (#173)
+- issue-close.sh and label-remove.sh (REST, fixed paths, refuse epic/needs-principal/owner-hold) and a close-on-integration-merge workflow template (#177)
+- tick-status.sh: one-command REST-only status of open issue PRs (CI class, verdicts per head sha, executor state) (#178)
+- the permission template installs a narrow Docker set (docker info, docker compose -f <file> up|exec|ps|down) only when the project test target needs Docker (#183)
+
+### Changed
+
+- Agents and templates are now written in English; verdict tokens that scripts read back are unchanged. (#148)
+- Skills are now written in English; kickoff asks for the message language and writes `Language:` to docs/WORKFLOW.md. (#149)
+- Merge gate messages come from the message catalog and are English by default; set `Language: id` or `AICREW_LANG=id` for Indonesian. (#150)
+- Autopilot, autostart, owner summary, budget, notify and blocked-note messages come from the message catalog and are English by default; set `Language: id` or `AICREW_LANG=id` for Indonesian. (#152)
+- Cleanup, release report and notes, resume, worktree, autonomy, version and overlap messages come from the message catalog and are English by default; set `Language: id` or `AICREW_LANG=id` for Indonesian. (#153)
+- senior-coder and devops agents no longer end their turn with background commands still running (#166)
+- senior-coder, qa and the Codex prompt template forbid skipping database or integration tests to make them pass (#174)
+- the remaining script messages (cve-check, cve-audit, grants, baseline-scan, preflight, ghx, issue, board and others) follow the message language: English by default, Indonesian with AICREW_LANG=id or `Language:` in docs/WORKFLOW.md (#180)
+- the last stray messages (cve-audit, board, baseline-scan, lock) follow the message language (#184)
+
+### Fixed
+
+- the merge gate no longer prints gh's "event listen" hint, so the verdict is the last line (#167)
+- autopilot waits for the GitHub quota reset instead of stopping, and switches to REST with ETag before the GraphQL quota is exhausted (#168)
+- unattended agents can run `git -C <worktree> merge` and `git rebase`; `--exec`/`-x` stay denied for that form (#175)
+- local issue store: parallel creates could collide on a number; orphaned-lock takeover could steal a live lock (#176)
+- board.sh no longer leaves orphan child processes when killed, has an internal timeout, and moves many cards with one --apply process (#179)
+
+### Behavior changes
+
+- without `AICREW_LANG` or `Language:` the gate now prints English messages; set `Language: id` in docs/WORKFLOW.md or `AICREW_LANG=id` to keep the Indonesian text. (#150)
+- the merge gate prints English messages unless `Language: id` (docs/WORKFLOW.md) or `AICREW_LANG=id` is set; the `GAGAL:`/`PERINGATAN:`/`ok:` prefixes are unchanged. (#150)
+- without `AICREW_LANG` or `Language:` these scripts now print English; set `Language: id` in docs/WORKFLOW.md or `AICREW_LANG=id` to keep Indonesian. (#152)
+- autopilot, autostart, owner-actions, budget, notify and blocked-* print English messages unless `Language: id` (docs/WORKFLOW.md) or `AICREW_LANG=id` is set; machine prefixes and exit codes are unchanged. (#152)
+- without `AICREW_LANG` or `Language:` these scripts print English; set `Language: id` in docs/WORKFLOW.md or `AICREW_LANG=id` for Indonesian. (#153)
+- cleanup, release-report, release-notes, resume, worktree-for-issue, autonomy, awaiting-release, build-release, check-version, file-overlap and integrated print English messages unless `Language: id` (docs/WORKFLOW.md) or `AICREW_LANG=id` is set; machine tokens and exit codes are unchanged. (#153)
+
 ## [1.5.0] - 2026-11-04
 
 ### Added
