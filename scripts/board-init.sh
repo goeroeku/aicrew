@@ -7,6 +7,7 @@
 set -euo pipefail
 source "$(dirname "$0")/ghx.sh"; source "$(dirname "$0")/lib/msg.sh"
 ghx_require_github board-init.sh
+# Langkah manual di UI project (tidak ada API): kolom 'Parent issue', Group by -> Parent issue, view 'Journeys' (filter label:epic); teks pesannya ada di katalog (binit.manual).
 owner="${1:?owner}"; title="${2:?judul}"; num="${3:-}"
 repo="$(gh repo view --json nameWithOwner -q .nameWithOwner)"
 [ -n "$num" ] || num="$(gh project create --owner "$owner" --title "$title" --format json -q .number)"
