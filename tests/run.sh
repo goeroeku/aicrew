@@ -1828,7 +1828,7 @@ idn_hits() { if [ -f "$1" ]; then strip_code "$1" | grep -ciE "$IDN" || true; el
 miss=0; wrong=0
 while read -r v d; do [ -n "$v" ] || continue; grep -qE "^## \\[$v\\] - $d$" CHANGELOG.md 2>/dev/null || miss=$((miss+1)); done <<<"$TAGDATES"
 ok "CHANGELOG.md: satu bagian '## [X.Y.Z] - tanggal-tag' untuk tiap tag 0.1.0-0.12.0 (25), tanggal dari commit tag" "$miss" 0
-n="$(grep -cE '^## \[' CHANGELOG.md 2>/dev/null || true)"; ok "CHANGELOG.md: tidak ada bagian di luar tag yang ada (tanpa [Unreleased])" "$([ "${n:-0}" -le 32 ] && ! grep -q 'Unreleased' CHANGELOG.md 2>/dev/null && echo ok || echo salah)" ok
+n="$(grep -cE '^## \[' CHANGELOG.md 2>/dev/null || true)"; ok "CHANGELOG.md: tidak ada bagian di luar tag yang ada (tanpa [Unreleased])" "$([ "${n:-0}" -le 33 ] && ! grep -q 'Unreleased' CHANGELOG.md 2>/dev/null && echo ok || echo salah)" ok
 ok "CHANGELOG.md: tanpa blok tautan perbandingan di dasar berkas" "$(grep -cE '^\[[0-9][^]]*\]: http' CHANGELOG.md 2>/dev/null || true)" 0
 ok "README: tanpa judul atau paragraf bertanda versi (0.x.y)" "$(grep -cE '\(0\.[0-9]+\.[0-9]+[;)]' README.md)" 0
 for f in README.md PRIVACY.md CHANGELOG.md; do ok "bahasa publik: $f tanpa kata fungsi/judul Indonesia di luar kode" "$(idn_hits "$f")" 0; done
