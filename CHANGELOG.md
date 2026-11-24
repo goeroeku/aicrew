@@ -4,6 +4,12 @@ All notable changes to aiCrew are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Entries before 0.11.0 were reconstructed from tags, merged pull requests and commit history.
 
+## [1.6.1] - 2026-11-24
+
+### Fixed
+
+- `pr-merge-check.sh --after` no longer fails with `jq: error: syntax error, unexpected as` on jq 1.7.1: the `if ... end` is parenthesized before `as $s`. Before, every merged PR was reported as not MERGED, which stalled the autopilot finish-merge step. (#186)
+
 ## [1.6.0] - 2026-11-22
 
 ### Added
