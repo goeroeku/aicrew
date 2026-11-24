@@ -22,7 +22,7 @@ fail() { if [ -n "${AICREW_GATE_QUOTA_FILE:-}" ] && [ "$(cat "$AICREW_GATE_QUOTA
 cr="$(ghx_repo)" && [ -n "$cr" ] || fail "$(msg gate.repo_unknown)"
 prj="$(gh api "repos/$cr/pulls/$pr")" && jq -e 'type=="object"' <<<"$prj" >/dev/null 2>&1 || fail "$(msg gate.pr_unreadable "$pr")"
 if [ "${3:-}" = "--after" ]; then
-  read -r st oid < <(jq -r 'if .merged_at then "MERGED" else (.state|ascii_upcase) end as $s | [$s, (.merge_commit_sha // "-")] | @tsv' <<<"$prj")
+  read -r st oid < <(jq -r '(if .merged_at then "MERGED" else (.state|ascii_upcase) end) as $s | [$s, (.merge_commit_sha // "-")] | @tsv' <<<"$prj")
   [ "$st" = MERGED ] || { echo "GAGAL: $(msg gate.not_merged "$pr" "$st")"; exit 1; }
   git fetch -q origin "$dst" && git merge-base --is-ancestor "$oid" "origin/$dst" \
     && echo "ok: $(msg gate.merged_in_dst "$pr" "$oid" "$dst")" || { echo "GAGAL: $(msg gate.merged_not_in_dst "$pr" "$oid" "$dst")"; exit 1; }

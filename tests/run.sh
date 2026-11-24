@@ -2367,6 +2367,7 @@ ok "gerbang REST (#113): REST habis -> gagal, batas REST dan jam reset disebut" 
 out="$(rg PRFAIL=1 REST_REM=3)"; ok "gerbang REST (#113): kegagalan REST biasa -> tanpa baris batas REST" "$(grep -c 'batas REST' <<<"$out")" 0
 out="$(env BASE=integrasi PRSTATE=open PATH="$tmp/pmb:$PATH" bash "$root/scripts/pr-merge-check.sh" 9 integrasi --after 2>&1)"; rc=$?
 ok "gerbang REST (#113): --after PR belum merged -> gagal" "$rc|$(grep -c 'belum MERGED' <<<"$out")" '1|1'
+out="$(env BASE=integrasi PRSTATE=closed MERGECOMMIT=abc1234567 PATH="$tmp/pmb:$PATH" bash "$root/scripts/pr-merge-check.sh" 9 integrasi --after 2>&1)"; ok "gerbang: --after PR merged -> ekspresi jq lolos di jq 1.7 (bukan 'belum MERGED'/syntax error)" "$(grep -cE 'belum MERGED|syntax error' <<<"$out")" 0
 grep -qF 'GraphQL' "$root/README.md" && grep -qF 'closingIssuesReferences' "$root/README.md"; ok "README (#113): gerbang lewat REST, closingIssuesReferences dan cadangan saat GraphQL habis" $? 0
 
 # 3c-17. autopilot x ci-classify (#80): infrastructure CI failure on the only open PR = waiting for the owner, no orchestrator round
